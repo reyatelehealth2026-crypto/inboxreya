@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 
   const stream = new ReadableStream({
     start(controller) {
-      let removeClient = () => {}
+      let removeClient = () => { }
       let keepAliveInterval: ReturnType<typeof setInterval> | null = null
 
       const closeStream = () => {
