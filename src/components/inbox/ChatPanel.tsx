@@ -32,6 +32,8 @@ import { ImageLightbox } from '@/components/inbox/ImageLightbox'
 import { EmojiPicker } from '@/components/inbox/EmojiPicker'
 import { Badge } from '@/components/ui/badge'
 import type { LineUser, Message, UserTag, AdminUser } from '@/types'
+import { LinkPreview } from '@/components/inbox/LinkPreview'
+import { extractUrls } from '@/lib/url-utils'
 
 function parseFlexPayload(message: Message) {
   const metadata = message.metadata as any
@@ -126,6 +128,33 @@ function getLineMessageDisplayText(content: string): string | null {
   }
 }
 
+
+const MessageTextWithLinks = ({ content, isOutgoing }: { content: string, isOutgoing: boolean }) => {
+  if (!content) return null
+  const parts = content.split(/(\bhttps?:\/\/[^\s]+)/g)
+
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.match(/^https?:\/\//)) {
+          return (
+            <a
+              key={i}
+              href={part}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`underline hover:opacity-80 break-all ${isOutgoing ? 'text-white font-medium' : 'text-blue-600 dark:text-blue-400'}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {part}
+            </a>
+          )
+        }
+        return <span key={i}>{part}</span>
+      })}
+    </>
+  )
+}
 function MessageBubble({
   message,
   isLast,
@@ -232,7 +261,17 @@ function MessageBubble({
         )}
       >
         {message.messageType === 'text' && !isFlexJson && !isLineJson && (
-          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          <div className="flex flex-col gap-1">
+            <p className="whitespace-pre-wrap break-words">
+              <MessageTextWithLinks content={message.content || ''} isOutgoing={isOutgoing} />
+            </p>
+            {(() => {
+              const urls = extractUrls(message.content || '')
+              return urls.length > 0 ? (
+                <LinkPreview url={urls[0]} isOutgoing={isOutgoing} />
+              ) : null
+            })()}
+          </div>
         )}
 
         {isLineJson && lineDisplayText && (
