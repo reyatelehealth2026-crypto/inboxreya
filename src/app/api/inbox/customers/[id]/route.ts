@@ -169,6 +169,36 @@ export async function GET(
     // Fetch additional fields from raw query
     const additionalFields = await getAdditionalFields(parsedUserId)
 
+    // Calculate points from transactions (Mirroring PHP LoyaltyPoints::getUserPoints)
+    const pointsSummary = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT
+        COALESCE(SUM(CASE WHEN points > 0 THEN points ELSE 0 END), 0) as total_points,
+        COALESCE(SUM(points), 0) as available_points,
+        COALESCE(SUM(CASE WHEN points < 0 THEN ABS(points) ELSE 0 END), 0) as used_points
+       FROM points_transactions
+       WHERE user_id = ?`,
+      parsedUserId
+    )
+
+    const summary = pointsSummary[0]
+    let currentBalance = 0
+    let totalPoints = 0
+    let usedPoints = 0
+
+    // Only use transaction data if we have transactions (non-zero balance check logic)
+    // Matches PHP logic for source of truth
+    if (summary && (Number(summary.total_points) > 0 || Number(summary.used_points) > 0)) {
+      currentBalance = Number(summary.available_points)
+      totalPoints = Number(summary.total_points)
+      usedPoints = Number(summary.used_points)
+      currentBalance = Math.max(0, currentBalance)
+    } else {
+      // Fallback to users table
+      currentBalance = user.availablePoints || user.points || 0
+      totalPoints = user.totalPoints || 0
+      usedPoints = user.usedPoints || 0
+    }
+
     return NextResponse.json({
       data: {
         user: {
@@ -195,10 +225,10 @@ export async function GET(
           note: additionalFields.note,
           membershipLevel: user.membershipLevel,
           tier: user.tier,
-          points: user.points,
-          totalPoints: user.totalPoints,
-          availablePoints: user.availablePoints,
-          usedPoints: user.usedPoints,
+          points: currentBalance,
+          totalPoints: totalPoints,
+          availablePoints: currentBalance,
+          usedPoints: usedPoints,
           loyaltyPoints: user.loyaltyPoints,
           totalSpent: user.totalSpent,
           orderCount: user.orderCount,
@@ -213,9 +243,9 @@ export async function GET(
         tags,
         assignees,
         points: {
-          total: user.totalPoints,
-          available: user.availablePoints,
-          used: user.usedPoints,
+          total: totalPoints,
+          available: currentBalance,
+          used: usedPoints,
           loyalty: user.loyaltyPoints,
         },
       },

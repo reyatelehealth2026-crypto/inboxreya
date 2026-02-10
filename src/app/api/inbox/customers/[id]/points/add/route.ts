@@ -11,9 +11,9 @@ export const POST = withAuth(async (request: NextRequest, { params, user }) => {
     // In Next.js 15, params might be a Promise
     const resolvedParams = await Promise.resolve(params)
     const userId = Number(resolvedParams.id)
-    
+
     console.log('[Points Add] Starting - userId:', userId, 'adminId:', user.id)
-    
+
     if (!Number.isFinite(userId)) {
       console.error('[Points Add] Invalid user ID:', resolvedParams.id)
       return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 })
@@ -21,7 +21,7 @@ export const POST = withAuth(async (request: NextRequest, { params, user }) => {
 
     const body = await request.json()
     const { points, reason } = body
-    
+
     console.log('[Points Add] Request body:', { points, reason })
 
     if (!points || points <= 0) {
@@ -52,24 +52,26 @@ export const POST = withAuth(async (request: NextRequest, { params, user }) => {
       console.error('[Points Add] User not found:', userId)
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
-    
+
     console.log('[Points Add] User found:', lineUser.displayName, 'Current points:', lineUser.points)
 
-    // Update points
-    console.log('[Points Add] Updating user points...')
+    // Update points across all relevant fields
+    console.log('[Points Add] Updating user points fields...')
     const updatedUser = await prisma.lineUser.update({
       where: { id: userId },
       data: {
-        points: {
-          increment: points,
-        },
+        points: { increment: points },
+        availablePoints: { increment: points },
+        totalPoints: { increment: points },
       },
       select: {
         id: true,
         points: true,
+        availablePoints: true,
+        totalPoints: true,
       },
     })
-    
+
     console.log('[Points Add] Points updated. New balance:', updatedUser.points)
 
     // Create points transaction
@@ -86,8 +88,8 @@ export const POST = withAuth(async (request: NextRequest, { params, user }) => {
         line_account_id: lineUser.lineAccountId || 3,
       },
     })
-    
-    console.log('[Points Add] Transaction created successfully')    
+
+    console.log('[Points Add] Transaction created successfully')
     console.log('[Points Add] Transaction created successfully')
 
     // Create system message in chat
@@ -278,12 +280,12 @@ export const POST = withAuth(async (request: NextRequest, { params, user }) => {
 
     // Send via PHP bridge
     console.log('[Points Add] Sending Flex Message via PHP bridge...')
-    const phpBridgeUrl = process.env.PHP_API_URL 
+    const phpBridgeUrl = process.env.PHP_API_URL
       ? `${process.env.PHP_API_URL}/api/liff-bridge.php`
       : 'http://localhost/re-ya/api/liff-bridge.php'
-    
+
     console.log('[Points Add] PHP Bridge URL:', phpBridgeUrl)
-    
+
     const response = await fetch(phpBridgeUrl, {
       method: 'POST',
       headers: {
