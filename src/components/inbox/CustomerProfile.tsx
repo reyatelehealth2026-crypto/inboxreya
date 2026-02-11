@@ -668,9 +668,12 @@ export function CustomerProfile() {
   const [isEditingContact, setIsEditingContact] = useState(false)
   const [isAddPointsOpen, setIsAddPointsOpen] = useState(false)
   const [isOdooOpen, setIsOdooOpen] = useState(false)
-  const [pointsToAdd, setPointsToAdd] = useState('')
+  const [orderAmount, setOrderAmount] = useState('')
   const [pointsReason, setPointsReason] = useState('')
   const [isAddingPoints, setIsAddingPoints] = useState(false)
+
+  // คำนวณ point จากยอดซื้อ: 1,000 บาท = 1 point
+  const calculatedPoints = orderAmount ? Math.floor(Number(orderAmount) / 1000) : 0
   const [contactDraft, setContactDraft] = useState({
     displayName: '',
     realName: '',
@@ -692,10 +695,11 @@ export function CustomerProfile() {
   const tierLabel = user?.tier ? user.tier.toUpperCase() : 'STANDARD'
 
   const handleAddPoints = async () => {
-    if (!user || !pointsToAdd || Number(pointsToAdd) <= 0) {
+    const amount = Number(orderAmount)
+    if (!user || !orderAmount || amount <= 0 || calculatedPoints <= 0) {
       toast({
         title: 'ข้อผิดพลาด',
-        description: 'กรุณากรอกจำนวนแต้มที่ถูกต้อง',
+        description: 'กรุณากรอกยอดซื้อที่ถูกต้อง (ขั้นต่ำ 1,000 บาท)',
         variant: 'destructive',
       })
       return
@@ -703,14 +707,14 @@ export function CustomerProfile() {
 
     setIsAddingPoints(true)
     try {
-      console.log('Adding points:', { userId: user.id, points: pointsToAdd, reason: pointsReason })
+      console.log('Adding points from order:', { userId: user.id, orderAmount: amount, calculatedPoints, reason: pointsReason })
 
       const response = await fetch(`/api/inbox/customers/${user.id}/points/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          points: Number(pointsToAdd),
-          reason: pointsReason || 'เพิ่มแต้มโดยแอดมิน',
+          orderAmount: amount,
+          reason: pointsReason || 'บันทึกยอดซื้อโดยแอดมิน',
         }),
       })
 
@@ -721,7 +725,6 @@ export function CustomerProfile() {
         statusText: response.statusText,
         data
       })
-      console.log('Data object expanded:', JSON.stringify(data, null, 2))
 
       if (!response.ok) {
         const errorMsg = data.error || data.details || data.message || 'Failed to add points'
@@ -730,12 +733,12 @@ export function CustomerProfile() {
       }
 
       toast({
-        title: 'เพิ่มแต้มสำเร็จ',
-        description: `เพิ่ม ${pointsToAdd} แต้มให้ ${user.displayName} แล้ว`,
+        title: 'บันทึกยอดซื้อสำเร็จ',
+        description: `ยอดซื้อ ${amount.toLocaleString()} ฿ — ได้รับ ${data.data?.addedPoints || calculatedPoints} point`,
       })
 
       setIsAddPointsOpen(false)
-      setPointsToAdd('')
+      setOrderAmount('')
       setPointsReason('')
 
       // Invalidate and refetch customer profile
@@ -744,7 +747,7 @@ export function CustomerProfile() {
       console.error('Error adding points:', error)
       toast({
         title: 'เกิดข้อผิดพลาด',
-        description: error instanceof Error ? error.message : 'ไม่สามารถเพิ่มแต้มได้',
+        description: error instanceof Error ? error.message : 'ไม่สามารถบันทึกยอดซื้อได้',
         variant: 'destructive',
       })
     } finally {
@@ -906,27 +909,51 @@ export function CustomerProfile() {
           <Dialog open={isAddPointsOpen} onOpenChange={setIsAddPointsOpen}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>เพิ่มแต้มให้ลูกค้า</DialogTitle>
+                <DialogTitle>บันทึกยอดซื้อ & เพิ่มแต้ม</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div>
-                  <label className="text-sm font-medium mb-2 block">จำนวนแต้ม</label>
+                  <label className="text-sm font-medium mb-2 block">ยอดซื้อ (บาท)</label>
                   <Input
                     type="number"
-                    placeholder="กรอกจำนวนแต้ม"
-                    value={pointsToAdd}
-                    onChange={(e) => setPointsToAdd(e.target.value)}
-                    min="1"
+                    placeholder="กรอกยอดซื้อ เช่น 17000"
+                    value={orderAmount}
+                    onChange={(e) => setOrderAmount(e.target.value)}
+                    min="1000"
+                    step="100"
                     className="text-lg"
                   />
                 </div>
+
+                {/* Preview: แสดงผลคำนวณ */}
+                {orderAmount && Number(orderAmount) > 0 && (
+                  <div className="rounded-lg border p-3 space-y-2" style={{ background: '#F0F9F8', borderColor: '#0C665D33' }}>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">ยอดซื้อ</span>
+                      <span className="font-bold text-gray-900">{Number(orderAmount).toLocaleString()} ฿</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">อัตรา</span>
+                      <span className="text-gray-500">1,000 ฿ = 1 point</span>
+                    </div>
+                    <hr className="border-gray-200" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium" style={{ color: '#0C665D' }}>ได้รับแต้ม</span>
+                      <span className="text-xl font-bold" style={{ color: '#0C665D' }}>{calculatedPoints} point</span>
+                    </div>
+                    {calculatedPoints <= 0 && (
+                      <p className="text-xs text-red-500">⚠️ ยอดซื้อต้องอย่างน้อย 1,000 บาท เพื่อได้รับ 1 point</p>
+                    )}
+                  </div>
+                )}
+
                 <div>
-                  <label className="text-sm font-medium mb-2 block">เหตุผล (ไม่บังคับ)</label>
+                  <label className="text-sm font-medium mb-2 block">หมายเหตุ (ไม่บังคับ)</label>
                   <Textarea
-                    placeholder="ระบุเหตุผลในการเพิ่มแต้ม"
+                    placeholder="ระบุหมายเหตุ เช่น เลขที่ใบเสร็จ"
                     value={pointsReason}
                     onChange={(e) => setPointsReason(e.target.value)}
-                    rows={3}
+                    rows={2}
                   />
                 </div>
               </div>
@@ -935,7 +962,7 @@ export function CustomerProfile() {
                   variant="outline"
                   onClick={() => {
                     setIsAddPointsOpen(false)
-                    setPointsToAdd('')
+                    setOrderAmount('')
                     setPointsReason('')
                   }}
                   disabled={isAddingPoints}
@@ -944,10 +971,10 @@ export function CustomerProfile() {
                 </Button>
                 <Button
                   onClick={handleAddPoints}
-                  disabled={isAddingPoints || !pointsToAdd || Number(pointsToAdd) <= 0}
+                  disabled={isAddingPoints || !orderAmount || calculatedPoints <= 0}
                   style={{ background: '#0C665D' }}
                 >
-                  {isAddingPoints ? 'กำลังเพิ่ม...' : 'เพิ่มแต้ม'}
+                  {isAddingPoints ? 'กำลังบันทึก...' : `บันทึกยอดซื้อ (${calculatedPoints} point)`}
                 </Button>
               </DialogFooter>
             </DialogContent>
