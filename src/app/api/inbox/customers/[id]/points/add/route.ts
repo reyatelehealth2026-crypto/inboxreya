@@ -82,7 +82,7 @@ export const POST = withAuth(async (request: NextRequest, { params, user }) => {
         user_id: userId,
         total_amount: orderAmount,
         grand_total: orderAmount,
-        status: 'completed',
+        status: 'delivered',
         payment_status: 'paid',
         note: reason || 'บันทึกยอดซื้อโดยแอดมิน',
       },
