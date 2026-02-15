@@ -1,14 +1,17 @@
-import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { broadcastRealtimeEvent } from '@/lib/realtime'
 
-export async function PUT() {
+export async function PUT(request: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const authResult = await requireAuth(request)
+    if (authResult instanceof NextResponse) {
+      return authResult
     }
+
+    const { user: sessionUser } = authResult
+    const session = { user: sessionUser }
 
     const lineAccountId = session.user.lineAccountId
     if (!lineAccountId) {
