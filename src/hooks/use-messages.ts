@@ -164,6 +164,25 @@ export function useSendMessage() {
   })
 }
 
+export function useMarkAllMessagesRead() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/inbox/messages/read-all', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      if (!response.ok) throw new Error('Failed to mark all messages as read')
+      return response.json() as Promise<{ success: boolean; updated: number; conversations: number }>
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.messagesRoot() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversationsRoot() })
+    },
+  })
+}
+
 export function useMarkMessagesRead() {
   const queryClient = useQueryClient()
 

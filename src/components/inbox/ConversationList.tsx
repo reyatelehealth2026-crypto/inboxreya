@@ -2,16 +2,29 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef, memo, useTransition } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Search, MessageSquare, RefreshCw, X, SearchX } from 'lucide-react'
+import { Search, MessageSquare, RefreshCw, X, SearchX, CheckCheck } from 'lucide-react'
 import { useConversations } from '@/hooks/use-conversations'
 import { useInboxStore } from '@/stores/inbox'
 import { useInboxKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
+import { useMarkAllMessagesRead } from '@/hooks/use-messages'
+import { useToast } from '@/hooks/use-toast'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { cn, formatTimeAgo, truncate, getInitials } from '@/lib/utils'
 import { resolveAssigneeBadgeColor } from '@/config/assignee-colors'
 import { FilterBar } from './FilterBar'
@@ -223,6 +236,10 @@ export function ConversationList() {
   const [searchInput, setSearchInput] = useState('')
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
+
+  const markAllMessagesRead = useMarkAllMessagesRead()
+  const { toast } = useToast()
 
   const {
     selectedConversationId,
@@ -330,45 +347,101 @@ export function ConversationList() {
     enabled: true
   })
 
+  const handleConfirmMarkAll = useCallback(async () => {
+    try {
+      const result = await markAllMessagesRead.mutateAsync()
+      setIsConfirmDialogOpen(false)
+      toast({
+        title: 'ล้างแจ้งเตือนแล้ว',
+        description:
+          result.conversations > 0
+            ? `ทำการอ่านแชทที่ยังไม่เปิดทั้งหมด ${result.conversations} รายการสำเร็จ`
+            : 'ไม่มีการสนทนาที่ยังไม่ได้อ่าน'
+      })
+    } catch (error) {
+      toast({
+        title: 'เกิดข้อผิดพลาด',
+        description: 'ไม่สามารถกดอ่านทั้งหมดได้ กรุณาลองใหม่อีกครั้ง',
+        variant: 'destructive'
+      })
+    }
+  }, [markAllMessagesRead, toast])
+
   return (
     <div id="conversation-list" className="flex flex-col h-full bg-card" aria-label="รายการการสนทนา">
-      <div className="p-4 border-b space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-lg flex items-center gap-2">
-            <MessageSquare className="h-5 w-5" />
-            แชท
-            {data?.pagination.total !== undefined && (
-              <Badge variant="secondary" className="ml-1">
-                {data.pagination.total}
-              </Badge>
-            )}
-          </h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            aria-label="รีเฟรชรายการแชท"
-          >
-            <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
-          </Button>
-        </div>
+      <div className="p-4 border-b space-y-4">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <h2 className="font-semibold text-lg flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              แชท
+              {data?.pagination.total !== undefined && (
+                <Badge variant="secondary" className="ml-1">
+                  {data.pagination.total}
+                </Badge>
+              )}
+            </h2>
+            <div className="flex items-center gap-2">
+              <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="gap-2"
+                    disabled={markAllMessagesRead.isPending}
+                  >
+                    <CheckCheck className="h-4 w-4" />
+                    กดอ่านทั้งหมด
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>ยืนยันการกดอ่านทั้งหมด</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      การทำงานนี้จะทำให้ทุกการสนทนาที่ยังไม่ได้อ่านในบัญชี LINE นี้ถูกทำเครื่องหมายว่าอ่านแล้ว
+                      คุณต้องการดำเนินการต่อหรือไม่?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={markAllMessagesRead.isPending}>ยกเลิก</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleConfirmMarkAll}
+                      disabled={markAllMessagesRead.isPending}
+                    >
+                      ยืนยัน
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
 
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="ค้นหาชื่อหรือเบอร์โทร..."
-            value={searchInput}
-            onChange={(e) => handleSearch(e.target.value)}
-            className="pl-9"
-            aria-label="ค้นหาการสนทนา"
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => refetch()}
+                disabled={isFetching}
+                aria-label="รีเฟรชรายการแชท"
+              >
+                <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
+              </Button>
+            </div>
+          </div>
+
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="ค้นหาชื่อหรือเบอร์โทร..."
+              value={searchInput}
+              onChange={(e) => handleSearch(e.target.value)}
+              className="pl-9"
+              aria-label="ค้นหาการสนทนา"
+            />
+          </div>
+
+          <FilterBar
+            isOpen={isFilterOpen}
+            onToggle={() => setIsFilterOpen(!isFilterOpen)}
           />
         </div>
-
-        <FilterBar
-          isOpen={isFilterOpen}
-          onToggle={() => setIsFilterOpen(!isFilterOpen)}
-        />
       </div>
 
       <ScrollArea ref={parentRef} className="flex-1" role="listbox" aria-label="รายการการสนทนา">
