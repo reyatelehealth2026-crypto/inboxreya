@@ -445,7 +445,7 @@ function MessageBubble({
           {formatMessageTime(message.createdAt)}
           {isOutgoing && (
             <span className={cn('ml-1', message.isRead ? 'text-teal-500 font-bold' : 'text-primary-foreground/50')}>
-              {message.isRead ? 'อ่านแล้ว' : '✓'}
+              {message.isRead ? '✓' : '✓'}
             </span>
           )}
         </div>
