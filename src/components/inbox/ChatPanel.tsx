@@ -170,6 +170,9 @@ function MessageBubble({
   const { setReplyToMessage, setLightboxImage } = useChatStore()
   const { toast } = useToast()
   const [slipForwardState, setSlipForwardState] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle')
+  const [showSlipModal, setShowSlipModal] = useState(false)
+  const [slipAmount, setSlipAmount] = useState('')
+  const [slipDate, setSlipDate] = useState(() => new Date().toISOString().slice(0, 10))
 
   // Parse flex payload - check explicit flex type, JSON content, or metadata
   const isFlexType = message.messageType === 'flex'
@@ -324,44 +327,12 @@ function MessageBubble({
                     slipForwardState === 'sent' && 'bg-green-50 text-green-700 border-green-200',
                     slipForwardState === 'error' && 'bg-red-50 text-red-700 border-red-200'
                   )}
-                  onClick={async (e) => {
+                  onClick={(e) => {
                     e.stopPropagation()
                     if (slipForwardState === 'loading' || slipForwardState === 'sent') return
-                    setSlipForwardState('loading')
-                    try {
-                      const res = await fetch('/api/inbox/forward-slip-odoo', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          messageId: message.id,
-                          userId: message.userId,
-                        }),
-                      })
-                      const data = await res.json()
-                      if (res.ok && data.success) {
-                        setSlipForwardState('sent')
-                        toast({
-                          title: 'บันทึกสลิปแล้ว',
-                          description: 'สลิปถูกบันทึกไว้ในระบบเรียบร้อยแล้ว',
-                        })
-                      } else {
-                        setSlipForwardState('error')
-                        toast({
-                          title: 'ส่งสลิปไม่สำเร็จ',
-                          description: data.error || 'กรุณาลองใหม่อีกครั้ง',
-                          variant: 'destructive',
-                        })
-                        setTimeout(() => setSlipForwardState('idle'), 3000)
-                      }
-                    } catch (err) {
-                      setSlipForwardState('error')
-                      toast({
-                        title: 'เกิดข้อผิดพลาด',
-                        description: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้',
-                        variant: 'destructive',
-                      })
-                      setTimeout(() => setSlipForwardState('idle'), 3000)
-                    }
+                    setSlipDate(new Date().toISOString().slice(0, 10))
+                    setSlipAmount('')
+                    setShowSlipModal(true)
                   }}
                 >
                   {slipForwardState === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
@@ -370,6 +341,125 @@ function MessageBubble({
                   {slipForwardState === 'error' && <span>✕</span>}
                   {slipForwardState === 'loading' ? 'กำลังบันทึก...' : slipForwardState === 'sent' ? 'บันทึกแล้ว' : slipForwardState === 'error' ? 'ลองใหม่' : 'บันทึกสลิป'}
                 </Button>
+
+                {showSlipModal && (
+                  <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+                    onClick={(e) => { if (e.target === e.currentTarget) setShowSlipModal(false) }}
+                  >
+                    <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+                      <h3 className="text-base font-semibold text-gray-800 mb-4">บันทึกสลิปการชำระเงิน</h3>
+
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-600 mb-1">ยอดเงิน (บาท)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="เช่น 1500.00"
+                            value={slipAmount}
+                            onChange={(e) => setSlipAmount(e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            autoFocus
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-600 mb-1">วันที่โอน</label>
+                          <input
+                            type="date"
+                            value={slipDate}
+                            onChange={(e) => setSlipDate(e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                          <div className="flex gap-2 mt-1.5">
+                            <button
+                              type="button"
+                              className="text-xs text-teal-600 hover:underline"
+                              onClick={() => setSlipDate(new Date().toISOString().slice(0, 10))}
+                            >วันนี้</button>
+                            <button
+                              type="button"
+                              className="text-xs text-teal-600 hover:underline"
+                              onClick={() => {
+                                const d = new Date()
+                                d.setDate(d.getDate() - 1)
+                                setSlipDate(d.toISOString().slice(0, 10))
+                              }}
+                            >เมื่อวาน</button>
+                            <button
+                              type="button"
+                              className="text-xs text-teal-600 hover:underline"
+                              onClick={() => {
+                                const d = new Date()
+                                d.setDate(d.getDate() - 2)
+                                setSlipDate(d.toISOString().slice(0, 10))
+                              }}
+                            >2 วันก่อน</button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 mt-6">
+                        <button
+                          type="button"
+                          className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50"
+                          onClick={() => setShowSlipModal(false)}
+                        >ยกเลิก</button>
+                        <button
+                          type="button"
+                          disabled={slipForwardState === 'loading'}
+                          className="flex-1 bg-teal-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-teal-700 disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          onClick={async () => {
+                            setShowSlipModal(false)
+                            setSlipForwardState('loading')
+                            try {
+                              const body: Record<string, any> = {
+                                messageId: message.id,
+                                userId: message.userId,
+                              }
+                              if (slipAmount) body.amount = parseFloat(slipAmount)
+                              if (slipDate) body.transferDate = slipDate
+                              const res = await fetch('/api/inbox/forward-slip-odoo', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(body),
+                              })
+                              const data = await res.json()
+                              if (res.ok && data.success) {
+                                setSlipForwardState('sent')
+                                toast({
+                                  title: 'บันทึกสลิปแล้ว',
+                                  description: `ยอด ${slipAmount ? '฿' + parseFloat(slipAmount).toLocaleString('th-TH') : '-'} วันที่ ${slipDate || '-'} บันทึกเรียบร้อยแล้ว`,
+                                })
+                              } else {
+                                setSlipForwardState('error')
+                                toast({
+                                  title: 'บันทึกสลิปไม่สำเร็จ',
+                                  description: data.error || 'กรุณาลองใหม่อีกครั้ง',
+                                  variant: 'destructive',
+                                })
+                                setTimeout(() => setSlipForwardState('idle'), 3000)
+                              }
+                            } catch {
+                              setSlipForwardState('error')
+                              toast({
+                                title: 'เกิดข้อผิดพลาด',
+                                description: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้',
+                                variant: 'destructive',
+                              })
+                              setTimeout(() => setSlipForwardState('idle'), 3000)
+                            }
+                          }}
+                        >
+                          {slipForwardState === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
+                          บันทึก
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
