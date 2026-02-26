@@ -64,10 +64,23 @@ export async function callPhpApi<T = any>(
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => response.statusText)
+
+        let parsedError: any = null
+        try {
+          parsedError = JSON.parse(errorText)
+        } catch {
+          parsedError = null
+        }
+
+        const backendMessage =
+          parsedError?.error ||
+          parsedError?.message ||
+          (typeof errorText === 'string' && errorText.trim() ? errorText.trim() : response.statusText)
+
         throw new PhpBridgeError(
-          `PHP API error: ${response.statusText}`,
+          `PHP API error (${response.status}): ${backendMessage}`,
           response.status,
-          errorText
+          parsedError ?? errorText
         )
       }
 
