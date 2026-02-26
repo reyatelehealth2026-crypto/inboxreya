@@ -102,6 +102,11 @@ export async function POST(request: NextRequest) {
       message_id_ref: parsedMessageId,
     }
 
+    // mediaUrl stores LINE message ID in our schema; include it for backend fallback download
+    if (message.mediaUrl) {
+      phpPayload.message_id = message.mediaUrl
+    }
+
     if (amount !== undefined && amount !== null) phpPayload.amount = Number(amount)
     if (transferDate) phpPayload.transfer_date = transferDate
     if (invoiceId) phpPayload.invoice_id = Number(invoiceId)
