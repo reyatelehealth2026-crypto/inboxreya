@@ -92,12 +92,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 3. Call PHP API to forward slip to Odoo
+    // 3. Call PHP API to save slip locally
     const phpPayload: Record<string, any> = {
       line_user_id: user.lineUserId,
       image_url: imageUrl,
       line_account_id: user.lineAccountId,
-      skip_line_notify: true, // Admin flow — no need to push LINE message
+      skip_line_notify: true,
+      uploaded_by: session.user.name || session.user.email || 'admin',
+      message_id_ref: parsedMessageId,
     }
 
     if (amount !== undefined && amount !== null) phpPayload.amount = Number(amount)
@@ -113,7 +115,7 @@ export async function POST(request: NextRequest) {
     if (!phpResult.success) {
       return NextResponse.json(
         {
-          error: phpResult.error || 'Failed to forward slip to Odoo',
+          error: phpResult.error || 'บันทึกสลิปไม่สำเร็จ',
           details: phpResult,
         },
         { status: 502 }
@@ -122,7 +124,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'ส่งสลิปไป Odoo เรียบร้อยแล้ว',
+      message: 'บันทึกสลิปเรียบร้อยแล้ว',
       data: phpResult.data ?? phpResult,
     })
   } catch (error) {

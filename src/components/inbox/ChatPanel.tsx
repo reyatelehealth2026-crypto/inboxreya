@@ -341,10 +341,8 @@ function MessageBubble({
                       if (res.ok && data.success) {
                         setSlipForwardState('sent')
                         toast({
-                          title: 'ส่งสลิปไป Odoo แล้ว',
-                          description: data.data?.slip_name
-                            ? `${data.data.slip_name} — ${data.data.match_result === 'exact' ? 'จับคู่ยอดได้' : 'รอจับคู่'}`
-                            : 'ระบบ Odoo ได้รับสลิปแล้ว',
+                          title: 'บันทึกสลิปแล้ว',
+                          description: 'สลิปถูกบันทึกไว้ในระบบเรียบร้อยแล้ว',
                         })
                       } else {
                         setSlipForwardState('error')
@@ -370,7 +368,7 @@ function MessageBubble({
                   {slipForwardState === 'sent' && <span>✓</span>}
                   {slipForwardState === 'idle' && <Upload className="h-3 w-3" />}
                   {slipForwardState === 'error' && <span>✕</span>}
-                  {slipForwardState === 'loading' ? 'กำลังส่ง...' : slipForwardState === 'sent' ? 'ส่งแล้ว' : slipForwardState === 'error' ? 'ลองใหม่' : 'ส่งสลิปไป Odoo'}
+                  {slipForwardState === 'loading' ? 'กำลังบันทึก...' : slipForwardState === 'sent' ? 'บันทึกแล้ว' : slipForwardState === 'error' ? 'ลองใหม่' : 'บันทึกสลิป'}
                 </Button>
               </div>
             )}
