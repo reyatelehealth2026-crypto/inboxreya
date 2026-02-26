@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import Image from 'next/image'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Send, Paperclip, Smile, MoreVertical, Phone, Video, Image as ImageIcon, Sparkles, X, ArrowLeft, Reply } from 'lucide-react'
+import { Send, Paperclip, Smile, MoreVertical, Phone, Video, Image as ImageIcon, Sparkles, X, ArrowLeft, Reply, Upload, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMessages, useSendMessage } from '@/hooks/use-messages'
@@ -168,6 +168,8 @@ function MessageBubble({
 }) {
   const isOutgoing = message.direction === 'outgoing'
   const { setReplyToMessage, setLightboxImage } = useChatStore()
+  const { toast } = useToast()
+  const [slipForwardState, setSlipForwardState] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle')
 
   // Parse flex payload - check explicit flex type, JSON content, or metadata
   const isFlexType = message.messageType === 'flex'
@@ -311,6 +313,67 @@ function MessageBubble({
                 </button>
               )
             })()}
+            {!isOutgoing && (
+              <div className="mt-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={slipForwardState === 'loading' || slipForwardState === 'sent'}
+                  className={cn(
+                    'h-7 text-xs gap-1.5 transition-all',
+                    slipForwardState === 'sent' && 'bg-green-50 text-green-700 border-green-200',
+                    slipForwardState === 'error' && 'bg-red-50 text-red-700 border-red-200'
+                  )}
+                  onClick={async (e) => {
+                    e.stopPropagation()
+                    if (slipForwardState === 'loading' || slipForwardState === 'sent') return
+                    setSlipForwardState('loading')
+                    try {
+                      const res = await fetch('/api/inbox/forward-slip-odoo', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          messageId: message.id,
+                          userId: message.userId,
+                        }),
+                      })
+                      const data = await res.json()
+                      if (res.ok && data.success) {
+                        setSlipForwardState('sent')
+                        toast({
+                          title: 'ส่งสลิปไป Odoo แล้ว',
+                          description: data.data?.slip_name
+                            ? `${data.data.slip_name} — ${data.data.match_result === 'exact' ? 'จับคู่ยอดได้' : 'รอจับคู่'}`
+                            : 'ระบบ Odoo ได้รับสลิปแล้ว',
+                        })
+                      } else {
+                        setSlipForwardState('error')
+                        toast({
+                          title: 'ส่งสลิปไม่สำเร็จ',
+                          description: data.error || 'กรุณาลองใหม่อีกครั้ง',
+                          variant: 'destructive',
+                        })
+                        setTimeout(() => setSlipForwardState('idle'), 3000)
+                      }
+                    } catch (err) {
+                      setSlipForwardState('error')
+                      toast({
+                        title: 'เกิดข้อผิดพลาด',
+                        description: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้',
+                        variant: 'destructive',
+                      })
+                      setTimeout(() => setSlipForwardState('idle'), 3000)
+                    }
+                  }}
+                >
+                  {slipForwardState === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {slipForwardState === 'sent' && <span>✓</span>}
+                  {slipForwardState === 'idle' && <Upload className="h-3 w-3" />}
+                  {slipForwardState === 'error' && <span>✕</span>}
+                  {slipForwardState === 'loading' ? 'กำลังส่ง...' : slipForwardState === 'sent' ? 'ส่งแล้ว' : slipForwardState === 'error' ? 'ลองใหม่' : 'ส่งสลิปไป Odoo'}
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

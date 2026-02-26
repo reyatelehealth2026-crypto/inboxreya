@@ -602,6 +602,49 @@ export const NotificationService = {
 }
 
 /**
+ * Odoo Slip Service - Forward payment slips to Odoo ERP
+ */
+export const OdooSlipService = {
+  /**
+   * Forward a payment slip image to Odoo.
+   * Called by admin from inbox when they identify an image as a payment slip.
+   */
+  async forwardSlip(params: {
+    lineUserId: string
+    imageUrl: string
+    lineAccountId?: number | null
+    amount?: number
+    transferDate?: string // YYYY-MM-DD
+    invoiceId?: number
+    orderId?: number
+  }): Promise<
+    PhpApiResponse<{
+      slip_id: number | null
+      slip_name: string | null
+      status: string
+      matched: boolean
+      match_result: string | null
+      matched_invoices: Array<{ id: number; number: string; amount: number }>
+      amount: number | null
+    }>
+  > {
+    return callPhpApi('/api/odoo-slip-upload.php', {
+      method: 'POST',
+      body: JSON.stringify({
+        line_user_id: params.lineUserId,
+        image_url: params.imageUrl,
+        line_account_id: params.lineAccountId ?? undefined,
+        skip_line_notify: true,
+        ...(params.amount !== undefined && { amount: params.amount }),
+        ...(params.transferDate && { transfer_date: params.transferDate }),
+        ...(params.invoiceId && { invoice_id: params.invoiceId }),
+        ...(params.orderId && { order_id: params.orderId }),
+      }),
+    })
+  },
+}
+
+/**
  * Helper function to call PHP service with automatic error handling
  * Throws error if PHP service returns success: false
  */
