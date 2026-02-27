@@ -1,5 +1,6 @@
 'use client'
 
+import { useSearchParams } from 'next/navigation'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { GeneralSettings } from '@/components/inbox/GeneralSettings'
 import { ShortcutsSettings } from '@/components/inbox/ShortcutsSettings'
@@ -7,9 +8,16 @@ import { TextExpansionSettings } from '@/components/inbox/TextExpansionSettings'
 import { AccessibilitySettings } from '@/components/inbox/AccessibilitySettings'
 import { NotificationSettings } from '@/components/inbox/NotificationSettings'
 import { DataPrivacySettings } from '@/components/inbox/DataPrivacySettings'
-import { Settings, Keyboard, Zap, Eye, Bell, Shield } from 'lucide-react'
+import { IntegrationsSettings } from '@/components/inbox/IntegrationsSettings'
+import { Settings, Keyboard, Zap, Eye, Bell, Shield, Link2 } from 'lucide-react'
+
+const VALID_TABS = ['general', 'notifications', 'shortcuts', 'expansion', 'accessibility', 'data', 'integrations']
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const defaultTab = tabParam && VALID_TABS.includes(tabParam) ? tabParam : 'general'
+
   return (
     <div className="h-screen overflow-auto bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto py-8 px-4 max-w-7xl">
@@ -31,9 +39,9 @@ export default function SettingsPage() {
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="general" className="space-y-6">
+        <Tabs defaultValue={defaultTab} className="space-y-6">
           <div className="sticky top-0 z-10 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 pb-4">
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-6 bg-white dark:bg-gray-800 shadow-md border border-gray-200 dark:border-gray-700 p-1.5 rounded-xl">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-7 bg-white dark:bg-gray-800 shadow-md border border-gray-200 dark:border-gray-700 p-1.5 rounded-xl">
               <TabsTrigger value="general" className="gap-2 data-[state=active]:bg-gradient-to-br data-[state=active]:from-blue-500 data-[state=active]:to-purple-600 data-[state=active]:text-white">
                 <Settings className="h-4 w-4" />
                 <span className="hidden sm:inline">ทั่วไป</span>
@@ -57,6 +65,10 @@ export default function SettingsPage() {
               <TabsTrigger value="data" className="gap-2 data-[state=active]:bg-gradient-to-br data-[state=active]:from-blue-500 data-[state=active]:to-purple-600 data-[state=active]:text-white">
                 <Shield className="h-4 w-4" />
                 <span className="hidden sm:inline">ข้อมูล & ความเป็นส่วนตัว</span>
+              </TabsTrigger>
+              <TabsTrigger value="integrations" className="gap-2 data-[state=active]:bg-gradient-to-br data-[state=active]:from-purple-500 data-[state=active]:to-pink-600 data-[state=active]:text-white">
+                <Link2 className="h-4 w-4" />
+                <span className="hidden sm:inline">การเชื่อมต่อ</span>
               </TabsTrigger>
             </TabsList>
           </div>
@@ -83,6 +95,10 @@ export default function SettingsPage() {
 
           <TabsContent value="data" className="space-y-6">
             <DataPrivacySettings />
+          </TabsContent>
+
+          <TabsContent value="integrations" className="space-y-6">
+            <IntegrationsSettings />
           </TabsContent>
         </Tabs>
       </div>
