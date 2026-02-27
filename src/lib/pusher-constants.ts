@@ -45,6 +45,7 @@ export interface NewMessageEvent {
     mediaUrl: string | null
     createdAt: string
     sentBy: string | null
+    platform?: 'line' | 'facebook' | 'tiktok'
   }
 }
 

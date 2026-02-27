@@ -18,6 +18,7 @@ async function fetchConversations(params: {
   unreadOnly?: boolean
   startDate?: string
   endDate?: string
+  platform?: string
 }): Promise<PaginatedResponse<Conversation>> {
   const searchParams = new URLSearchParams()
 
@@ -37,6 +38,7 @@ async function fetchConversations(params: {
   if (params.unreadOnly) searchParams.set('unreadOnly', 'true')
   if (params.startDate) searchParams.set('startDate', params.startDate)
   if (params.endDate) searchParams.set('endDate', params.endDate)
+  if (params.platform && params.platform !== 'all') searchParams.set('platform', params.platform)
 
   const response = await fetch(`/api/inbox/conversations?${searchParams}`)
 
@@ -62,6 +64,7 @@ export function useConversations() {
       unreadOnly: filters.unreadOnly,
       startDate: filters.startDate,
       endDate: filters.endDate,
+      platform: filters.platform,
       limit: 1000, // No practical limit - show all conversations
     }),
     staleTime: 30 * 1000, // 30 seconds

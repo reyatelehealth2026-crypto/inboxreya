@@ -1,7 +1,11 @@
+// Platform type – identifies which messaging channel a conversation belongs to
+export type Platform = 'line' | 'facebook' | 'tiktok'
+
 // Conversation types
 export interface Conversation {
   id: string
   user: LineUser
+  platform: Platform
   lastMessage: Message | null
   unreadCount: number
   status: 'active' | 'pending' | 'resolved'
@@ -47,6 +51,8 @@ export interface LineUser {
   isBlocked: boolean
   isRegistered: boolean
   orderDays?: string[] // Array of day codes: 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'
+  platform: Platform
+  platformUserId: string | null
   createdAt: string
   updatedAt?: string
   tags?: UserTag[]
@@ -111,6 +117,7 @@ export interface Message {
   sentBy: string | null
   replyToId: string | null
   replyTo?: Message | null
+  platform: Platform
   createdAt: string
   updatedAt: string
 }

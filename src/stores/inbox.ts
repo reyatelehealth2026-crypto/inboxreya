@@ -11,6 +11,7 @@ export interface ConversationFilters {
   unreadOnly?: boolean
   startDate?: string
   endDate?: string
+  platform?: 'all' | 'line' | 'facebook' | 'tiktok'
 }
 
 interface InboxState {
@@ -45,6 +46,7 @@ const defaultFilters: ConversationFilters = {
   unreadOnly: false,
   startDate: undefined,
   endDate: undefined,
+  platform: 'all',
 }
 
 export const useInboxStore = create<InboxState>()(

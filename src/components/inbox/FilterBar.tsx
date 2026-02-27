@@ -64,8 +64,13 @@ export function FilterBar({ isOpen, onToggle, className }: FilterBarProps) {
     if (filters.assignedTo) count++
     if (filters.unreadOnly) count++
     if (filters.startDate || filters.endDate) count++
+    if (filters.platform && filters.platform !== 'all') count++
     return count
   }, [filters, activeTagIds])
+
+  const handlePlatformChange = useCallback((platform: string) => {
+    setFilters({ platform: platform as ConversationFilters['platform'] })
+  }, [setFilters])
 
   const handleStatusChange = useCallback((status: string) => {
     // Immediate update for better UX
@@ -205,6 +210,24 @@ export function FilterBar({ isOpen, onToggle, className }: FilterBarProps) {
               <option value="active">กำลังคุย</option>
               <option value="pending">รอดำเนินการ</option>
               <option value="resolved">เสร็จสิ้น</option>
+            </select>
+          </div>
+
+          {/* Platform Filter */}
+          <div className="space-y-1.5">
+            <Label htmlFor="platform-filter" className="text-sm font-medium">
+              แพลตฟอร์ม
+            </Label>
+            <select
+              id="platform-filter"
+              className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              value={filters.platform || 'all'}
+              onChange={(e) => { handlePlatformChange(e.target.value); onToggle() }}
+            >
+              <option value="all">ทั้งหมด</option>
+              <option value="line">LINE</option>
+              <option value="facebook">Facebook Messenger</option>
+              <option value="tiktok">TikTok Shop</option>
             </select>
           </div>
 
@@ -389,6 +412,21 @@ export function FilterBar({ isOpen, onToggle, className }: FilterBarProps) {
                 }}
                 className="hover:text-destructive transition-colors"
                 aria-label="ลบตัวกรองช่วงเวลา"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+
+          {filters.platform && filters.platform !== 'all' && (
+            <Badge variant="secondary" className="gap-1.5 pr-1">
+              <span>
+                {filters.platform === 'facebook' ? 'Facebook' : filters.platform === 'tiktok' ? 'TikTok' : 'LINE'}
+              </span>
+              <button
+                onClick={() => handlePlatformChange('all')}
+                className="hover:text-destructive transition-colors"
+                aria-label="ลบตัวกรองแพลตฟอร์ม"
               >
                 <X className="h-3 w-3" />
               </button>

@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
-import { sendLineMessage } from '@/lib/php-bridge'
+import { sendPlatformMessage } from '@/lib/php-bridge'
 import { broadcastRealtimeEvent } from '@/lib/realtime'
 import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
 
@@ -149,6 +149,7 @@ export async function GET(request: NextRequest) {
           messageType: msg.replyTo.messageType,
         }
         : null,
+      platform: (msg.platform ?? 'line') as 'line' | 'facebook' | 'tiktok',
       createdAt: toBangkokWallTime(msg.createdAt),
       updatedAt: toBangkokWallTime(msg.updatedAt),
     }))
@@ -214,10 +215,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'replyToId must be a number' }, { status: 400 })
     }
 
-    // Get the user to find their line account
+    // Get the user to find their account and platform
     const user = await prisma.lineUser.findUnique({
       where: { id: parsedUserId },
-      select: { id: true, lineAccountId: true, lineUserId: true },
+      select: { id: true, lineAccountId: true, lineUserId: true, platform: true, platformUserId: true },
     })
 
     if (!user) {
@@ -226,6 +227,8 @@ export async function POST(request: NextRequest) {
     if (!user.lineUserId) {
       return NextResponse.json({ error: 'User has no LINE user id' }, { status: 400 })
     }
+
+    const userPlatform = (user.platform ?? 'line') as 'line' | 'facebook' | 'tiktok'
 
     if (!internalRequest) {
       if (
@@ -238,9 +241,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get quoteToken from the message being replied to (if any)
+    // Get quoteToken from the message being replied to (LINE only)
     let quoteToken: string | null = null
-    if (parsedReplyToId) {
+    if (parsedReplyToId && userPlatform === 'line') {
       const replyToMessage = await prisma.message.findUnique({
         where: { id: parsedReplyToId },
         select: { metadata: true },
@@ -257,28 +260,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Try to send via PHP API if configured
-    let lineSendSuccess = false
+    // Try to send via PHP API if configured (platform-aware)
+    let platformSendSuccess = false
 
     if (process.env.PHP_API_URL) {
       try {
-        const sendResult = await sendLineMessage({
+        const sendResult = await sendPlatformMessage({
           userId: parsedUserId.toString(),
           message: content,
           type: messageType,
           sentBy: session?.user?.id ?? null,
-          quoteToken, // Pass quoteToken for quote reply
+          platform: userPlatform,
+          quoteToken,
         })
-        lineSendSuccess = sendResult.success
+        platformSendSuccess = sendResult.success
 
         if (!sendResult.success) {
-          console.warn('LINE message send failed (will still save message):', sendResult.error)
+          console.warn(`${userPlatform} message send failed (will still save message):`, sendResult.error)
         }
       } catch (phpError) {
         console.warn('PHP API error (will still save message):', phpError)
       }
     } else {
-      console.warn('PHP_API_URL not configured, message will be saved but not sent to LINE')
+      console.warn('PHP_API_URL not configured, message will be saved but not sent to platform')
     }
 
     // Manual Time override for Bangkok Time
@@ -299,6 +303,7 @@ export async function POST(request: NextRequest) {
         sentBy: session?.user?.id ?? null,
         replyToId: parsedReplyToId,
         isRead: true,
+        platform: userPlatform,
         createdAt: bangkokNow,
         updatedAt: bangkokNow,
       },
@@ -332,9 +337,10 @@ export async function POST(request: NextRequest) {
           messageType: message.replyTo.messageType,
         }
         : null,
+      platform: userPlatform,
       createdAt: toBangkokWallTime(message.createdAt),
       updatedAt: toBangkokWallTime(message.updatedAt),
-      lineSent: lineSendSuccess, // Indicate whether message was actually sent to LINE
+      platformSent: platformSendSuccess,
     }
 
     // Broadcast via SSE (existing)
@@ -359,6 +365,7 @@ export async function POST(request: NextRequest) {
         mediaUrl: responsePayload.mediaUrl,
         createdAt: responsePayload.createdAt || new Date().toISOString(),
         sentBy: responsePayload.sentBy,
+        platform: userPlatform,
       },
     })
 

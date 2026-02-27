@@ -49,6 +49,8 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate')
     const cursor = searchParams.get('cursor')
 
+    const platform = searchParams.get('platform') // 'line' | 'facebook' | 'tiktok' | null
+
     const cursorId = cursor ? Number(cursor) : null
     if (cursor && !Number.isFinite(cursorId)) {
       return NextResponse.json({ error: 'Invalid cursor' }, { status: 400 })
@@ -58,6 +60,11 @@ export async function GET(request: NextRequest) {
 
     // Build where clause
     const where: any = {}
+
+    // Platform filter
+    if (platform && ['line', 'facebook', 'tiktok'].includes(platform)) {
+      where.platform = platform
+    }
 
     // Only restrict by lineAccountId for non-super_admin users
     if (!internalRequest && session?.user) {
@@ -196,6 +203,8 @@ export async function GET(request: NextRequest) {
         chatStatus: true,
         isBlocked: true,
         isRegistered: true,
+        platform: true,
+        platformUserId: true,
         createdAt: true,
         updatedAt: true,
         messages: {
@@ -212,6 +221,7 @@ export async function GET(request: NextRequest) {
             isRead: true,
             sentBy: true,
             replyToId: true,
+            platform: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -305,6 +315,7 @@ export async function GET(request: NextRequest) {
     // Transform to conversation format
     const conversations = sortedUsers.map((user) => ({
       id: user.id.toString(),
+      platform: (user.platform ?? 'line') as 'line' | 'facebook' | 'tiktok',
       user: {
         id: user.id.toString(),
         lineUserId: user.lineUserId,
@@ -328,6 +339,8 @@ export async function GET(request: NextRequest) {
         chatStatus: user.chatStatus,
         isBlocked: user.isBlocked,
         isRegistered: user.isRegistered,
+        platform: (user.platform ?? 'line') as 'line' | 'facebook' | 'tiktok',
+        platformUserId: user.platformUserId ?? null,
         createdAt: user.createdAt.toISOString(),
       },
       lastMessage: (() => {
@@ -344,6 +357,7 @@ export async function GET(request: NextRequest) {
           isRead: msg.isRead,
           sentBy: msg.sentBy,
           replyToId: msg.replyToId ? msg.replyToId.toString() : null,
+          platform: (msg.platform ?? 'line') as 'line' | 'facebook' | 'tiktok',
           createdAt: toBangkokWallTime(msg.createdAt),
           updatedAt: toBangkokWallTime(msg.updatedAt),
         }

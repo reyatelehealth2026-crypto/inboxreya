@@ -28,7 +28,36 @@ import {
 import { cn, formatTimeAgo, truncate, getInitials } from '@/lib/utils'
 import { resolveAssigneeBadgeColor } from '@/config/assignee-colors'
 import { FilterBar } from './FilterBar'
-import type { Conversation } from '@/types'
+import type { Conversation, Platform } from '@/types'
+
+// -----------------------------------------------------------------------
+// Platform badge – small coloured icon overlaid on the avatar
+// -----------------------------------------------------------------------
+function PlatformBadge({ platform }: { platform: Platform }) {
+  if (platform === 'line') return null // LINE is the default; no badge needed
+
+  const config: Record<Exclude<Platform, 'line'>, { label: string; bg: string; text: string }> = {
+    facebook: { label: 'F', bg: 'bg-blue-600',  text: 'text-white' },
+    tiktok:   { label: 'T', bg: 'bg-black',      text: 'text-white' },
+  }
+
+  const { label, bg, text } = config[platform as Exclude<Platform, 'line'>]
+
+  return (
+    <span
+      className={cn(
+        'absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center',
+        'rounded-full text-[9px] font-bold leading-none ring-1 ring-white',
+        bg,
+        text,
+      )}
+      title={platform.charAt(0).toUpperCase() + platform.slice(1)}
+      aria-label={platform}
+    >
+      {label}
+    </span>
+  )
+}
 
 interface NoResultsStateProps {
   hasActiveFilters: boolean
@@ -108,7 +137,7 @@ const ConversationItem = memo(function ConversationItem({
   onClick: () => void
   searchQuery?: string
 }) {
-  const { user, lastMessage, unreadCount, assignees } = conversation
+  const { user, lastMessage, unreadCount, assignees, platform } = conversation
 
   const displayName = user.displayName || user.firstName || 'ไม่ระบุชื่อ'
 
@@ -149,17 +178,20 @@ const ConversationItem = memo(function ConversationItem({
           : 'hover:bg-gray-50/80'
       )}
     >
-      <Avatar className="h-9 w-9 flex-shrink-0">
-        <AvatarImage
-          src={user.pictureUrl || undefined}
-          alt={user.displayName || 'User'}
-          referrerPolicy="no-referrer"
-          onError={(e) => {
-            e.currentTarget.style.display = 'none'
-          }}
-        />
-        <AvatarFallback className="text-xs">{getInitials(user.displayName || 'U')}</AvatarFallback>
-      </Avatar>
+      <div className="relative flex-shrink-0">
+        <Avatar className="h-9 w-9">
+          <AvatarImage
+            src={user.pictureUrl || undefined}
+            alt={user.displayName || 'User'}
+            referrerPolicy="no-referrer"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none'
+            }}
+          />
+          <AvatarFallback className="text-xs">{getInitials(user.displayName || 'U')}</AvatarFallback>
+        </Avatar>
+        <PlatformBadge platform={platform ?? 'line'} />
+      </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-1">

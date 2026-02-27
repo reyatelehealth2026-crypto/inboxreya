@@ -1,7 +1,8 @@
 /**
  * Webhook Notification API
- * Called by PHP webhook.php when a new message is received from LINE
- * This triggers Pusher events for real-time updates
+ * Called by PHP webhook handlers (webhook.php, facebook-webhook.php, tiktok-webhook.php)
+ * when a new message is received from any platform.
+ * This triggers Pusher events for real-time updates.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Broadcast new message via Pusher
+        // Broadcast new message via Pusher (platform-agnostic)
         await broadcastNewMessage({
           conversationId: String(conversationId),
           message: {
@@ -97,6 +98,7 @@ export async function POST(request: NextRequest) {
             mediaUrl: message.mediaUrl || null,
             createdAt: message.createdAt || new Date().toISOString(),
             sentBy: message.sentBy || null,
+            platform: (message.platform || 'line') as 'line' | 'facebook' | 'tiktok',
           },
         })
 

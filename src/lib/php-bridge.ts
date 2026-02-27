@@ -137,12 +137,34 @@ export async function sendLineMessage(params: {
   sentBy?: string | null // Admin ID who sent the message
   quoteToken?: string | null // Quote token for quote reply
 }) {
-  // PHP endpoint expects form data, not JSON
+  return sendPlatformMessage({ ...params, platform: 'line' })
+}
+
+/**
+ * Send a message to any platform (LINE, Facebook Messenger, TikTok Shop).
+ * The PHP backend routes to the correct platform API based on the user's platform.
+ *
+ * @param params.userId   - Database user ID
+ * @param params.message  - Message text
+ * @param params.platform - Target platform ('line' | 'facebook' | 'tiktok')
+ * @param params.type     - Message type (default: 'text')
+ * @param params.sentBy   - Admin ID who sent the message
+ * @param params.quoteToken - LINE quote token (LINE only)
+ */
+export async function sendPlatformMessage(params: {
+  userId: string
+  message: string
+  platform: 'line' | 'facebook' | 'tiktok'
+  type?: string
+  sentBy?: string | null
+  quoteToken?: string | null
+}) {
   const formData = new URLSearchParams()
   formData.append('action', 'send')
   formData.append('user_id', params.userId)
   formData.append('message', params.message)
   formData.append('type', params.type || 'text')
+  formData.append('platform', params.platform)
   if (params.sentBy) {
     formData.append('sent_by', params.sentBy)
   }
@@ -151,7 +173,7 @@ export async function sendLineMessage(params: {
   }
 
   const baseUrl = process.env.PHP_API_URL || process.env.NEXT_PUBLIC_PHP_API_URL || ''
-  
+
   try {
     const response = await fetch(`${baseUrl}/api/messages.php`, {
       method: 'POST',

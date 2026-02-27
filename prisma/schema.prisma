@@ -1646,6 +1646,11 @@ model LineUser {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
+  platform          String?   @default("line") @db.VarChar(20)
+  platformUserId    String?   @map("platform_user_id") @db.VarChar(100)
+  facebookAccountId Int?      @map("facebook_account_id")
+  tiktokAccountId   Int?      @map("tiktok_account_id")
+
   lineAccount             LineAccount?             @relation(fields: [lineAccountId], references: [id])
   messages                Message[]
   conversationAssignments ConversationAssignment[]
@@ -1658,6 +1663,7 @@ model LineUser {
   @@index([lastInteraction])
   @@index([lineAccountId])
   @@index([lineUserId])
+  @@index([platform])
   @@map("users")
 }
 
@@ -1677,6 +1683,8 @@ model Message {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
+  platform    String?  @default("line") @db.VarChar(20)
+
   lineAccount LineAccount? @relation(fields: [lineAccountId], references: [id])
   user        LineUser?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   replyTo     Message?     @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -1687,6 +1695,7 @@ model Message {
   @@index([lineAccountId])
   @@index([userId])
   @@index([lineAccountId, direction, createdAt])
+  @@index([platform])
   @@map("messages")
 }
 
@@ -5204,6 +5213,44 @@ model SlaTracking {
   @@index([deadlineAt], map: "idx_deadline")
   @@index([isBreached], map: "idx_breached")
   @@map("sla_tracking")
+}
+
+model FacebookAccount {
+  id               Int      @id @default(autoincrement())
+  name             String   @db.VarChar(255)
+  pageId           String   @unique @map("page_id") @db.VarChar(100)
+  appId            String   @map("app_id") @db.VarChar(100)
+  appSecret        String   @map("app_secret") @db.VarChar(255)
+  pageAccessToken  String   @map("page_access_token") @db.Text
+  verifyToken      String   @map("verify_token") @db.VarChar(255)
+  webhookUrl       String?  @map("webhook_url") @db.VarChar(500)
+  pictureUrl       String?  @map("picture_url") @db.VarChar(500)
+  isActive         Boolean  @default(true) @map("is_active")
+  settings         Json?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("facebook_accounts")
+}
+
+model TikTokShopAccount {
+  id             Int       @id @default(autoincrement())
+  name           String    @db.VarChar(255)
+  shopId         String    @unique @map("shop_id") @db.VarChar(100)
+  appKey         String    @map("app_key") @db.VarChar(100)
+  appSecret      String    @map("app_secret") @db.VarChar(255)
+  accessToken    String    @map("access_token") @db.Text
+  refreshToken   String?   @map("refresh_token") @db.Text
+  tokenExpiresAt DateTime? @map("token_expires_at")
+  shopCipher     String?   @map("shop_cipher") @db.VarChar(255)
+  webhookUrl     String?   @map("webhook_url") @db.VarChar(500)
+  pictureUrl     String?   @map("picture_url") @db.VarChar(500)
+  isActive       Boolean   @default(true) @map("is_active")
+  settings       Json?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@map("tiktok_shop_accounts")
 }
 
 
