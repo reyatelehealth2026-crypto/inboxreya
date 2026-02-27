@@ -100,6 +100,7 @@ export function usePusher(options: UsePusherOptions = {}) {
             sentBy: data.message.sentBy,
             replyToId: null,
             replyTo: null,
+            platform: data.message.platform ?? 'line',
             createdAt: data.message.createdAt,
             updatedAt: data.message.createdAt,
           }

@@ -133,6 +133,7 @@ export function useSendMessage() {
         isRead: false, // Default to false for new messages
         sentBy: null,
         replyToId: newMessage.replyToId ? String(newMessage.replyToId) : null,
+        platform: 'line',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }
