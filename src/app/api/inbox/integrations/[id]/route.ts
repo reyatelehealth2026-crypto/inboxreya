@@ -4,7 +4,7 @@ import prisma from '@/lib/prisma'
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth()
@@ -14,7 +14,8 @@ export async function PUT(
 
     const body = await request.json()
     const { platform, ...data } = body
-    const id = parseInt(params.id)
+    const { id: idStr } = await params
+    const id = parseInt(idStr)
 
     if (platform === 'facebook') {
       const updateData: Record<string, unknown> = {}
@@ -59,7 +60,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth()
@@ -69,7 +70,8 @@ export async function DELETE(
 
     const { searchParams } = new URL(request.url)
     const platform = searchParams.get('platform')
-    const id = parseInt(params.id)
+    const { id: idStr } = await params
+    const id = parseInt(idStr)
 
     if (platform === 'facebook') {
       await prisma.facebookAccount.delete({ where: { id } })
