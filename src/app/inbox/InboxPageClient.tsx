@@ -250,7 +250,7 @@ export default function InboxPageClient() {
       <div
         className={cn(
           'flex-shrink-0 transition-all duration-300 hidden lg:block h-full',
-          isProfileOpen ? 'w-72' : 'w-0 overflow-hidden'
+          isProfileOpen ? 'w-96' : 'w-0 overflow-hidden'
         )}
       >
         <CustomerProfile />

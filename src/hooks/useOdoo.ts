@@ -118,6 +118,16 @@ export function useOdooInvoice(invoiceNumber: string) {
     });
 }
 
+// Orders by Partner Hook
+export function useOdooOrdersByPartner(partnerId: number | null, offset: number = 0, limit: number = 20) {
+    return useQuery({
+        queryKey: [...odooKeys.orders(), 'by-partner', partnerId, offset, limit],
+        queryFn: () => odooApi.listOrdersByPartner(partnerId!, offset, limit),
+        enabled: !!partnerId && partnerId > 0,
+        staleTime: 30 * 1000, // 30 seconds
+    });
+}
+
 // Delivery Fee Hook
 export function useOdooDeliveryFee(province: string, weight: number) {
     return useQuery({
