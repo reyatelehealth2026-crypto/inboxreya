@@ -359,12 +359,12 @@ function AssigneeSelector({
   assignees: AdminUser[]
 }) {
   const [isOpen, setIsOpen] = useState(false)
-  const { data: admins = [] } = useAdmins()
+  const { data: admins } = useAdmins()
   const assignConversation = useAssignConversation()
   const unassignConversation = useUnassignConversation()
 
   const assignedIds = new Set(assignees.map((admin) => admin.id))
-  const availableAdmins = admins.filter((admin) => !assignedIds.has(admin.id))
+  const availableAdmins = (admins || []).filter((admin) => !assignedIds.has(admin.id))
 
   const handleAssign = async (adminId: string) => {
     await assignConversation.mutateAsync({ userId, adminId })
@@ -673,6 +673,8 @@ export function CustomerProfile() {
   const [orderAmount, setOrderAmount] = useState('')
   const [pointsReason, setPointsReason] = useState('')
   const [isAddingPoints, setIsAddingPoints] = useState(false)
+  const [isManageAssigneesOpen, setIsManageAssigneesOpen] = useState(false)
+  const [selectedAdminIds, setSelectedAdminIds] = useState<string[]>([])
 
   // คำนวณ point จากยอดซื้อ: 1,000 บาท = 1 point
   const calculatedPoints = orderAmount ? Math.floor(Number(orderAmount) / 1000) : 0
@@ -698,6 +700,11 @@ export function CustomerProfile() {
 
   // Odoo partner lookup for ERP tab
   const { data: odooPartnerData } = useOdooPartner(selectedConversationId)
+  
+  // Hooks for managing assignees
+  const { data: admins } = useAdmins()
+  const assignConversation = useAssignConversation()
+  const unassignConversation = useUnassignConversation()
 
   const handleAddPoints = async () => {
     const amount = Number(orderAmount)
@@ -922,21 +929,36 @@ export function CustomerProfile() {
             </div>
           </Card>
 
-          {/* Assignees - compact badge row */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <Users className="h-3 w-3 text-gray-500" />
-            {assignees.length > 0 ? assignees.map((admin) => (
-              <Badge
-                key={admin.id}
-                variant="secondary"
-                className="text-[10px] h-5 gap-1 px-2 bg-teal-50 text-teal-700 border-teal-100"
+          {/* Assignees - compact badge row with manage button */}
+          <Card className="p-2.5 bg-white border-gray-200">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap flex-1">
+                <Users className="h-3 w-3 text-gray-500 flex-shrink-0" />
+                {assignees.length > 0 ? assignees.map((admin) => (
+                  <Badge
+                    key={admin.id}
+                    variant="secondary"
+                    className="text-[10px] h-5 gap-1 px-2 bg-teal-50 text-teal-700 border-teal-100"
+                  >
+                    {admin.displayName || admin.username}
+                  </Badge>
+                )) : (
+                  <span className="text-[10px] text-gray-400">ยังไม่มีผู้ดูแล</span>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setSelectedAdminIds(assignees.map(a => a.id))
+                  setIsManageAssigneesOpen(true)
+                }}
+                className="h-6 px-2 text-[10px] hover:bg-teal-50 hover:text-teal-700 flex-shrink-0"
               >
-                {admin.displayName || admin.username}
-              </Badge>
-            )) : (
-              <span className="text-[10px] text-gray-400">ยังไม่มีผู้ดูแล</span>
-            )}
-          </div>
+                <Plus className="h-3 w-3" />
+              </Button>
+            </div>
+          </Card>
 
           {/* Add Points Dialog */}
           <Dialog open={isAddPointsOpen} onOpenChange={setIsAddPointsOpen}>
@@ -1013,7 +1035,114 @@ export function CustomerProfile() {
             </DialogContent>
           </Dialog>
 
+          {/* Manage Assignees Dialog */}
+          <Dialog open={isManageAssigneesOpen} onOpenChange={setIsManageAssigneesOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>จัดการผู้ดูแลลูกค้า</DialogTitle>
+              </DialogHeader>
+              <div className="py-4">
+                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                  {(admins || []).map((admin) => {
+                    const isSelected = selectedAdminIds.includes(admin.id)
+                    return (
+                      <div
+                        key={admin.id}
+                        onClick={() => {
+                          setSelectedAdminIds(prev =>
+                            isSelected
+                              ? prev.filter(id => id !== admin.id)
+                              : [...prev, admin.id]
+                          )
+                        }}
+                        className={cn(
+                          "flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors",
+                          isSelected
+                            ? "bg-teal-50 border-teal-200"
+                            : "bg-white border-gray-200 hover:bg-gray-50"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0",
+                          isSelected
+                            ? "bg-teal-600 border-teal-600"
+                            : "border-gray-300"
+                        )}>
+                          {isSelected && (
+                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={admin.avatarUrl || undefined} />
+                          <AvatarFallback className="text-xs">
+                            {getInitials(admin.displayName || admin.username)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">
+                            {admin.displayName || admin.username}
+                          </div>
+                          <div className="text-xs text-gray-500">{admin.role}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsManageAssigneesOpen(false)}
+                >
+                  ยกเลิก
+                </Button>
+                <Button
+                  onClick={async () => {
+                    try {
+                      const currentIds = assignees.map(a => a.id)
+                      const toAdd = selectedAdminIds.filter(id => !currentIds.includes(id))
+                      const toRemove = currentIds.filter(id => !selectedAdminIds.includes(id))
 
+                      // Add new assignees one by one
+                      for (const adminId of toAdd) {
+                        await assignConversation.mutateAsync({
+                          userId: user.id,
+                          adminId,
+                        })
+                      }
+
+                      // Remove assignees one by one
+                      for (const adminId of toRemove) {
+                        await unassignConversation.mutateAsync({
+                          userId: user.id,
+                          adminId,
+                        })
+                      }
+
+                      queryClient.invalidateQueries({ queryKey: queryKeys.customerProfile(user.id) })
+                      setIsManageAssigneesOpen(false)
+                      toast({
+                        title: 'สำเร็จ',
+                        description: 'อัปเดตผู้ดูแลเรียบร้อยแล้ว',
+                      })
+                    } catch (error) {
+                      toast({
+                        title: 'เกิดข้อผิดพลาด',
+                        description: 'ไม่สามารถอัปเดตผู้ดูแลได้',
+                        variant: 'destructive',
+                      })
+                    }
+                  }}
+                  style={{ background: '#0C665D' }}
+                  disabled={assignConversation.isPending || unassignConversation.isPending}
+                >
+                  {assignConversation.isPending || unassignConversation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Active Orders Banner */}
           <ActiveOrdersBanner userId={user.id} />
