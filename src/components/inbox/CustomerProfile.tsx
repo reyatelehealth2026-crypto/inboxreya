@@ -54,7 +54,7 @@ import { PrescriptionsSection } from './PrescriptionsSection'
 import { LineInfoSection } from './LineInfoSection'
 import { ActiveOrdersBanner } from './ActiveOrdersBanner'
 import { OdooSlipsSection } from './OdooSlipsSection'
-import { OdooPanel } from '@/components/odoo'
+import { OdooDashboardPanel } from './OdooDashboardPanel'
 
 function InfoRow({ icon: Icon, label, value }: { icon: any; label: string; value?: string | null }) {
   if (!value) return null
@@ -817,17 +817,37 @@ export function CustomerProfile() {
           </Avatar>
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-base truncate">{user.displayName || user.firstName || 'ไม่ระบุชื่อ'}</h3>
-            <Badge
-              className="text-[10px] font-semibold px-2 py-0.5 h-auto mt-1"
-              style={{
-                background: 'rgba(255, 255, 255, 0.25)',
-                color: 'white',
-                border: '1px solid rgba(255, 255, 255, 0.3)'
-              }}
-            >
-              <Award className="h-2 w-2 mr-0.5" />
-              {tierLabel}
-            </Badge>
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+              <Badge
+                className="text-[10px] font-semibold px-2 py-0.5 h-auto"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.25)',
+                  color: 'white',
+                  border: '1px solid rgba(255, 255, 255, 0.3)'
+                }}
+              >
+                <Award className="h-2 w-2 mr-0.5" />
+                {tierLabel}
+              </Badge>
+              {/* Order Days inline badges */}
+              {(user.orderDays || []).length > 0 && (
+                <div className="flex gap-0.5">
+                  {DAYS.map((day) => {
+                    const isSelected = (user.orderDays || []).includes(day.code)
+                    if (!isSelected) return null
+                    return (
+                      <span
+                        key={day.code}
+                        className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                        style={{ background: 'rgba(255,255,255,0.3)', color: 'white' }}
+                      >
+                        {day.label}
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
         {/* Contact info in header */}
@@ -902,13 +922,21 @@ export function CustomerProfile() {
             </div>
           </Card>
 
-          {/* Assignees Section - แทรกตรงกลาง */}
-          <Card className="p-3">
-            <AssigneeSelector userId={user.id} assignees={assignees} />
-          </Card>
-
-          {/* Order Days Calendar */}
-          <OrderDaysSection userId={user.id} initialDays={user.orderDays || []} />
+          {/* Assignees - compact badge row */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Users className="h-3 w-3 text-gray-500" />
+            {assignees.length > 0 ? assignees.map((admin) => (
+              <Badge
+                key={admin.id}
+                variant="secondary"
+                className="text-[10px] h-5 gap-1 px-2 bg-teal-50 text-teal-700 border-teal-100"
+              >
+                {admin.displayName || admin.username}
+              </Badge>
+            )) : (
+              <span className="text-[10px] text-gray-400">ยังไม่มีผู้ดูแล</span>
+            )}
+          </div>
 
           {/* Add Points Dialog */}
           <Dialog open={isAddPointsOpen} onOpenChange={setIsAddPointsOpen}>
@@ -1015,10 +1043,10 @@ export function CustomerProfile() {
 
         {/* ERP Tab */}
         <TabsContent value="erp" className="flex-1 m-0 overflow-hidden">
-          <OdooPanel
-            embedded
-            customerPartnerCode={user.memberId || undefined}
-            customerPartnerId={odooPartnerData?.partnerId}
+          <OdooDashboardPanel
+            partnerId={odooPartnerData?.partnerId}
+            customerRef={user.memberId || undefined}
+            lineUserId={user.lineUserId || undefined}
           />
         </TabsContent>
 
