@@ -1143,11 +1143,13 @@ export function CustomerProfile() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-
-          {/* Active Orders Banner */}
-          <ActiveOrdersBanner userId={user.id} />
         </div>
       </ScrollArea>
+
+      {/* Active Orders Banner */}
+      <div className="flex-shrink-0 px-3 py-2 bg-gray-50/50 border-t border-gray-100">
+        <ActiveOrdersBanner userId={user.id} />
+      </div>
 
       {/* Tabbed Sections */}
       <Tabs defaultValue="erp" className="flex-1 flex flex-col min-h-0">
