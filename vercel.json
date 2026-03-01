@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd reya-landing && npm install && npm run build",
+  "outputDirectory": "reya-landing/dist",
+  "installCommand": "cd reya-landing && npm install",
+  "framework": "nextjs"
+}
