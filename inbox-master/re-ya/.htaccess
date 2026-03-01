@@ -1,0 +1,142 @@
+# LINE CRM - Apache Configuration for re-ya.com
+# Clean URLs without .php extension
+
+# Enable RewriteEngine
+RewriteEngine On
+
+# Base path - root domain (re-ya.com)
+RewriteBase /
+
+# =====================================================
+# SEO Files - Dynamic sitemap.xml and robots.txt
+# Requirements: 9.1, 9.2, 9.3, 9.4, 9.5
+# =====================================================
+RewriteRule ^sitemap\.xml$ sitemap.php [L]
+RewriteRule ^robots\.txt$ robots.php [L]
+
+# =====================================================
+# Redirect Old LIFF Files to LIFF SPA (/liff/index.php)
+# =====================================================
+# All old liff-*.php files redirect to liff/index.php with page parameter
+RewriteRule ^liff-app\.php$ /liff/index.php?page=app [R=301,L,QSA]
+RewriteRule ^liff-appointment\.php$ /liff/index.php?page=appointment [R=301,L,QSA]
+RewriteRule ^liff-checkout\.php$ /liff/index.php?page=checkout [R=301,L,QSA]
+RewriteRule ^liff-consent\.php$ /liff/index.php?page=consent [R=301,L,QSA]
+RewriteRule ^liff-main\.php$ /liff/index.php?page=main [R=301,L,QSA]
+RewriteRule ^liff-member-card\.php$ /liff/index.php?page=member [R=301,L,QSA]
+RewriteRule ^liff-my-appointments\.php$ /liff/index.php?page=appointments [R=301,L,QSA]
+RewriteRule ^liff-my-orders\.php$ /liff/index.php?page=orders [R=301,L,QSA]
+RewriteRule ^liff-order-detail\.php$ /liff/index.php?page=order-detail [R=301,L,QSA]
+RewriteRule ^liff-pharmacy-consult\.php$ /liff/index.php?page=consult [R=301,L,QSA]
+RewriteRule ^liff-points-history\.php$ /liff/index.php?page=points [R=301,L,QSA]
+RewriteRule ^liff-points-rules\.php$ /liff/index.php?page=points-rules [R=301,L,QSA]
+RewriteRule ^liff-product-detail\.php$ /liff/index.php?page=product [R=301,L,QSA]
+RewriteRule ^liff-promotions\.php$ /liff/index.php?page=promotions [R=301,L,QSA]
+RewriteRule ^liff-redeem-points\.php$ /liff/index.php?page=redeem [R=301,L,QSA]
+RewriteRule ^liff-register\.php$ /liff/index.php?page=register [R=301,L,QSA]
+RewriteRule ^liff-settings\.php$ /liff/index.php?page=settings [R=301,L,QSA]
+RewriteRule ^liff-share\.php$ /liff/index.php?page=share [R=301,L,QSA]
+RewriteRule ^liff-shop\.php$ /liff/index.php?page=shop [R=301,L,QSA]
+RewriteRule ^liff-shop-v3\.php$ /liff/index.php?page=shop [R=301,L,QSA]
+RewriteRule ^liff-symptom-assessment\.php$ /liff/index.php?page=symptom [R=301,L,QSA]
+RewriteRule ^liff-video-call\.php$ /liff/index.php?page=video-call [R=301,L,QSA]
+RewriteRule ^liff-video-call-pro\.php$ /liff/index.php?page=video-call [R=301,L,QSA]
+RewriteRule ^liff-wishlist\.php$ /liff/index.php?page=wishlist [R=301,L,QSA]
+
+# =====================================================
+# Clean URLs - ไม่ต้องพิมพ์ .php
+# เช่น /broadcast แทน /broadcast.php
+# =====================================================
+
+# Exception: Don't rewrite /api/ folder - preserve query strings
+RewriteCond %{REQUEST_URI} ^/api/
+RewriteRule ^ - [L]
+
+# ถ้าไม่ใช่ไฟล์หรือโฟลเดอร์จริง ให้ลองหา .php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^([^/]+)/?$ $1.php [L,QSA]
+
+# รองรับ subdirectory เช่น /shop/products, /api/checkout
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^([^/]+)/([^/]+)/?$ $1/$2.php [L,QSA]
+
+# รองรับ 3 levels เช่น /api/shop/products
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^([^/]+)/([^/]+)/([^/]+)/?$ $1/$2/$3.php [L,QSA]
+
+# =====================================================
+
+# Set default charset
+AddDefaultCharset UTF-8
+
+# Disable directory listing
+Options -Indexes
+
+# Protect sensitive files
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Protect config files
+<FilesMatch "config\.php$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Protect lock file
+<FilesMatch "installed\.lock$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Security Headers
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options SAMEORIGIN
+    Header always set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# PHP Settings (for mod_php)
+<IfModule mod_php.c>
+    php_flag display_errors off
+    php_flag log_errors on
+    php_value upload_max_filesize 50M
+    php_value post_max_size 50M
+    php_value max_execution_time 300
+    php_value memory_limit 256M
+    php_value date.timezone "Asia/Bangkok"
+    php_value default_charset "UTF-8"
+    php_value mbstring.internal_encoding "UTF-8"
+</IfModule>
+
+# PHP Settings (for PHP-FPM / FastCGI)
+<IfModule mod_fcgid.c>
+    FcgidInitialEnv PHP_FCGI_CHILDREN 0
+</IfModule>
+
+# Compress files
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/json
+</IfModule>
+
+# Cache static files
+<IfModule mod_expires.c>
+    ExpiresActive on
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/jpg "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/gif "access plus 1 month"
+</IfModule>

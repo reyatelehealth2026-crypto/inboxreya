@@ -1,0 +1,37 @@
+# Logs
+logs
+*.log
+
+# Dependencies
+node_modules/
+vendor/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.temp
+
+# Test files
+*.test.php
+test-bdo-*.json
+test-bdo-*.html
+
+# Cache
+*.cache
+.cache/
+
+# Build
+dist/
+build/
