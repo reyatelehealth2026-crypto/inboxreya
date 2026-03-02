@@ -71,9 +71,10 @@ export function ComplaintChart({ categories }: ComplaintChartProps) {
                   border: '1px solid #E2E8F0',
                   borderRadius: '8px'
                 }}
-                formatter={(value: number, _name: string, props: { payload: ComplaintCategory }) => {
-                  const percentage = props.payload?.percentage || 0;
-                  return [`${value} (${percentage}%)`, 'จำนวน'];
+                formatter={(value: any, _name: string, props: any) => {
+                  const numValue = typeof value === 'number' ? value : 0;
+                  const percentage = props?.payload?.percentage ?? 0;
+                  return [`${numValue} (${percentage}%)`, 'จำนวน'];
                 }}
               />
               <Bar dataKey="count" radius={[0, 4, 4, 0]}>
