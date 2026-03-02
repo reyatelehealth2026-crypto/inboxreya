@@ -10,7 +10,8 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Cell
+  Cell,
+  TooltipProps
 } from 'recharts';
 
 interface ComplaintChartProps {
@@ -33,11 +34,25 @@ const CATEGORY_LABELS: Record<string, string> = {
   other: 'อื่นๆ'
 };
 
+interface ChartData extends ComplaintCategory {
+  label: string;
+}
+
 export function ComplaintChart({ categories }: ComplaintChartProps) {
-  const data = categories.map(cat => ({
+  const data: ChartData[] = categories.map(cat => ({
     ...cat,
     label: CATEGORY_LABELS[cat.category] || cat.category
   }));
+
+  // Custom tooltip formatter
+  const customFormatter = (value: number | string | Array<number | string>, name: string | number, props: TooltipProps<number | string, string>['payload']) => {
+    if (!props || !props.payload) return ['', ''];
+    
+    const payload = props.payload as unknown as ChartData;
+    const count = payload.count || 0;
+    const percentage = payload.percentage || 0;
+    return [`${count} (${percentage}%)`, 'จำนวน'];
+  };
 
   return (
     <Card className="border-blue-100">
@@ -71,11 +86,7 @@ export function ComplaintChart({ categories }: ComplaintChartProps) {
                   border: '1px solid #E2E8F0',
                   borderRadius: '8px'
                 }}
-                formatter={(value: any, _name: string, props: any) => {
-                  const numValue = typeof value === 'number' ? value : 0;
-                  const percentage = props?.payload?.percentage ?? 0;
-                  return [`${numValue} (${percentage}%)`, 'จำนวน'];
-                }}
+                formatter={customFormatter}
               />
               <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                 {data.map((entry, index) => (
