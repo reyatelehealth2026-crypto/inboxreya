@@ -9,132 +9,153 @@ import {
 } from './types';
 
 // ============================================
-// Odoo-based Sales Stats Queries
+// Sales Stats Queries
 // ============================================
 
-export async function getOdooSalesStats(): Promise<SalesStats> {
-  // Get stats from odoo_orders instead of users table
+export async function getSalesStats(): Promise<SalesStats> {
   const [rows] = await pool.execute(`
     SELECT 
-      COALESCE(SUM(amount_total), 0) as total_revenue,
-      COUNT(DISTINCT partner_id) as total_customers,
-      COALESCE(AVG(amount_total), 0) as avg_order_value,
-      COUNT(*) as total_orders
-    FROM odoo_orders
-    WHERE state NOT IN ('cancel', 'draft')
+      COALESCE(SUM(total_spent), 0) as total_spent,
+      COUNT(*) as count,
+      COALESCE(AVG(total_spent), 0) as avg_spent,
+      COALESCE(SUM(order_count), 0) as total_orders
+    FROM users
+    WHERE total_spent > 0
   `);
 
   const result = (rows as any[])[0];
   return {
-    totalRevenue: Number(result.total_revenue || 0),
-    totalCustomers: Number(result.total_customers || 0),
-    avgOrderValue: Number(result.avg_order_value || 0),
+    totalRevenue: Number(result.total_spent || 0),
+    totalCustomers: Number(result.count || 0),
+    avgOrderValue: Number(result.avg_spent || 0),
     totalOrders: Number(result.total_orders || 0)
   };
 }
 
 // ============================================
-// Get Total Customers (like Odoo Dashboard - 640)
+// Customer Segment Queries
 // ============================================
 
-export async function getTotalOdooCustomers(): Promise<number> {
-  // Count unique customers from odoo_line_users (linked LINE-Odoo customers)
-  const [rows] = await pool.execute(`
-    SELECT COUNT(DISTINCT odoo_partner_id) as total
-    FROM odoo_line_users
-  `);
+export async function getCustomerSegments(): Promise<CustomerSegment[]> {
+  const stats = await getSalesStats();
+  const total = stats.totalCustomers;
 
-  return Number((rows as any[])[0]?.total || 0);
-}
+  // VIP: 100,000+
+  const [vipRows] = await pool.execute(
+    'SELECT COUNT(*) as count FROM users WHERE total_spent >= ?',
+    [100000]
+  );
+  const vip = Number((vipRows as any[])[0].count);
 
-// ============================================
-// Odoo Customer Segment Queries (based on order values)
-// ============================================
+  // Gold: 50,000 - 99,999
+  const [goldRows] = await pool.execute(
+    'SELECT COUNT(*) as count FROM users WHERE total_spent >= ? AND total_spent < ?',
+    [50000, 100000]
+  );
+  const gold = Number((goldRows as any[])[0].count);
 
-export async function getOdooCustomerSegments(): Promise<CustomerSegment[]> {
-  // Get customer spending from odoo_orders
-  const [customerSpending] = await pool.execute(`
-    SELECT 
-      partner_id,
-      SUM(amount_total) as total_spent,
-      COUNT(*) as order_count
-    FROM odoo_orders
-    WHERE state NOT IN ('cancel', 'draft')
-    GROUP BY partner_id
-  `);
+  // Silver: 20,000 - 49,999
+  const [silverRows] = await pool.execute(
+    'SELECT COUNT(*) as count FROM users WHERE total_spent >= ? AND total_spent < ?',
+    [20000, 50000]
+  );
+  const silver = Number((silverRows as any[])[0].count);
 
-  const customers = customerSpending as any[];
-  const total = customers.length;
-
-  if (total === 0) {
-    return [];
-  }
-
-  // Calculate tiers based on spending
-  const vip = customers.filter(c => c.total_spent >= 100000).length;
-  const gold = customers.filter(c => c.total_spent >= 50000 && c.total_spent < 100000).length;
-  const silver = customers.filter(c => c.total_spent >= 20000 && c.total_spent < 50000).length;
-  const bronze = customers.filter(c => c.total_spent > 0 && c.total_spent < 20000).length;
+  // Bronze: 1 - 19,999
+  const [bronzeRows] = await pool.execute(
+    'SELECT COUNT(*) as count FROM users WHERE total_spent >= ? AND total_spent < ?',
+    [1, 20000]
+  );
+  const bronze = Number((bronzeRows as any[])[0].count);
 
   return [
-    { name: 'VIP Customers', tier: 'vip' as const, minSpent: 100000, count: vip, percentage: Math.round((vip / total) * 100) },
-    { name: 'Gold Customers', tier: 'gold' as const, minSpent: 50000, maxSpent: 99999, count: gold, percentage: Math.round((gold / total) * 100) },
-    { name: 'Silver Customers', tier: 'silver' as const, minSpent: 20000, maxSpent: 49999, count: silver, percentage: Math.round((silver / total) * 100) },
-    { name: 'Bronze Customers', tier: 'bronze' as const, minSpent: 1, maxSpent: 19999, count: bronze, percentage: Math.round((bronze / total) * 100) }
+    { name: 'VIP Customers', tier: 'vip' as const, minSpent: 100000, count: vip, percentage: total ? Math.round((vip / total) * 100) : 0 },
+    { name: 'Gold Customers', tier: 'gold' as const, minSpent: 50000, maxSpent: 99999, count: gold, percentage: total ? Math.round((gold / total) * 100) : 0 },
+    { name: 'Silver Customers', tier: 'silver' as const, minSpent: 20000, maxSpent: 49999, count: silver, percentage: total ? Math.round((silver / total) * 100) : 0 },
+    { name: 'Bronze Customers', tier: 'bronze' as const, minSpent: 1, maxSpent: 19999, count: bronze, percentage: total ? Math.round((bronze / total) * 100) : 0 }
   ].filter(s => s.count > 0);
 }
 
 // ============================================
-// Top Customers from Odoo
+// Top Customers Query
 // ============================================
 
-export async function getOdooTopCustomers(limit: number = 10): Promise<TopCustomer[]> {
+export async function getTopCustomers(limit: number = 10): Promise<TopCustomer[]> {
   const [rows] = await pool.execute(`
     SELECT 
-      o.partner_id,
-      MAX(olu.odoo_customer_code) as member_id,
-      MAX(olu.odoo_partner_name) as name,
-      SUM(o.amount_total) as total_spent,
-      COUNT(*) as order_count
-    FROM odoo_orders o
-    LEFT JOIN odoo_line_users olu ON o.partner_id = olu.odoo_partner_id
-    WHERE o.state NOT IN ('cancel', 'draft')
-    GROUP BY o.partner_id
+      member_id,
+      COALESCE(real_name, display_name, custom_display_name) as name,
+      total_spent,
+      order_count,
+      tier
+    FROM users
+    WHERE total_spent > 0
     ORDER BY total_spent DESC
     LIMIT ?
   `, [limit]);
 
-  return (rows as any[]).map((user, index) => ({
-    memberId: user.member_id || `CUST-${user.partner_id}`,
-    name: user.name || `ลูกค้า ${user.partner_id}`,
+  return (rows as any[]).map(user => ({
+    memberId: user.member_id || '',
+    name: user.name,
     totalSpent: Number(user.total_spent || 0),
     orderCount: user.order_count || 0,
-    tier: getTierBySpending(Number(user.total_spent)),
+    tier: user.tier || 'bronze',
     avgOrderValue: user.order_count ? Number(user.total_spent || 0) / user.order_count : 0
   }));
 }
 
-function getTierBySpending(spent: number): string {
-  if (spent >= 100000) return 'vip';
-  if (spent >= 50000) return 'gold';
-  if (spent >= 20000) return 'silver';
-  return 'bronze';
+// ============================================
+// Behavior Pattern Queries
+// ============================================
+
+export async function getBehaviorPatterns(): Promise<BehaviorPattern[]> {
+  const [totalRows] = await pool.execute(
+    'SELECT COUNT(*) as count FROM users WHERE total_spent > 0'
+  );
+  const total = Number((totalRows as any[])[0].count);
+
+  // Frequent: 6+ orders
+  const [frequentRows] = await pool.execute(
+    'SELECT COUNT(*) as count FROM users WHERE order_count >= ?',
+    [6]
+  );
+  const frequent = Number((frequentRows as any[])[0].count);
+
+  // Regular: 3-5 orders
+  const [regularRows] = await pool.execute(
+    'SELECT COUNT(*) as count FROM users WHERE order_count >= ? AND order_count < ?',
+    [3, 6]
+  );
+  const regular = Number((regularRows as any[])[0].count);
+
+  // Occasional: 1-2 orders
+  const [occasionalRows] = await pool.execute(
+    'SELECT COUNT(*) as count FROM users WHERE order_count >= ? AND order_count < ?',
+    [1, 3]
+  );
+  const occasional = Number((occasionalRows as any[])[0].count);
+
+  return [
+    { name: 'Frequent Buyers', description: '6+ orders', count: frequent, percentage: total ? Math.round((frequent / total) * 100) : 0 },
+    { name: 'Regular Buyers', description: '3-5 orders', count: regular, percentage: total ? Math.round((regular / total) * 100) : 0 },
+    { name: 'Occasional Buyers', description: '1-2 orders', count: occasional, percentage: total ? Math.round((occasional / total) * 100) : 0 }
+  ].filter(p => p.count > 0);
 }
 
 // ============================================
-// Odoo Sales Trend Query
+// Sales Trend Query
 // ============================================
 
-export async function getOdooSalesTrend(days: number = 30): Promise<SalesTrendPoint[]> {
+export async function getSalesTrend(days: number = 30): Promise<SalesTrendPoint[]> {
   const [rows] = await pool.execute(`
     SELECT 
-      DATE(date_order) as date,
-      COALESCE(SUM(amount_total), 0) as revenue,
-      COUNT(*) as orders
-    FROM odoo_orders
-    WHERE date_order >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-      AND state NOT IN ('cancel', 'draft')
-    GROUP BY DATE(date_order)
+      DATE(created_at) as date,
+      COALESCE(SUM(total_spent), 0) as revenue,
+      COALESCE(SUM(order_count), 0) as orders
+    FROM users
+    WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+      AND total_spent > 0
+    GROUP BY DATE(created_at)
     ORDER BY date ASC
   `, [days]);
 
@@ -146,75 +167,7 @@ export async function getOdooSalesTrend(days: number = 30): Promise<SalesTrendPo
 }
 
 // ============================================
-// Order Status Distribution (from Odoo)
-// ============================================
-
-export async function getOdooOrderStatusStats(): Promise<Array<{
-  status: string;
-  count: number;
-  percentage: number;
-}>> {
-  const [rows] = await pool.execute(`
-    SELECT 
-      state_display as status,
-      COUNT(*) as count,
-      ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as percentage
-    FROM odoo_orders
-    GROUP BY state_display
-    ORDER BY count DESC
-  `);
-
-  return (rows as any[]).map(row => ({
-    status: row.status,
-    count: Number(row.count),
-    percentage: Number(row.percentage)
-  }));
-}
-
-// ============================================
-// Recent Odoo Orders
-// ============================================
-
-export async function getRecentOdooOrders(limit: number = 10): Promise<Array<{
-  id: string;
-  orderName: string;
-  customerName: string;
-  amount: number;
-  status: string;
-  date: string;
-  isPaid: boolean;
-  isDelivered: boolean;
-}>> {
-  const [rows] = await pool.execute(`
-    SELECT 
-      o.order_id as id,
-      o.order_name as orderName,
-      COALESCE(olu.odoo_partner_name, 'ไม่ระบุชื่อ') as customerName,
-      o.amount_total as amount,
-      o.state_display as status,
-      o.date_order as date,
-      o.is_paid as isPaid,
-      o.is_delivered as isDelivered
-    FROM odoo_orders o
-    LEFT JOIN odoo_line_users olu ON o.partner_id = olu.odoo_partner_id
-    ORDER BY o.date_order DESC
-    LIMIT ?
-  `, [limit]);
-
-  return (rows as any[]).map(row => ({
-    id: String(row.id),
-    orderName: row.orderName,
-    customerName: row.customerName,
-    amount: Number(row.amount),
-    status: row.status,
-    date: row.date,
-    isPaid: !!row.isPaid,
-    isDelivered: !!row.isDelivered
-  }));
-}
-
-// ============================================
-// Sentiment Stats Query (unchanged - from messages)
+// Sentiment Stats Query
 // ============================================
 
 export async function getAvgSentimentScore(): Promise<number> {
@@ -235,6 +188,7 @@ export async function getAvgSentimentScore(): Promise<number> {
 
     return Math.round(Number((rows as any[])[0]?.avg_score || 50));
   } catch {
+    // Return neutral if table doesn't exist or error
     return 50;
   }
 }
@@ -266,7 +220,7 @@ export async function getSentimentDistribution(days: number = 30): Promise<{
 }
 
 // ============================================
-// Complaint Stats Query (unchanged)
+// Complaint Stats Query
 // ============================================
 
 export async function getComplaintCategories(days: number = 30): Promise<Array<{
@@ -309,6 +263,10 @@ export async function getComplaintCategories(days: number = 30): Promise<Array<{
     return [];
   }
 }
+
+// ============================================
+// Recent Issues Query
+// ============================================
 
 export async function getRecentIssues(limit: number = 10): Promise<Array<{
   id: string;
@@ -354,6 +312,10 @@ export async function getRecentIssues(limit: number = 10): Promise<Array<{
   }
 }
 
+// ============================================
+// Top Complainers Query
+// ============================================
+
 export async function getTopComplainers(limit: number = 10): Promise<Array<{
   userId: number;
   userName: string | null;
@@ -387,16 +349,16 @@ export async function getTopComplainers(limit: number = 10): Promise<Array<{
 }
 
 // ============================================
-// Unified Analytics Query (Odoo-based)
+// Unified Analytics Query
 // ============================================
 
 export async function getUnifiedAnalyticsData(): Promise<UnifiedAnalyticsData> {
-  // Fetch all data in parallel using Odoo tables
+  // Fetch all data in parallel
   const [
     salesStats,
-    totalOdooCustomers,
     customerSegments,
     topCustomers,
+    behaviorPatterns,
     salesTrend,
     avgSentiment,
     sentimentDistribution,
@@ -404,11 +366,11 @@ export async function getUnifiedAnalyticsData(): Promise<UnifiedAnalyticsData> {
     recentIssues,
     topComplainers
   ] = await Promise.all([
-    getOdooSalesStats(),
-    getTotalOdooCustomers(),
-    getOdooCustomerSegments(),
-    getOdooTopCustomers(10),
-    getOdooSalesTrend(30),
+    getSalesStats(),
+    getCustomerSegments(),
+    getTopCustomers(10),
+    getBehaviorPatterns(),
+    getSalesTrend(30),
     getAvgSentimentScore(),
     getSentimentDistribution(30),
     getComplaintCategories(30),
@@ -416,17 +378,15 @@ export async function getUnifiedAnalyticsData(): Promise<UnifiedAnalyticsData> {
     getTopComplainers(10)
   ]);
 
-  // Override totalCustomers with Odoo linked customers count (like Odoo Dashboard shows ~640)
   return {
     stats: {
       ...salesStats,
-      totalCustomers: totalOdooCustomers, // Use Odoo linked customers count
       avgSentiment
     },
     salesTrend,
     segments: customerSegments,
     topCustomers,
-    behaviorPatterns: [], // Can be added later based on Odoo data
+    behaviorPatterns,
     sentimentDistribution,
     complaintCategories,
     recentIssues,
@@ -439,8 +399,17 @@ export async function getUnifiedAnalyticsData(): Promise<UnifiedAnalyticsData> {
 // ============================================
 
 export async function getAllAnalyticsData() {
-  return getUnifiedAnalyticsData();
-}
+  const [segments, topCustomers, stats, behaviorPatterns] = await Promise.all([
+    getCustomerSegments(),
+    getTopCustomers(10),
+    getSalesStats(),
+    getBehaviorPatterns()
+  ]);
 
-// Export old functions for compatibility
-export { getSalesStats, getCustomerSegments, getTopCustomers } from './queries-old';
+  return {
+    segments,
+    topCustomers,
+    stats,
+    behaviorPatterns
+  };
+}
