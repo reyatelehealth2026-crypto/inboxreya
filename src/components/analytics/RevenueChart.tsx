@@ -74,9 +74,10 @@ export function RevenueChart({ data }: RevenueChartProps) {
                 border: '1px solid #E2E8F0',
                 borderRadius: '8px'
               }}
-              formatter={(value: number, name: string) => {
-                if (name === 'รายได้') return [formatCurrency(value), name];
-                return [formatNumber(value), name];
+              formatter={(value, name) => {
+                const numValue = typeof value === 'number' ? value : 0;
+                if (name === 'รายได้') return [formatCurrency(numValue), name];
+                return [formatNumber(numValue), name];
               }}
             />
             

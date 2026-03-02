@@ -39,6 +39,9 @@
     "node_modules",
     "inbox",
     "inbox-nextjs",
-    "includes"
+    "includes",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "tests"
   ]
 }

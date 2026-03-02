@@ -2,7 +2,7 @@ import { UnifiedAnalyticsData } from '@/lib/analytics/types';
 import { SegmentChart } from './SegmentChart';
 import { TopCustomersTable } from './TopCustomersTable';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, RepeatUser, ShoppingBag, UserPlus } from 'lucide-react';
+import { Users, ShoppingBag, UserPlus, RotateCcw } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 
 interface CustomersTabProps {
@@ -33,7 +33,7 @@ export function CustomersTab({ data }: CustomersTabProps) {
         <Card className="border-blue-100">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">ซื้อบ่อย (6+ ครั้ง)</CardTitle>
-            <RepeatUser className="h-4 w-4 text-green-600" />
+            <RotateCcw className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-[#1E3A8A]">

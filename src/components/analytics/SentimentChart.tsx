@@ -53,7 +53,7 @@ export function SentimentChart({ distribution }: SentimentChartProps) {
                 outerRadius={80}
                 paddingAngle={5}
                 dataKey="value"
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
               >
                 {data.map((entry) => (
                   <Cell 
@@ -68,7 +68,7 @@ export function SentimentChart({ distribution }: SentimentChartProps) {
                   border: '1px solid #E2E8F0',
                   borderRadius: '8px'
                 }}
-                formatter={(value: number) => [`${value} ข้อความ`, 'จำนวน']}
+                formatter={(value) => [`${typeof value === 'number' ? value : 0} ข้อความ`, 'จำนวน']}
               />
             </PieChart>
           </ResponsiveContainer>
