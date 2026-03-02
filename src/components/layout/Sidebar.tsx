@@ -55,7 +55,6 @@ const menuGroups: MenuGroup[] = [
     menus: [
       { title: 'หน้าแรก', icon: <Home className="h-4 w-4" />, href: '/dashboard' },
       { title: 'Admin Dashboard', icon: <UserCog className="h-4 w-4" />, href: '/dashboard/admin' },
-      { title: 'รายงานละเอียด', icon: <BarChart3 className="h-4 w-4" />, href: '/inbox/analytics' },
       { title: 'Customer Dashboard', icon: <Users className="h-4 w-4" />, href: '/dashboard/customers' },
     ],
   },

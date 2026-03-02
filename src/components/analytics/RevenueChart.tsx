@@ -48,8 +48,12 @@ export function RevenueChart({ data }: RevenueChartProps) {
             <XAxis 
               dataKey="displayDate" 
               stroke="#64748B"
-              fontSize={12}
+              fontSize={11}
               tickLine={false}
+              angle={0}
+              textAnchor="middle"
+              height={40}
+              interval="preserveStartEnd"
             />
             <YAxis 
               yAxisId="revenue"
