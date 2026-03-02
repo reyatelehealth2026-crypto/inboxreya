@@ -490,18 +490,6 @@ export async function getUnifiedAnalyticsData(): Promise<UnifiedAnalyticsData> {
     topComplainers
   };
 }
-    },
-    salesTrend,
-    segments: customerSegments,
-    topCustomers,
-    behaviorPatterns: [], // Can be added later based on Odoo data
-    sentimentDistribution,
-    complaintCategories,
-    recentIssues,
-    topComplainers
-  };
-}
-
 // ============================================
 // Legacy: Backward compatibility
 // ============================================
