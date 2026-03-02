@@ -54,10 +54,10 @@ export async function getCustomerSegments(): Promise<CustomerSegment[]> {
   const bronze = Number((bronzeRows as any[])[0].count);
 
   return [
-    { name: 'VIP Customers', tier: 'vip', minSpent: 100000, count: vip, percentage: total ? Math.round((vip / total) * 100) : 0 },
-    { name: 'Gold Customers', tier: 'gold', minSpent: 50000, maxSpent: 99999, count: gold, percentage: total ? Math.round((gold / total) * 100) : 0 },
-    { name: 'Silver Customers', tier: 'silver', minSpent: 20000, maxSpent: 49999, count: silver, percentage: total ? Math.round((silver / total) * 100) : 0 },
-    { name: 'Bronze Customers', tier: 'bronze', minSpent: 1, maxSpent: 19999, count: bronze, percentage: total ? Math.round((bronze / total) * 100) : 0 }
+    { name: 'VIP Customers', tier: 'vip' as const, minSpent: 100000, count: vip, percentage: total ? Math.round((vip / total) * 100) : 0 },
+    { name: 'Gold Customers', tier: 'gold' as const, minSpent: 50000, maxSpent: 99999, count: gold, percentage: total ? Math.round((gold / total) * 100) : 0 },
+    { name: 'Silver Customers', tier: 'silver' as const, minSpent: 20000, maxSpent: 49999, count: silver, percentage: total ? Math.round((silver / total) * 100) : 0 },
+    { name: 'Bronze Customers', tier: 'bronze' as const, minSpent: 1, maxSpent: 19999, count: bronze, percentage: total ? Math.round((bronze / total) * 100) : 0 }
   ].filter(s => s.count > 0);
 }
 
