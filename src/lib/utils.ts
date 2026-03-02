@@ -152,25 +152,14 @@ export function getMessageTypeIcon(type: string): string {
  * @param query - The search query to highlight
  * @returns Array of text parts with highlight flag
  */
-export function highlightText(text: string, query: string): Array<{ text: string; highlight: boolean }> {
-  if (!query || !text) {
-    return [{ text, highlight: false }]
-  }
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('th-TH', {
+    style: 'currency',
+    currency: 'THB',
+    minimumFractionDigits: 0
+  }).format(amount);
+}
 
-  // Escape special regex characters in the query
-  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-  // Create case-insensitive regex to find all matches
-  const regex = new RegExp(`(${escapedQuery})`, 'gi')
-
-  // Split the text by matches
-  const parts = text.split(regex)
-
-  // Map parts to objects with highlight flag
-  return parts
-    .filter(part => part.length > 0)
-    .map(part => ({
-      text: part,
-      highlight: regex.test(part)
-    }))
+export function formatNumber(num: number): string {
+  return new Intl.NumberFormat('th-TH').format(num);
 }
