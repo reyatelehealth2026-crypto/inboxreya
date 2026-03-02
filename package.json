@@ -23,6 +23,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
+    "db:stats": "node /root/.openclaw/workspace/get-daily-stats.js",
     "prepare": "husky"
   },
   "prisma": {
