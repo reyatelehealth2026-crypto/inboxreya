@@ -1,9 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getAllAnalyticsData } from '@/lib/analytics/queries';
+import { getUnifiedAnalyticsData } from '@/lib/analytics/queries';
 
+/**
+ * GET /api/analytics
+ * Returns unified analytics data including:
+ * - Sales stats and trends
+ * - Customer segments and behavior
+ * - AI sentiment analysis
+ * - Complaint categories and recent issues
+ */
 export async function GET() {
   try {
-    const data = await getAllAnalyticsData();
+    const data = await getUnifiedAnalyticsData();
     return NextResponse.json(data);
   } catch (error) {
     console.error('Analytics API error:', error);
