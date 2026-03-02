@@ -23,13 +23,24 @@ const COLORS = {
   bronze: '#A16207'  // Dark amber for Bronze
 };
 
+interface PieData {
+  name: string;
+  value: number;
+  percentage: number;
+  tier: string;
+}
+
 export function SegmentChart({ segments }: SegmentChartProps) {
-  const data = segments.map(s => ({
+  const data: PieData[] = segments.map(s => ({
     name: s.name,
     value: s.count,
     percentage: s.percentage,
     tier: s.tier
   }));
+
+  const renderLabel = ({ name, percentage }: PieData) => {
+    return `${name} (${percentage}%)`;
+  };
 
   return (
     <Card className="col-span-1 border-blue-100">
@@ -44,7 +55,7 @@ export function SegmentChart({ segments }: SegmentChartProps) {
               cx="50%"
               cy="50%"
               labelLine={false}
-              label={({ name, percentage }) => `${name} (${percentage}%)`}
+              label={renderLabel}
               outerRadius={80}
               fill="#8884d8"
               dataKey="value"
