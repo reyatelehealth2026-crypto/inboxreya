@@ -53,12 +53,14 @@ export function RecentIssuesList({ issues }: RecentIssuesListProps) {
           <div className="space-y-3">
             {issues.map((issue) => {
               const Icon = CATEGORY_ICONS[issue.category] || HelpCircle;
+              const bgColor = getCategoryBgColor(issue.category);
+              
               return (
                 <div
                   key={issue.id}
                   className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
                 >
-                  <div className={`p-2 rounded-lg ${getCategoryBgColor(issue.category)}`>
+                  <div className={`p-2 rounded-lg ${bgColor}`}>
                     <Icon className="h-4 w-4" />
                   </div>
                   
@@ -68,8 +70,8 @@ export function RecentIssuesList({ issues }: RecentIssuesListProps) {
                         {issue.userName || 'ไม่ระบุชื่อ'}
                       </span>
                       
-                      <Badge variant="outline" className={URGENCY_COLORS[issue.urgency]}>
-                        ความเร่งด่วน: {URGENCY_LABELS[issue.urgency]}
+                      <Badge variant="outline" className={URGENCY_COLORS[issue.urgency as keyof typeof URGENCY_COLORS] || URGENCY_COLORS.low}>
+                        ความเร่งด่วน: {URGENCY_LABELS[issue.urgency as keyof typeof URGENCY_LABELS] || URGENCY_LABELS.low}
                       </Badge>
                       
                       <Badge variant="outline" className="bg-gray-100">
@@ -78,7 +80,7 @@ export function RecentIssuesList({ issues }: RecentIssuesListProps) {
                     </div>
                     
                     <p className="text-sm text-gray-600 mt-1 truncate">
-                      "{issue.message}"
+                      &ldquo;{issue.message}&rdquo;
                     </p>
                     
                     <div className="flex items-center gap-1 mt-2 text-xs text-gray-400">
