@@ -1142,6 +1142,270 @@ export function CustomerProfile() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {/* ข้อมูลและโน้ต (Tags) */}
+          <ProfileSection title="ข้อมูลและโน้ต" icon={Tag} sectionKey="tags" defaultOpen={true}>
+            <TagSelector userId={user.id} currentTags={tags} />
+          </ProfileSection>
+
+          {/* ข้อมูลติดต่อ & โน้ต */}
+          <ProfileSection title="ข้อมูลติดต่อ" icon={User} sectionKey="contact" defaultOpen={true}>
+            <div className="space-y-4">
+              {/* Contact Info Sub-section */}
+              {!isEditingContact ? (
+                <div className="space-y-0 bg-white rounded-lg border border-gray-50 p-1">
+                  <div className="flex justify-end">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-[10px] text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                      onClick={() => setIsEditingContact(true)}
+                    >
+                      <Edit2 className="h-3 w-3 mr-1" />
+                      แก้ไขข้อมูล
+                    </Button>
+                  </div>
+                  <InfoRow icon={User} label="ชื่อจริง" value={user.realName} />
+                  <InfoRow icon={Star} label="เลขสมาชิก" value={user.memberId} />
+                  <InfoRow icon={Phone} label="เบอร์โทร" value={user.phone} />
+                  <InfoRow icon={Mail} label="อีเมล" value={user.email} />
+                  <InfoRow
+                    icon={Calendar}
+                    label="วันเกิด"
+                    value={user.birthday || user.birthDate ? formatDate(user.birthday || user.birthDate || '') : null}
+                  />
+                  <InfoRow
+                    icon={User}
+                    label="เพศ"
+                    value={user.gender === 'male' ? 'ชาย' : user.gender === 'female' ? 'หญิง' : user.gender === 'other' ? 'อื่นๆ' : null}
+                  />
+                  <InfoRow
+                    icon={MapPin}
+                    label="ที่อยู่"
+                    value={
+                      user.address
+                        ? `${user.address}${user.district ? `, ${user.district}` : ''}${user.province ? `, ${user.province}` : ''
+                        }${user.postalCode ? ` ${user.postalCode}` : ''}`
+                        : null
+                    }
+                  />
+                  {user.note && (
+                    <InfoRow icon={FileText} label="หมายเหตุ" value={user.note} />
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2 bg-white rounded-lg border border-gray-200 p-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1 block">ชื่อที่แสดง</label>
+                      <Input
+                        value={contactDraft.displayName}
+                        onChange={(e) =>
+                          setContactDraft((prev) => ({ ...prev, displayName: e.target.value }))
+                        }
+                        className="h-8 text-sm"
+                        placeholder="ชื่อที่แสดง"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1 block">ชื่อจริง</label>
+                      <Input
+                        value={contactDraft.realName}
+                        onChange={(e) =>
+                          setContactDraft((prev) => ({ ...prev, realName: e.target.value }))
+                        }
+                        className="h-8 text-sm"
+                        placeholder="ชื่อ-นามสกุล"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1 block">เลขสมาชิก</label>
+                      <Input
+                        value={contactDraft.memberId}
+                        onChange={(e) =>
+                          setContactDraft((prev) => ({ ...prev, memberId: e.target.value }))
+                        }
+                        className="h-8 text-sm font-mono"
+                        placeholder="PC10000"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1 block">เบอร์โทร</label>
+                      <Input
+                        value={contactDraft.phone}
+                        onChange={(e) =>
+                          setContactDraft((prev) => ({ ...prev, phone: e.target.value }))
+                        }
+                        className="h-8 text-sm"
+                        placeholder="08x-xxx-xxxx"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">อีเมล</label>
+                    <Input
+                      type="email"
+                      value={contactDraft.email}
+                      onChange={(e) =>
+                        setContactDraft((prev) => ({ ...prev, email: e.target.value }))
+                      }
+                      className="h-8 text-sm"
+                      placeholder="email@example.com"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1 block">วันเกิด</label>
+                      <Input
+                        type="date"
+                        value={contactDraft.birthday}
+                        onChange={(e) =>
+                          setContactDraft((prev) => ({ ...prev, birthday: e.target.value }))
+                        }
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1 block">เพศ</label>
+                      <select
+                        value={contactDraft.gender}
+                        onChange={(e) =>
+                          setContactDraft((prev) => ({ ...prev, gender: e.target.value }))
+                        }
+                        className="h-8 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        <option value="">-- เลือก --</option>
+                        <option value="male">ชาย</option>
+                        <option value="female">หญิง</option>
+                        <option value="other">อื่นๆ</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">ที่อยู่</label>
+                    <Textarea
+                      value={contactDraft.address}
+                      onChange={(e) =>
+                        setContactDraft((prev) => ({ ...prev, address: e.target.value }))
+                      }
+                      className="text-sm min-h-[60px]"
+                      placeholder="บ้านเลขที่ ซอย ถนน"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1 block">เขต/อำเภอ</label>
+                      <Input
+                        value={contactDraft.district}
+                        onChange={(e) =>
+                          setContactDraft((prev) => ({ ...prev, district: e.target.value }))
+                        }
+                        className="h-8 text-sm"
+                        placeholder="เขต/อำเภอ"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1 block">จังหวัด</label>
+                      <Input
+                        value={contactDraft.province}
+                        onChange={(e) =>
+                          setContactDraft((prev) => ({ ...prev, province: e.target.value }))
+                        }
+                        className="h-8 text-sm"
+                        placeholder="จังหวัด"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1 block">รหัสไปรษณีย์</label>
+                      <Input
+                        value={contactDraft.postalCode}
+                        onChange={(e) =>
+                          setContactDraft((prev) => ({ ...prev, postalCode: e.target.value }))
+                        }
+                        className="h-8 text-sm"
+                        placeholder="10xxx"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">หมายเหตุ</label>
+                    <Textarea
+                      value={contactDraft.note}
+                      onChange={(e) =>
+                        setContactDraft((prev) => ({ ...prev, note: e.target.value }))
+                      }
+                      className="text-sm min-h-[60px]"
+                      placeholder="บันทึกเพิ่มเติมเกี่ยวกับลูกค้า..."
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        setIsEditingContact(false)
+                        setContactDraft({
+                          displayName: user.displayName || '',
+                          realName: user.realName || '',
+                          memberId: user.memberId || '',
+                          phone: user.phone || '',
+                          email: user.email || '',
+                          birthday: user.birthday || user.birthDate || '',
+                          gender: user.gender || '',
+                          address: user.address || '',
+                          district: user.district || '',
+                          province: user.province || '',
+                          postalCode: user.postalCode || '',
+                          note: user.note || '',
+                        })
+                      }}
+                    >
+                      ยกเลิก
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs"
+                      style={{ background: '#0C665D' }}
+                      onClick={async () => {
+                        await updateProfile.mutateAsync({
+                          userId: user.id,
+                          displayName: contactDraft.displayName || null,
+                          realName: contactDraft.realName || null,
+                          memberId: contactDraft.memberId || null,
+                          phone: contactDraft.phone || null,
+                          email: contactDraft.email || null,
+                          birthday: contactDraft.birthday || null,
+                          gender: contactDraft.gender || null,
+                          address: contactDraft.address || null,
+                          district: contactDraft.district || null,
+                          province: contactDraft.province || null,
+                          postalCode: contactDraft.postalCode || null,
+                          note: contactDraft.note || null,
+                        })
+                        setIsEditingContact(false)
+                      }}
+                      disabled={updateProfile.isPending}
+                    >
+                      บันทึก
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Notes Sub-section */}
+              <div className="pt-2 border-t border-gray-100">
+                <NotesSection userId={user.id} />
+              </div>
+            </div>
+          </ProfileSection>
+
+          {/* LINE Info */}
+          <ProfileSection title="ข้อมูล LINE" icon={MessageCircle} sectionKey="line-info">
+            <LineInfoSection user={user} />
+          </ProfileSection>
         </div>
       </ScrollArea>
 
@@ -1155,14 +1419,6 @@ export function CustomerProfile() {
           <TabsTrigger value="slips" className="flex-1 rounded-none border-b-2 border-transparent data-[state=active]:border-[#0C665D] data-[state=active]:text-[#0C665D] data-[state=active]:shadow-none h-9 text-xs gap-1">
             <Receipt className="h-3 w-3" />
             สลิป
-          </TabsTrigger>
-          <TabsTrigger value="notes" className="flex-1 rounded-none border-b-2 border-transparent data-[state=active]:border-[#0C665D] data-[state=active]:text-[#0C665D] data-[state=active]:shadow-none h-9 text-xs gap-1">
-            <FileText className="h-3 w-3" />
-            โน้ต
-          </TabsTrigger>
-          <TabsTrigger value="info" className="flex-1 rounded-none border-b-2 border-transparent data-[state=active]:border-[#0C665D] data-[state=active]:text-[#0C665D] data-[state=active]:shadow-none h-9 text-xs gap-1">
-            <User className="h-3 w-3" />
-            ข้อมูล
           </TabsTrigger>
         </TabsList>
 
@@ -1178,272 +1434,6 @@ export function CustomerProfile() {
         {/* Slips Tab */}
         <TabsContent value="slips" className="flex-1 m-0 overflow-y-auto p-3">
           <OdooSlipsSection userId={user.id} />
-        </TabsContent>
-
-        {/* Notes Tab */}
-        <TabsContent value="notes" className="flex-1 m-0 overflow-y-auto p-3">
-          <NotesSection userId={user.id} />
-        </TabsContent>
-
-        {/* Info Tab */}
-        <TabsContent value="info" className="flex-1 m-0 overflow-y-auto p-3">
-          <div className="space-y-3">
-            {/* Tags */}
-            <ProfileSection title="แท็ก" icon={Tag} sectionKey="tags">
-              <TagSelector userId={user.id} currentTags={tags} />
-            </ProfileSection>
-
-            {/* Contact Info */}
-            <ProfileSection title="ข้อมูลติดต่อ" icon={User} sectionKey="contact" defaultOpen={true}>
-              <div className="space-y-1">
-                {!isEditingContact ? (
-                  <>
-                    <InfoRow icon={User} label="ชื่อจริง" value={user.realName} />
-                    <InfoRow icon={Star} label="เลขสมาชิก" value={user.memberId} />
-                    <InfoRow icon={Phone} label="เบอร์โทร" value={user.phone} />
-                    <InfoRow icon={Mail} label="อีเมล" value={user.email} />
-                    <InfoRow
-                      icon={Calendar}
-                      label="วันเกิด"
-                      value={user.birthday || user.birthDate ? formatDate(user.birthday || user.birthDate || '') : null}
-                    />
-                    <InfoRow
-                      icon={User}
-                      label="เพศ"
-                      value={user.gender === 'male' ? 'ชาย' : user.gender === 'female' ? 'หญิง' : user.gender === 'other' ? 'อื่นๆ' : null}
-                    />
-                    <InfoRow
-                      icon={MapPin}
-                      label="ที่อยู่"
-                      value={
-                        user.address
-                          ? `${user.address}${user.district ? `, ${user.district}` : ''}${user.province ? `, ${user.province}` : ''
-                          }${user.postalCode ? ` ${user.postalCode}` : ''}`
-                          : null
-                      }
-                    />
-                    {user.note && (
-                      <InfoRow icon={FileText} label="หมายเหตุ" value={user.note} />
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full h-8 text-xs mt-2"
-                      onClick={() => setIsEditingContact(true)}
-                    >
-                      <Edit2 className="h-3 w-3 mr-1" />
-                      แก้ไขข้อมูล
-                    </Button>
-                  </>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs font-medium text-gray-600 mb-1 block">ชื่อที่แสดง</label>
-                        <Input
-                          value={contactDraft.displayName}
-                          onChange={(e) =>
-                            setContactDraft((prev) => ({ ...prev, displayName: e.target.value }))
-                          }
-                          className="h-8 text-sm"
-                          placeholder="ชื่อที่แสดง"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-600 mb-1 block">ชื่อจริง</label>
-                        <Input
-                          value={contactDraft.realName}
-                          onChange={(e) =>
-                            setContactDraft((prev) => ({ ...prev, realName: e.target.value }))
-                          }
-                          className="h-8 text-sm"
-                          placeholder="ชื่อ-นามสกุล"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs font-medium text-gray-600 mb-1 block">เลขสมาชิก</label>
-                        <Input
-                          value={contactDraft.memberId}
-                          onChange={(e) =>
-                            setContactDraft((prev) => ({ ...prev, memberId: e.target.value }))
-                          }
-                          className="h-8 text-sm font-mono"
-                          placeholder="PC10000"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-600 mb-1 block">เบอร์โทร</label>
-                        <Input
-                          value={contactDraft.phone}
-                          onChange={(e) =>
-                            setContactDraft((prev) => ({ ...prev, phone: e.target.value }))
-                          }
-                          className="h-8 text-sm"
-                          placeholder="08x-xxx-xxxx"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">อีเมล</label>
-                      <Input
-                        type="email"
-                        value={contactDraft.email}
-                        onChange={(e) =>
-                          setContactDraft((prev) => ({ ...prev, email: e.target.value }))
-                        }
-                        className="h-8 text-sm"
-                        placeholder="email@example.com"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs font-medium text-gray-600 mb-1 block">วันเกิด</label>
-                        <Input
-                          type="date"
-                          value={contactDraft.birthday}
-                          onChange={(e) =>
-                            setContactDraft((prev) => ({ ...prev, birthday: e.target.value }))
-                          }
-                          className="h-8 text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-600 mb-1 block">เพศ</label>
-                        <select
-                          value={contactDraft.gender}
-                          onChange={(e) =>
-                            setContactDraft((prev) => ({ ...prev, gender: e.target.value }))
-                          }
-                          className="h-8 w-full rounded-md border border-input bg-background px-3 text-sm"
-                        >
-                          <option value="">-- เลือก --</option>
-                          <option value="male">ชาย</option>
-                          <option value="female">หญิง</option>
-                          <option value="other">อื่นๆ</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">ที่อยู่</label>
-                      <Textarea
-                        value={contactDraft.address}
-                        onChange={(e) =>
-                          setContactDraft((prev) => ({ ...prev, address: e.target.value }))
-                        }
-                        className="text-sm min-h-[60px]"
-                        placeholder="บ้านเลขที่ ซอย ถนน"
-                      />
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="text-xs font-medium text-gray-600 mb-1 block">เขต/อำเภอ</label>
-                        <Input
-                          value={contactDraft.district}
-                          onChange={(e) =>
-                            setContactDraft((prev) => ({ ...prev, district: e.target.value }))
-                          }
-                          className="h-8 text-sm"
-                          placeholder="เขต/อำเภอ"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-600 mb-1 block">จังหวัด</label>
-                        <Input
-                          value={contactDraft.province}
-                          onChange={(e) =>
-                            setContactDraft((prev) => ({ ...prev, province: e.target.value }))
-                          }
-                          className="h-8 text-sm"
-                          placeholder="จังหวัด"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-600 mb-1 block">รหัสไปรษณีย์</label>
-                        <Input
-                          value={contactDraft.postalCode}
-                          onChange={(e) =>
-                            setContactDraft((prev) => ({ ...prev, postalCode: e.target.value }))
-                          }
-                          className="h-8 text-sm"
-                          placeholder="10xxx"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">หมายเหตุ</label>
-                      <Textarea
-                        value={contactDraft.note}
-                        onChange={(e) =>
-                          setContactDraft((prev) => ({ ...prev, note: e.target.value }))
-                        }
-                        className="text-sm min-h-[60px]"
-                        placeholder="บันทึกเพิ่มเติมเกี่ยวกับลูกค้า..."
-                      />
-                    </div>
-                    <div className="flex justify-end gap-2 pt-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => {
-                          setIsEditingContact(false)
-                          setContactDraft({
-                            displayName: user.displayName || '',
-                            realName: user.realName || '',
-                            memberId: user.memberId || '',
-                            phone: user.phone || '',
-                            email: user.email || '',
-                            birthday: user.birthday || user.birthDate || '',
-                            gender: user.gender || '',
-                            address: user.address || '',
-                            district: user.district || '',
-                            province: user.province || '',
-                            postalCode: user.postalCode || '',
-                            note: user.note || '',
-                          })
-                        }}
-                      >
-                        ยกเลิก
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="h-7 text-xs"
-                        style={{ background: '#0C665D' }}
-                        onClick={async () => {
-                          await updateProfile.mutateAsync({
-                            userId: user.id,
-                            displayName: contactDraft.displayName || null,
-                            realName: contactDraft.realName || null,
-                            memberId: contactDraft.memberId || null,
-                            phone: contactDraft.phone || null,
-                            email: contactDraft.email || null,
-                            birthday: contactDraft.birthday || null,
-                            gender: contactDraft.gender || null,
-                            address: contactDraft.address || null,
-                            district: contactDraft.district || null,
-                            province: contactDraft.province || null,
-                            postalCode: contactDraft.postalCode || null,
-                            note: contactDraft.note || null,
-                          })
-                          setIsEditingContact(false)
-                        }}
-                        disabled={updateProfile.isPending}
-                      >
-                        บันทึก
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </ProfileSection>
-
-            {/* LINE Info */}
-            <ProfileSection title="ข้อมูล LINE" icon={MessageCircle} sectionKey="line-info">
-              <LineInfoSection user={user} />
-            </ProfileSection>
-          </div>
         </TabsContent>
       </Tabs>
     </div>
