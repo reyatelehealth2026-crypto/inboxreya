@@ -8,8 +8,7 @@ import {
   Cell,
   ResponsiveContainer,
   Tooltip,
-  Legend,
-  PieLabelRenderProps
+  Legend
 } from 'recharts';
 
 interface SegmentChartProps {
@@ -31,6 +30,25 @@ interface ChartData {
   tier: string;
 }
 
+// Custom Legend Component
+function CustomLegend({ payload }: { payload?: Array<{ value: string; color: string }> }) {
+  if (!payload) return null;
+  
+  return (
+    <ul className="flex flex-wrap justify-center gap-4 mt-4">
+      {payload.map((entry, index) => (
+        <li key={`legend-${index}`} className="flex items-center gap-2">
+          <span 
+            className="w-3 h-3 rounded-sm inline-block" 
+            style={{ backgroundColor: entry.color }}
+          />
+          <span className="text-sm text-gray-700 whitespace-nowrap">{entry.value}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function SegmentChart({ segments }: SegmentChartProps) {
   const data: ChartData[] = segments.map(s => ({
     name: s.name,
@@ -39,29 +57,23 @@ export function SegmentChart({ segments }: SegmentChartProps) {
     tier: s.tier
   }));
 
-  const renderLabel = (props: PieLabelRenderProps & { payload?: ChartData }) => {
-    const { name, payload } = props;
-    const percentage = payload?.percentage ?? 0;
-    return `${name} (${percentage}%)`;
-  };
-
   return (
     <Card className="col-span-1 border-blue-100">
       <CardHeader>
-        <CardTitle className="text-[#1E3A8A]">กลุ่มลูกค้า</CardTitle>
+        <CardTitle className="text-[#1E3A8A] whitespace-nowrap">กลุ่มลูกค้า</CardTitle>
       </CardHeader>
-      <CardContent>
-        <ResponsiveContainer width="100%" height={300}>
+      <CardContent className="min-w-0">
+        <ResponsiveContainer width="100%" height={280}>
           <PieChart>
             <Pie
               data={data}
               cx="50%"
-              cy="50%"
+              cy="45%"
               labelLine={false}
-              label={renderLabel}
-              outerRadius={80}
+              outerRadius={70}
               fill="#8884d8"
               dataKey="value"
+              label={({ name, percentage }) => `${percentage}%`}
             >
               {data.map((entry, index) => (
                 <Cell 
@@ -76,10 +88,29 @@ export function SegmentChart({ segments }: SegmentChartProps) {
                 border: '1px solid #E2E8F0',
                 borderRadius: '8px'
               }}
+              formatter={(value, name, props) => {
+                const percentage = (props?.payload as ChartData)?.percentage ?? 0;
+                return [`${value} (${percentage}%)`, name];
+              }}
             />
-            <Legend />
           </PieChart>
         </ResponsiveContainer>
+        
+        {/* Custom Legend */}
+        <div className="mt-2">
+          {data.map((entry, index) => (
+            <div key={index} className="flex items-center justify-between py-1">
+              <div className="flex items-center gap-2">
+                <span 
+                  className="w-3 h-3 rounded-sm inline-block flex-shrink-0" 
+                  style={{ backgroundColor: COLORS[entry.tier] || '#3B82F6' }}
+                />
+                <span className="text-sm text-gray-700 truncate">{entry.name}</span>
+              </div>
+              <span className="text-sm text-gray-500">{entry.value} ราย ({entry.percentage}%)</span>
+            </div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
