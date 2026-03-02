@@ -52,7 +52,6 @@ import { HealthProfileSection } from './HealthProfileSection'
 import { PointsRewardsSection } from './PointsRewardsSection'
 import { PrescriptionsSection } from './PrescriptionsSection'
 import { LineInfoSection } from './LineInfoSection'
-import { ActiveOrdersBanner } from './ActiveOrdersBanner'
 import { OdooSlipsSection } from './OdooSlipsSection'
 import { OdooDashboardPanel } from './OdooDashboardPanel'
 
@@ -1145,11 +1144,6 @@ export function CustomerProfile() {
           </Dialog>
         </div>
       </ScrollArea>
-
-      {/* Active Orders Banner */}
-      <div className="flex-shrink-0 px-3 py-2 bg-gray-50/50 border-t border-gray-100">
-        <ActiveOrdersBanner userId={user.id} />
-      </div>
 
       {/* Tabbed Sections */}
       <Tabs defaultValue="erp" className="flex-1 flex flex-col min-h-0">

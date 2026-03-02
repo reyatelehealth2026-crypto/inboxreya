@@ -25,6 +25,8 @@ interface OdooOrderItem {
   date_order: string | null
   payment_date: string | null
   last_updated_at: string | null
+  is_delivered?: boolean
+  delivery_status?: string | null
 }
 
 interface OdooInvoiceItem {
@@ -164,12 +166,21 @@ export function OdooDashboardPanel({ partnerId, customerRef, lineUserId }: OdooD
     )
   }
 
-  const orders = data?.orders || []
+  const allOrders = data?.orders || []
   const invoices = data?.invoices || []
   const slips = data?.slips || []
 
+  // Filter to only show undelivered orders
+  const deliveredStates = ['done', 'cancel']
+  const orders = allOrders.filter((o) => {
+    if (o.is_delivered === true) return false
+    const state = String(o.state || '').toLowerCase()
+    if (deliveredStates.includes(state)) return false
+    return true
+  })
+
   const tabs: { id: DashTab; label: string; count: number; icon: typeof ShoppingBag }[] = [
-    { id: 'orders', label: 'ออเดอร์', count: data?.ordersTotal || orders.length, icon: ShoppingBag },
+    { id: 'orders', label: 'ออเดอร์', count: orders.length, icon: ShoppingBag },
     { id: 'invoices', label: 'ใบแจ้งหนี้', count: data?.invoicesTotal || invoices.length, icon: FileText },
     { id: 'slips', label: 'สลิป', count: data?.slipsTotal || slips.length, icon: Receipt },
   ]
@@ -233,7 +244,7 @@ function OrdersList({ orders }: { orders: OdooOrderItem[] }) {
     return (
       <div className="text-center py-8 text-gray-400">
         <ShoppingBag className="h-8 w-8 mx-auto mb-2 opacity-50" />
-        <p className="text-sm">ไม่พบออเดอร์</p>
+        <p className="text-sm">ไม่มีออเดอร์ที่ยังไม่ส่ง</p>
       </div>
     )
   }
