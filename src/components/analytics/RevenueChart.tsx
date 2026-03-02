@@ -39,7 +39,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
   return (
     <Card className="col-span-2 border-blue-100">
       <CardHeader>
-        <CardTitle className="text-[#1E3A8A]">แนวโน้มรายได้และออเดอร์</CardTitle>
+        <CardTitle className="text-[#1E3A8A] whitespace-nowrap truncate">แนวโน้มรายได้และออเดอร์</CardTitle>
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>
