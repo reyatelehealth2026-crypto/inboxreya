@@ -16,13 +16,11 @@ import {
   Edit2,
   ShoppingBag,
   Award,
-  Activity,
-  Heart,
+  AlertCircle,
   User,
   Users,
   Tag,
   FileText,
-  Receipt,
   MessageCircle
 } from 'lucide-react'
 import { useCustomerProfile, useUpdateCustomerProfile } from '@/hooks/use-customer-profile'
@@ -48,11 +46,7 @@ import { useToast } from '@/hooks/use-toast'
 import { cn, formatDate, getInitials } from '@/lib/utils'
 import type { LineUser, UserTag, CustomerNote, AdminUser } from '@/types'
 
-import { HealthProfileSection } from './HealthProfileSection'
-import { PointsRewardsSection } from './PointsRewardsSection'
-import { PrescriptionsSection } from './PrescriptionsSection'
 import { LineInfoSection } from './LineInfoSection'
-import { OdooSlipsSection } from './OdooSlipsSection'
 import { OdooDashboardPanel } from './OdooDashboardPanel'
 
 function InfoRow({ icon: Icon, label, value }: { icon: any; label: string; value?: string | null }) {
@@ -875,567 +869,550 @@ export function CustomerProfile() {
         </div>
       </div>
 
-      <ScrollArea className="flex-1 bg-gray-50/50">
-        <div className="p-3 space-y-2">
-          {/* Points & Stats Card */}
-          <Card
-            className="relative overflow-hidden border-0 shadow-sm"
-            style={{
-              background: 'linear-gradient(135deg, #0C665D 0%, #0a5048 100%)'
-            }}
+      {/* Main 2-Tab Navigation */}
+      <Tabs defaultValue="crm" className="flex-1 flex flex-col min-h-0">
+        <TabsList className="flex-shrink-0 w-full rounded-none border-b bg-white h-12 p-1 gap-1">
+          <TabsTrigger
+            value="crm"
+            className="flex-1 rounded-md h-10 text-sm font-semibold gap-1.5 transition-colors duration-200 data-[state=active]:bg-[#0C665D] data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:text-gray-500 data-[state=inactive]:hover:text-gray-700 data-[state=inactive]:hover:bg-gray-100"
           >
-            <div className="relative p-3">
-              {/* Points Display */}
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                    <Star className="h-4 w-4 text-yellow-300 fill-yellow-300" />
-                  </div>
-                  <div>
-                    <div className="text-white/80 text-[11px] font-semibold">แต้มคงเหลือ</div>
-                    <div className="text-white text-xl font-bold leading-tight">
-                      {user.points.toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setIsAddPointsOpen(true)}
-                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
-                  title="เพิ่มแต้ม"
-                  aria-label="เพิ่มแต้มให้ลูกค้า"
-                >
-                  <Plus className="h-4 w-4 text-white" />
-                </button>
-              </div>
-
-              {/* Quick Stats Row */}
-              <div className="flex items-center justify-between gap-2 text-white/90 rounded-md bg-white/10 px-3 py-2">
-                <div className="text-center flex-1">
-                  <div className="text-[10px] font-semibold uppercase text-white/80 mb-0.5">Orders</div>
-                  <div className="text-sm font-bold">{user.orderCount?.toLocaleString() || '0'}</div>
-                </div>
-                <div className="w-px h-6 bg-white/30" />
-                <div className="text-center flex-1">
-                  <div className="text-[10px] font-semibold uppercase text-white/80 mb-0.5">Spent</div>
-                  <div className="text-sm font-bold">฿{user.totalSpent?.toLocaleString() || '0'}</div>
-                </div>
-                <div className="w-px h-6 bg-white/30" />
-                <div className="text-center flex-1">
-                  <div className="text-[10px] font-semibold uppercase text-white/80 mb-0.5">ล่าสุด</div>
-                  <div className="text-xs font-semibold">{user.lastInteraction ? formatDate(user.lastInteraction) : '—'}</div>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          {/* Assignees - compact badge row with manage button */}
-          <Card className="p-2.5 bg-white border-gray-200">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 flex-wrap flex-1">
-                <Users className="h-3 w-3 text-gray-500 flex-shrink-0" />
-                {assignees.length > 0 ? assignees.map((admin) => (
-                  <Badge
-                    key={admin.id}
-                    variant="secondary"
-                    className="text-[10px] h-5 gap-1 px-2 bg-teal-50 text-teal-700 border-teal-100"
-                  >
-                    {admin.displayName || admin.username}
-                  </Badge>
-                )) : (
-                  <span className="text-[10px] text-gray-400">ยังไม่มีผู้ดูแล</span>
-                )}
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setSelectedAdminIds(assignees.map(a => a.id))
-                  setIsManageAssigneesOpen(true)
-                }}
-                className="h-6 px-2 text-[10px] hover:bg-teal-50 hover:text-teal-700 flex-shrink-0"
-              >
-                <Plus className="h-3 w-3" />
-              </Button>
-            </div>
-          </Card>
-
-          {/* Add Points Dialog */}
-          <Dialog open={isAddPointsOpen} onOpenChange={setIsAddPointsOpen}>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>บันทึกยอดซื้อ & เพิ่มแต้ม</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">ยอดซื้อ (บาท)</label>
-                  <Input
-                    type="number"
-                    placeholder="กรอกยอดซื้อ เช่น 17000"
-                    value={orderAmount}
-                    onChange={(e) => setOrderAmount(e.target.value)}
-                    min="1000"
-                    step="100"
-                    className="text-lg"
-                  />
-                </div>
-
-                {/* Preview: แสดงผลคำนวณ */}
-                {orderAmount && Number(orderAmount) > 0 && (
-                  <div className="rounded-lg border p-3 space-y-2" style={{ background: '#F0F9F8', borderColor: '#0C665D33' }}>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">ยอดซื้อ</span>
-                      <span className="font-bold text-gray-900">{Number(orderAmount).toLocaleString()} ฿</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">อัตรา</span>
-                      <span className="text-gray-500">1,000 ฿ = 1 point</span>
-                    </div>
-                    <hr className="border-gray-200" />
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium" style={{ color: '#0C665D' }}>ได้รับแต้ม</span>
-                      <span className="text-xl font-bold" style={{ color: '#0C665D' }}>{calculatedPoints} point</span>
-                    </div>
-                    {calculatedPoints <= 0 && (
-                      <p className="text-xs text-red-500">⚠️ ยอดซื้อต้องอย่างน้อย 1,000 บาท เพื่อได้รับ 1 point</p>
-                    )}
-                  </div>
-                )}
-
-                <div>
-                  <label className="text-sm font-medium mb-2 block">หมายเหตุ (ไม่บังคับ)</label>
-                  <Textarea
-                    placeholder="ระบุหมายเหตุ เช่น เลขที่ใบเสร็จ"
-                    value={pointsReason}
-                    onChange={(e) => setPointsReason(e.target.value)}
-                    rows={2}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setIsAddPointsOpen(false)
-                    setOrderAmount('')
-                    setPointsReason('')
-                  }}
-                  disabled={isAddingPoints}
-                >
-                  ยกเลิก
-                </Button>
-                <Button
-                  onClick={handleAddPoints}
-                  disabled={isAddingPoints || !orderAmount || calculatedPoints <= 0}
-                  style={{ background: '#0C665D' }}
-                >
-                  {isAddingPoints ? 'กำลังบันทึก...' : `บันทึกยอดซื้อ (${calculatedPoints} point)`}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          {/* Manage Assignees Dialog */}
-          <Dialog open={isManageAssigneesOpen} onOpenChange={setIsManageAssigneesOpen}>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>จัดการผู้ดูแลลูกค้า</DialogTitle>
-              </DialogHeader>
-              <div className="py-4">
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                  {(admins || []).map((admin) => {
-                    const isSelected = selectedAdminIds.includes(admin.id)
-                    return (
-                      <div
-                        key={admin.id}
-                        onClick={() => {
-                          setSelectedAdminIds(prev =>
-                            isSelected
-                              ? prev.filter(id => id !== admin.id)
-                              : [...prev, admin.id]
-                          )
-                        }}
-                        className={cn(
-                          "flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors",
-                          isSelected
-                            ? "bg-teal-50 border-teal-200"
-                            : "bg-white border-gray-200 hover:bg-gray-50"
-                        )}
-                      >
-                        <div className={cn(
-                          "w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0",
-                          isSelected
-                            ? "bg-teal-600 border-teal-600"
-                            : "border-gray-300"
-                        )}>
-                          {isSelected && (
-                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </div>
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={admin.avatarUrl || undefined} />
-                          <AvatarFallback className="text-xs">
-                            {getInitials(admin.displayName || admin.username)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate">
-                            {admin.displayName || admin.username}
-                          </div>
-                          <div className="text-xs text-gray-500">{admin.role}</div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setIsManageAssigneesOpen(false)}
-                >
-                  ยกเลิก
-                </Button>
-                <Button
-                  onClick={async () => {
-                    try {
-                      const currentIds = assignees.map(a => a.id)
-                      const toAdd = selectedAdminIds.filter(id => !currentIds.includes(id))
-                      const toRemove = currentIds.filter(id => !selectedAdminIds.includes(id))
-
-                      // Add new assignees one by one
-                      for (const adminId of toAdd) {
-                        await assignConversation.mutateAsync({
-                          userId: user.id,
-                          adminId,
-                        })
-                      }
-
-                      // Remove assignees one by one
-                      for (const adminId of toRemove) {
-                        await unassignConversation.mutateAsync({
-                          userId: user.id,
-                          adminId,
-                        })
-                      }
-
-                      queryClient.invalidateQueries({ queryKey: queryKeys.customerProfile(user.id) })
-                      setIsManageAssigneesOpen(false)
-                      toast({
-                        title: 'สำเร็จ',
-                        description: 'อัปเดตผู้ดูแลเรียบร้อยแล้ว',
-                      })
-                    } catch (error) {
-                      toast({
-                        title: 'เกิดข้อผิดพลาด',
-                        description: 'ไม่สามารถอัปเดตผู้ดูแลได้',
-                        variant: 'destructive',
-                      })
-                    }
-                  }}
-                  style={{ background: '#0C665D' }}
-                  disabled={assignConversation.isPending || unassignConversation.isPending}
-                >
-                  {assignConversation.isPending || unassignConversation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          {/* ข้อมูลและโน้ต (Tags) */}
-          <ProfileSection title="ข้อมูลและโน้ต" icon={Tag} sectionKey="tags" defaultOpen={true}>
-            <TagSelector userId={user.id} currentTags={tags} />
-          </ProfileSection>
-
-          {/* ข้อมูลติดต่อ & โน้ต */}
-          <ProfileSection title="ข้อมูลติดต่อ" icon={User} sectionKey="contact" defaultOpen={true}>
-            <div className="space-y-4">
-              {/* Contact Info Sub-section */}
-              {!isEditingContact ? (
-                <div className="space-y-0 bg-white rounded-lg border border-gray-50 p-1">
-                  <div className="flex justify-end">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-2 text-[10px] text-teal-600 hover:text-teal-700 hover:bg-teal-50"
-                      onClick={() => setIsEditingContact(true)}
-                    >
-                      <Edit2 className="h-3 w-3 mr-1" />
-                      แก้ไขข้อมูล
-                    </Button>
-                  </div>
-                  <InfoRow icon={User} label="ชื่อจริง" value={user.realName} />
-                  <InfoRow icon={Star} label="เลขสมาชิก" value={user.memberId} />
-                  <InfoRow icon={Phone} label="เบอร์โทร" value={user.phone} />
-                  <InfoRow icon={Mail} label="อีเมล" value={user.email} />
-                  <InfoRow
-                    icon={Calendar}
-                    label="วันเกิด"
-                    value={user.birthday || user.birthDate ? formatDate(user.birthday || user.birthDate || '') : null}
-                  />
-                  <InfoRow
-                    icon={User}
-                    label="เพศ"
-                    value={user.gender === 'male' ? 'ชาย' : user.gender === 'female' ? 'หญิง' : user.gender === 'other' ? 'อื่นๆ' : null}
-                  />
-                  <InfoRow
-                    icon={MapPin}
-                    label="ที่อยู่"
-                    value={
-                      user.address
-                        ? `${user.address}${user.district ? `, ${user.district}` : ''}${user.province ? `, ${user.province}` : ''
-                        }${user.postalCode ? ` ${user.postalCode}` : ''}`
-                        : null
-                    }
-                  />
-                  {user.note && (
-                    <InfoRow icon={FileText} label="หมายเหตุ" value={user.note} />
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2 bg-white rounded-lg border border-gray-200 p-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">ชื่อที่แสดง</label>
-                      <Input
-                        value={contactDraft.displayName}
-                        onChange={(e) =>
-                          setContactDraft((prev) => ({ ...prev, displayName: e.target.value }))
-                        }
-                        className="h-8 text-sm"
-                        placeholder="ชื่อที่แสดง"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">ชื่อจริง</label>
-                      <Input
-                        value={contactDraft.realName}
-                        onChange={(e) =>
-                          setContactDraft((prev) => ({ ...prev, realName: e.target.value }))
-                        }
-                        className="h-8 text-sm"
-                        placeholder="ชื่อ-นามสกุล"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">เลขสมาชิก</label>
-                      <Input
-                        value={contactDraft.memberId}
-                        onChange={(e) =>
-                          setContactDraft((prev) => ({ ...prev, memberId: e.target.value }))
-                        }
-                        className="h-8 text-sm font-mono"
-                        placeholder="PC10000"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">เบอร์โทร</label>
-                      <Input
-                        value={contactDraft.phone}
-                        onChange={(e) =>
-                          setContactDraft((prev) => ({ ...prev, phone: e.target.value }))
-                        }
-                        className="h-8 text-sm"
-                        placeholder="08x-xxx-xxxx"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-600 mb-1 block">อีเมล</label>
-                    <Input
-                      type="email"
-                      value={contactDraft.email}
-                      onChange={(e) =>
-                        setContactDraft((prev) => ({ ...prev, email: e.target.value }))
-                      }
-                      className="h-8 text-sm"
-                      placeholder="email@example.com"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">วันเกิด</label>
-                      <Input
-                        type="date"
-                        value={contactDraft.birthday}
-                        onChange={(e) =>
-                          setContactDraft((prev) => ({ ...prev, birthday: e.target.value }))
-                        }
-                        className="h-8 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">เพศ</label>
-                      <select
-                        value={contactDraft.gender}
-                        onChange={(e) =>
-                          setContactDraft((prev) => ({ ...prev, gender: e.target.value }))
-                        }
-                        className="h-8 w-full rounded-md border border-input bg-background px-3 text-sm"
-                      >
-                        <option value="">-- เลือก --</option>
-                        <option value="male">ชาย</option>
-                        <option value="female">หญิง</option>
-                        <option value="other">อื่นๆ</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-600 mb-1 block">ที่อยู่</label>
-                    <Textarea
-                      value={contactDraft.address}
-                      onChange={(e) =>
-                        setContactDraft((prev) => ({ ...prev, address: e.target.value }))
-                      }
-                      className="text-sm min-h-[60px]"
-                      placeholder="บ้านเลขที่ ซอย ถนน"
-                    />
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">เขต/อำเภอ</label>
-                      <Input
-                        value={contactDraft.district}
-                        onChange={(e) =>
-                          setContactDraft((prev) => ({ ...prev, district: e.target.value }))
-                        }
-                        className="h-8 text-sm"
-                        placeholder="เขต/อำเภอ"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">จังหวัด</label>
-                      <Input
-                        value={contactDraft.province}
-                        onChange={(e) =>
-                          setContactDraft((prev) => ({ ...prev, province: e.target.value }))
-                        }
-                        className="h-8 text-sm"
-                        placeholder="จังหวัด"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">รหัสไปรษณีย์</label>
-                      <Input
-                        value={contactDraft.postalCode}
-                        onChange={(e) =>
-                          setContactDraft((prev) => ({ ...prev, postalCode: e.target.value }))
-                        }
-                        className="h-8 text-sm"
-                        placeholder="10xxx"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-600 mb-1 block">หมายเหตุ</label>
-                    <Textarea
-                      value={contactDraft.note}
-                      onChange={(e) =>
-                        setContactDraft((prev) => ({ ...prev, note: e.target.value }))
-                      }
-                      className="text-sm min-h-[60px]"
-                      placeholder="บันทึกเพิ่มเติมเกี่ยวกับลูกค้า..."
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2 pt-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() => {
-                        setIsEditingContact(false)
-                        setContactDraft({
-                          displayName: user.displayName || '',
-                          realName: user.realName || '',
-                          memberId: user.memberId || '',
-                          phone: user.phone || '',
-                          email: user.email || '',
-                          birthday: user.birthday || user.birthDate || '',
-                          gender: user.gender || '',
-                          address: user.address || '',
-                          district: user.district || '',
-                          province: user.province || '',
-                          postalCode: user.postalCode || '',
-                          note: user.note || '',
-                        })
-                      }}
-                    >
-                      ยกเลิก
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="h-7 text-xs"
-                      style={{ background: '#0C665D' }}
-                      onClick={async () => {
-                        await updateProfile.mutateAsync({
-                          userId: user.id,
-                          displayName: contactDraft.displayName || null,
-                          realName: contactDraft.realName || null,
-                          memberId: contactDraft.memberId || null,
-                          phone: contactDraft.phone || null,
-                          email: contactDraft.email || null,
-                          birthday: contactDraft.birthday || null,
-                          gender: contactDraft.gender || null,
-                          address: contactDraft.address || null,
-                          district: contactDraft.district || null,
-                          province: contactDraft.province || null,
-                          postalCode: contactDraft.postalCode || null,
-                          note: contactDraft.note || null,
-                        })
-                        setIsEditingContact(false)
-                      }}
-                      disabled={updateProfile.isPending}
-                    >
-                      บันทึก
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Notes Sub-section */}
-              <div className="pt-2 border-t border-gray-100">
-                <NotesSection userId={user.id} />
-              </div>
-            </div>
-          </ProfileSection>
-
-          {/* LINE Info */}
-          <ProfileSection title="ข้อมูล LINE" icon={MessageCircle} sectionKey="line-info">
-            <LineInfoSection user={user} />
-          </ProfileSection>
-        </div>
-      </ScrollArea>
-
-      {/* Tabbed Sections */}
-      <Tabs defaultValue="erp" className="flex-1 flex flex-col min-h-0">
-        <TabsList className="flex-shrink-0 w-full rounded-none border-b bg-white h-9 p-0 gap-0">
-          <TabsTrigger value="erp" className="flex-1 rounded-none border-b-2 border-transparent data-[state=active]:border-[#0C665D] data-[state=active]:text-[#0C665D] data-[state=active]:shadow-none h-9 text-xs gap-1">
-            <ShoppingBag className="h-3 w-3" />
-            ERP
+            <MessageCircle className="h-4 w-4" />
+            LINE CRM
           </TabsTrigger>
-          <TabsTrigger value="slips" className="flex-1 rounded-none border-b-2 border-transparent data-[state=active]:border-[#0C665D] data-[state=active]:text-[#0C665D] data-[state=active]:shadow-none h-9 text-xs gap-1">
-            <Receipt className="h-3 w-3" />
-            สลิป
+          <TabsTrigger
+            value="odoo"
+            className="flex-1 rounded-md h-10 text-sm font-semibold gap-1.5 transition-colors duration-200 data-[state=active]:bg-[#0C665D] data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:text-gray-500 data-[state=inactive]:hover:text-gray-700 data-[state=inactive]:hover:bg-gray-100"
+          >
+            <ShoppingBag className="h-4 w-4" />
+            Odoo / สลิป
           </TabsTrigger>
         </TabsList>
 
-        {/* ERP Tab */}
-        <TabsContent value="erp" className="flex-1 m-0 overflow-hidden">
+        {/* Tab 1: LINE CRM */}
+        <TabsContent value="crm" className="flex-1 m-0 overflow-hidden">
+          <ScrollArea className="h-full bg-gray-50/50">
+            <div className="p-3 space-y-2">
+              {/* Points & Stats Card */}
+              <Card
+                className="relative overflow-hidden border-0 shadow-sm"
+                style={{
+                  background: 'linear-gradient(135deg, #0C665D 0%, #0a5048 100%)'
+                }}
+              >
+                <div className="relative p-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                        <Star className="h-4 w-4 text-yellow-300 fill-yellow-300" />
+                      </div>
+                      <div>
+                        <div className="text-white/80 text-[11px] font-semibold">แต้มคงเหลือ</div>
+                        <div className="text-white text-xl font-bold leading-tight">
+                          {user.points.toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setIsAddPointsOpen(true)}
+                      className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors duration-200 cursor-pointer"
+                      title="เพิ่มแต้ม"
+                      aria-label="เพิ่มแต้มให้ลูกค้า"
+                    >
+                      <Plus className="h-4 w-4 text-white" />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-white/90 rounded-md bg-white/10 px-3 py-2">
+                    <div className="text-center flex-1">
+                      <div className="text-[10px] font-semibold uppercase text-white/80 mb-0.5">Orders</div>
+                      <div className="text-sm font-bold">{user.orderCount?.toLocaleString() || '0'}</div>
+                    </div>
+                    <div className="w-px h-6 bg-white/30" />
+                    <div className="text-center flex-1">
+                      <div className="text-[10px] font-semibold uppercase text-white/80 mb-0.5">Spent</div>
+                      <div className="text-sm font-bold">฿{user.totalSpent?.toLocaleString() || '0'}</div>
+                    </div>
+                    <div className="w-px h-6 bg-white/30" />
+                    <div className="text-center flex-1">
+                      <div className="text-[10px] font-semibold uppercase text-white/80 mb-0.5">ล่าสุด</div>
+                      <div className="text-xs font-semibold">{user.lastInteraction ? formatDate(user.lastInteraction) : '—'}</div>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Assignees */}
+              <Card className="p-2.5 bg-white border-gray-200">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap flex-1">
+                    <Users className="h-3 w-3 text-gray-500 flex-shrink-0" />
+                    {assignees.length > 0 ? assignees.map((admin) => (
+                      <Badge
+                        key={admin.id}
+                        variant="secondary"
+                        className="text-[10px] h-5 gap-1 px-2 bg-teal-50 text-teal-700 border-teal-100"
+                      >
+                        {admin.displayName || admin.username}
+                      </Badge>
+                    )) : (
+                      <span className="text-[10px] text-gray-400">ยังไม่มีผู้ดูแล</span>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setSelectedAdminIds(assignees.map(a => a.id))
+                      setIsManageAssigneesOpen(true)
+                    }}
+                    className="h-6 px-2 text-[10px] hover:bg-teal-50 hover:text-teal-700 flex-shrink-0 cursor-pointer"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+              </Card>
+
+              {/* ข้อมูลและโน้ต (Tags) */}
+              <ProfileSection title="ข้อมูลและโน้ต" icon={Tag} sectionKey="tags" defaultOpen={true}>
+                <TagSelector userId={user.id} currentTags={tags} />
+              </ProfileSection>
+
+              {/* ข้อมูลติดต่อ & โน้ต */}
+              <ProfileSection title="ข้อมูลติดต่อ" icon={User} sectionKey="contact" defaultOpen={true}>
+                <div className="space-y-4">
+                  {!isEditingContact ? (
+                    <div className="space-y-0 bg-white rounded-lg border border-gray-50 p-1">
+                      <div className="flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[10px] text-teal-600 hover:text-teal-700 hover:bg-teal-50 cursor-pointer"
+                          onClick={() => setIsEditingContact(true)}
+                        >
+                          <Edit2 className="h-3 w-3 mr-1" />
+                          แก้ไขข้อมูล
+                        </Button>
+                      </div>
+                      <InfoRow icon={User} label="ชื่อจริง" value={user.realName} />
+                      <InfoRow icon={Star} label="เลขสมาชิก" value={user.memberId} />
+                      <InfoRow icon={Phone} label="เบอร์โทร" value={user.phone} />
+                      <InfoRow icon={Mail} label="อีเมล" value={user.email} />
+                      <InfoRow
+                        icon={Calendar}
+                        label="วันเกิด"
+                        value={user.birthday || user.birthDate ? formatDate(user.birthday || user.birthDate || '') : null}
+                      />
+                      <InfoRow
+                        icon={User}
+                        label="เพศ"
+                        value={user.gender === 'male' ? 'ชาย' : user.gender === 'female' ? 'หญิง' : user.gender === 'other' ? 'อื่นๆ' : null}
+                      />
+                      <InfoRow
+                        icon={MapPin}
+                        label="ที่อยู่"
+                        value={
+                          user.address
+                            ? `${user.address}${user.district ? `, ${user.district}` : ''}${user.province ? `, ${user.province}` : ''
+                            }${user.postalCode ? ` ${user.postalCode}` : ''}`
+                            : null
+                        }
+                      />
+                      {user.note && (
+                        <InfoRow icon={FileText} label="หมายเหตุ" value={user.note} />
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2 bg-white rounded-lg border border-gray-200 p-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 mb-1 block">ชื่อที่แสดง</label>
+                          <Input
+                            value={contactDraft.displayName}
+                            onChange={(e) =>
+                              setContactDraft((prev) => ({ ...prev, displayName: e.target.value }))
+                            }
+                            className="h-8 text-sm"
+                            placeholder="ชื่อที่แสดง"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 mb-1 block">ชื่อจริง</label>
+                          <Input
+                            value={contactDraft.realName}
+                            onChange={(e) =>
+                              setContactDraft((prev) => ({ ...prev, realName: e.target.value }))
+                            }
+                            className="h-8 text-sm"
+                            placeholder="ชื่อ-นามสกุล"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 mb-1 block">เลขสมาชิก</label>
+                          <Input
+                            value={contactDraft.memberId}
+                            onChange={(e) =>
+                              setContactDraft((prev) => ({ ...prev, memberId: e.target.value }))
+                            }
+                            className="h-8 text-sm font-mono"
+                            placeholder="PC10000"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 mb-1 block">เบอร์โทร</label>
+                          <Input
+                            value={contactDraft.phone}
+                            onChange={(e) =>
+                              setContactDraft((prev) => ({ ...prev, phone: e.target.value }))
+                            }
+                            className="h-8 text-sm"
+                            placeholder="08x-xxx-xxxx"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-600 mb-1 block">อีเมล</label>
+                        <Input
+                          type="email"
+                          value={contactDraft.email}
+                          onChange={(e) =>
+                            setContactDraft((prev) => ({ ...prev, email: e.target.value }))
+                          }
+                          className="h-8 text-sm"
+                          placeholder="email@example.com"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 mb-1 block">วันเกิด</label>
+                          <Input
+                            type="date"
+                            value={contactDraft.birthday}
+                            onChange={(e) =>
+                              setContactDraft((prev) => ({ ...prev, birthday: e.target.value }))
+                            }
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 mb-1 block">เพศ</label>
+                          <select
+                            value={contactDraft.gender}
+                            onChange={(e) =>
+                              setContactDraft((prev) => ({ ...prev, gender: e.target.value }))
+                            }
+                            className="h-8 w-full rounded-md border border-input bg-background px-3 text-sm"
+                          >
+                            <option value="">-- เลือก --</option>
+                            <option value="male">ชาย</option>
+                            <option value="female">หญิง</option>
+                            <option value="other">อื่นๆ</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-600 mb-1 block">ที่อยู่</label>
+                        <Textarea
+                          value={contactDraft.address}
+                          onChange={(e) =>
+                            setContactDraft((prev) => ({ ...prev, address: e.target.value }))
+                          }
+                          className="text-sm min-h-[60px]"
+                          placeholder="บ้านเลขที่ ซอย ถนน"
+                        />
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 mb-1 block">เขต/อำเภอ</label>
+                          <Input
+                            value={contactDraft.district}
+                            onChange={(e) =>
+                              setContactDraft((prev) => ({ ...prev, district: e.target.value }))
+                            }
+                            className="h-8 text-sm"
+                            placeholder="เขต/อำเภอ"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 mb-1 block">จังหวัด</label>
+                          <Input
+                            value={contactDraft.province}
+                            onChange={(e) =>
+                              setContactDraft((prev) => ({ ...prev, province: e.target.value }))
+                            }
+                            className="h-8 text-sm"
+                            placeholder="จังหวัด"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 mb-1 block">รหัสไปรษณีย์</label>
+                          <Input
+                            value={contactDraft.postalCode}
+                            onChange={(e) =>
+                              setContactDraft((prev) => ({ ...prev, postalCode: e.target.value }))
+                            }
+                            className="h-8 text-sm"
+                            placeholder="10xxx"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-600 mb-1 block">หมายเหตุ</label>
+                        <Textarea
+                          value={contactDraft.note}
+                          onChange={(e) =>
+                            setContactDraft((prev) => ({ ...prev, note: e.target.value }))
+                          }
+                          className="text-sm min-h-[60px]"
+                          placeholder="บันทึกเพิ่มเติมเกี่ยวกับลูกค้า..."
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2 pt-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setIsEditingContact(false)
+                            setContactDraft({
+                              displayName: user.displayName || '',
+                              realName: user.realName || '',
+                              memberId: user.memberId || '',
+                              phone: user.phone || '',
+                              email: user.email || '',
+                              birthday: user.birthday || user.birthDate || '',
+                              gender: user.gender || '',
+                              address: user.address || '',
+                              district: user.district || '',
+                              province: user.province || '',
+                              postalCode: user.postalCode || '',
+                              note: user.note || '',
+                            })
+                          }}
+                        >
+                          ยกเลิก
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs"
+                          style={{ background: '#0C665D' }}
+                          onClick={async () => {
+                            await updateProfile.mutateAsync({
+                              userId: user.id,
+                              displayName: contactDraft.displayName || null,
+                              realName: contactDraft.realName || null,
+                              memberId: contactDraft.memberId || null,
+                              phone: contactDraft.phone || null,
+                              email: contactDraft.email || null,
+                              birthday: contactDraft.birthday || null,
+                              gender: contactDraft.gender || null,
+                              address: contactDraft.address || null,
+                              district: contactDraft.district || null,
+                              province: contactDraft.province || null,
+                              postalCode: contactDraft.postalCode || null,
+                              note: contactDraft.note || null,
+                            })
+                            setIsEditingContact(false)
+                          }}
+                          disabled={updateProfile.isPending}
+                        >
+                          บันทึก
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="pt-2 border-t border-gray-100">
+                    <NotesSection userId={user.id} />
+                  </div>
+                </div>
+              </ProfileSection>
+
+              {/* LINE Info */}
+              <ProfileSection title="ข้อมูล LINE" icon={MessageCircle} sectionKey="line-info">
+                <LineInfoSection user={user} />
+              </ProfileSection>
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        {/* Tab 2: Odoo Orders & Slips */}
+        <TabsContent value="odoo" className="flex-1 m-0 overflow-hidden">
           <OdooDashboardPanel
             partnerId={odooPartnerData?.partnerId}
             customerRef={user.memberId || undefined}
             lineUserId={user.lineUserId || undefined}
+            userId={user.id}
           />
         </TabsContent>
-
-        {/* Slips Tab */}
-        <TabsContent value="slips" className="flex-1 m-0 overflow-y-auto p-3">
-          <OdooSlipsSection userId={user.id} />
-        </TabsContent>
       </Tabs>
+
+      {/* Add Points Dialog */}
+      <Dialog open={isAddPointsOpen} onOpenChange={setIsAddPointsOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>บันทึกยอดซื้อ & เพิ่มแต้ม</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">ยอดซื้อ (บาท)</label>
+              <Input
+                type="number"
+                placeholder="กรอกยอดซื้อ เช่น 17000"
+                value={orderAmount}
+                onChange={(e) => setOrderAmount(e.target.value)}
+                min="1000"
+                step="100"
+                className="text-lg"
+              />
+            </div>
+            {orderAmount && Number(orderAmount) > 0 && (
+              <div className="rounded-lg border p-3 space-y-2" style={{ background: '#F0F9F8', borderColor: '#0C665D33' }}>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">ยอดซื้อ</span>
+                  <span className="font-bold text-gray-900">{Number(orderAmount).toLocaleString()} ฿</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">อัตรา</span>
+                  <span className="text-gray-500">1,000 ฿ = 1 point</span>
+                </div>
+                <hr className="border-gray-200" />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium" style={{ color: '#0C665D' }}>ได้รับแต้ม</span>
+                  <span className="text-xl font-bold" style={{ color: '#0C665D' }}>{calculatedPoints} point</span>
+                </div>
+                {calculatedPoints <= 0 && (
+                  <p className="text-xs text-red-500 flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    ยอดซื้อต้องอย่างน้อย 1,000 บาท เพื่อได้รับ 1 point
+                  </p>
+                )}
+              </div>
+            )}
+            <div>
+              <label className="text-sm font-medium mb-2 block">หมายเหตุ (ไม่บังคับ)</label>
+              <Textarea
+                placeholder="ระบุหมายเหตุ เช่น เลขที่ใบเสร็จ"
+                value={pointsReason}
+                onChange={(e) => setPointsReason(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsAddPointsOpen(false)
+                setOrderAmount('')
+                setPointsReason('')
+              }}
+              disabled={isAddingPoints}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={handleAddPoints}
+              disabled={isAddingPoints || !orderAmount || calculatedPoints <= 0}
+              style={{ background: '#0C665D' }}
+            >
+              {isAddingPoints ? 'กำลังบันทึก...' : `บันทึกยอดซื้อ (${calculatedPoints} point)`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manage Assignees Dialog */}
+      <Dialog open={isManageAssigneesOpen} onOpenChange={setIsManageAssigneesOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>จัดการผู้ดูแลลูกค้า</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {(admins || []).map((admin) => {
+                const isSelected = selectedAdminIds.includes(admin.id)
+                return (
+                  <div
+                    key={admin.id}
+                    onClick={() => {
+                      setSelectedAdminIds(prev =>
+                        isSelected
+                          ? prev.filter(id => id !== admin.id)
+                          : [...prev, admin.id]
+                      )
+                    }}
+                    className={cn(
+                      "flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors duration-200",
+                      isSelected
+                        ? "bg-teal-50 border-teal-200"
+                        : "bg-white border-gray-200 hover:bg-gray-50"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0",
+                      isSelected
+                        ? "bg-teal-600 border-teal-600"
+                        : "border-gray-300"
+                    )}>
+                      {isSelected && (
+                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={admin.avatarUrl || undefined} />
+                      <AvatarFallback className="text-xs">
+                        {getInitials(admin.displayName || admin.username)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">
+                        {admin.displayName || admin.username}
+                      </div>
+                      <div className="text-xs text-gray-500">{admin.role}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsManageAssigneesOpen(false)}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={async () => {
+                try {
+                  const currentIds = assignees.map(a => a.id)
+                  const toAdd = selectedAdminIds.filter(id => !currentIds.includes(id))
+                  const toRemove = currentIds.filter(id => !selectedAdminIds.includes(id))
+
+                  for (const adminId of toAdd) {
+                    await assignConversation.mutateAsync({ userId: user.id, adminId })
+                  }
+                  for (const adminId of toRemove) {
+                    await unassignConversation.mutateAsync({ userId: user.id, adminId })
+                  }
+
+                  queryClient.invalidateQueries({ queryKey: queryKeys.customerProfile(user.id) })
+                  setIsManageAssigneesOpen(false)
+                  toast({ title: 'สำเร็จ', description: 'อัปเดตผู้ดูแลเรียบร้อยแล้ว' })
+                } catch (error) {
+                  toast({ title: 'เกิดข้อผิดพลาด', description: 'ไม่สามารถอัปเดตผู้ดูแลได้', variant: 'destructive' })
+                }
+              }}
+              style={{ background: '#0C665D' }}
+              disabled={assignConversation.isPending || unassignConversation.isPending}
+            >
+              {assignConversation.isPending || unassignConversation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

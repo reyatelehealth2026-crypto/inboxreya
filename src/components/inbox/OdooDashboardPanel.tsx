@@ -3,17 +3,19 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Image from 'next/image'
-import { ShoppingBag, FileText, Receipt, Eye, Clock, CheckCircle2, XCircle, AlertCircle } from 'lucide-react'
+import { ShoppingBag, FileText, Receipt, Eye, AlertCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { OdooSlipsSection } from './OdooSlipsSection'
 
 interface OdooDashboardPanelProps {
   partnerId?: number | null
   customerRef?: string | null
   lineUserId?: string | null
+  userId?: string | null
 }
 
 interface OdooOrderItem {
@@ -124,7 +126,7 @@ const slipStatusMap: Record<string, { label: string; color: string }> = {
 
 type DashTab = 'orders' | 'invoices' | 'slips'
 
-export function OdooDashboardPanel({ partnerId, customerRef, lineUserId }: OdooDashboardPanelProps) {
+export function OdooDashboardPanel({ partnerId, customerRef, lineUserId, userId }: OdooDashboardPanelProps) {
   const [activeTab, setActiveTab] = useState<DashTab>('orders')
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
@@ -168,9 +170,7 @@ export function OdooDashboardPanel({ partnerId, customerRef, lineUserId }: OdooD
 
   const allOrders = data?.orders || []
   const invoices = data?.invoices || []
-  const slips = data?.slips || []
 
-  // Filter to only show undelivered orders
   const deliveredStates = ['done', 'cancel']
   const orders = allOrders.filter((o) => {
     if (o.is_delivered === true) return false
@@ -182,52 +182,66 @@ export function OdooDashboardPanel({ partnerId, customerRef, lineUserId }: OdooD
   const tabs: { id: DashTab; label: string; count: number; icon: typeof ShoppingBag }[] = [
     { id: 'orders', label: 'ออเดอร์', count: orders.length, icon: ShoppingBag },
     { id: 'invoices', label: 'ใบแจ้งหนี้', count: data?.invoicesTotal || invoices.length, icon: FileText },
-    { id: 'slips', label: 'สลิป', count: data?.slipsTotal || slips.length, icon: Receipt },
+    { id: 'slips', label: 'สลิป', count: 0, icon: Receipt },
   ]
 
   return (
     <div className="flex flex-col h-full">
-      {/* Sub-tabs */}
-      <div className="flex border-b border-gray-200 bg-white flex-shrink-0">
-        {tabs.map((tab) => {
-          const Icon = tab.icon
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                'flex-1 flex items-center justify-center gap-1 px-2 py-2 text-xs font-medium transition-colors border-b-2',
-                activeTab === tab.id
-                  ? 'text-gray-900 border-gray-900'
-                  : 'text-gray-400 border-transparent hover:text-gray-600'
-              )}
-            >
-              <Icon className="h-3 w-3" />
-              {tab.label}
-              {tab.count > 0 && (
-                <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 rounded-full">{tab.count}</span>
-              )}
-            </button>
-          )
-        })}
+      {/* Sub-tabs: Pill / Segmented Control style */}
+      <div className="flex-shrink-0 px-3 py-2 bg-white border-b border-gray-100">
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+          {tabs.map((tab) => {
+            const Icon = tab.icon
+            const isActive = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 cursor-pointer',
+                  isActive
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                )}
+              >
+                <Icon className="h-3 w-3" />
+                {tab.label}
+                {tab.id !== 'slips' && tab.count > 0 && (
+                  <span className={cn(
+                    'text-[10px] px-1.5 rounded-full font-bold',
+                    isActive ? 'bg-gray-100 text-gray-600' : 'bg-gray-200 text-gray-500'
+                  )}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Content */}
-      <ScrollArea className="flex-1">
-        <div className="p-3">
-          {activeTab === 'orders' && (
-            <OrdersList orders={orders} />
-          )}
-          {activeTab === 'invoices' && (
-            <InvoicesList invoices={invoices} />
-          )}
-          {activeTab === 'slips' && (
-            <SlipsList slips={slips} onPreview={setPreviewUrl} />
+      {activeTab === 'slips' ? (
+        <div className="flex-1 overflow-y-auto p-3">
+          {userId ? (
+            <OdooSlipsSection userId={userId} />
+          ) : (
+            <div className="text-center py-8 text-gray-400">
+              <Receipt className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">ไม่พบข้อมูลผู้ใช้</p>
+            </div>
           )}
         </div>
-      </ScrollArea>
+      ) : (
+        <ScrollArea className="flex-1">
+          <div className="p-3">
+            {activeTab === 'orders' && <OrdersList orders={orders} />}
+            {activeTab === 'invoices' && <InvoicesList invoices={invoices} />}
+          </div>
+        </ScrollArea>
+      )}
 
-      {/* Slip preview */}
+      {/* Slip image preview */}
       <Dialog open={!!previewUrl} onOpenChange={() => setPreviewUrl(null)}>
         <DialogContent className="max-w-lg p-2">
           {previewUrl && (
