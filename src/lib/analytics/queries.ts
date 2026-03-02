@@ -122,6 +122,61 @@ function getTierBySpending(spent: number): string {
 }
 
 // ============================================
+// Odoo Behavior Patterns Query (NEW)
+// ============================================
+
+export async function getOdooBehaviorPatterns(): Promise<BehaviorPattern[]> {
+  // Get order counts per customer from odoo_orders
+  const [customerOrders] = await pool.execute(`
+    SELECT 
+      partner_id,
+      COUNT(*) as order_count
+    FROM odoo_orders
+    WHERE state NOT IN ('cancel', 'draft')
+    GROUP BY partner_id
+  `);
+
+  const customers = customerOrders as any[];
+  const total = customers.length;
+
+  if (total === 0) {
+    return [
+      { name: 'Frequent Buyers', description: '6+ orders', count: 0, percentage: 0 },
+      { name: 'Regular Buyers', description: '3-5 orders', count: 0, percentage: 0 },
+      { name: 'Occasional Buyers', description: '1-2 orders', count: 0, percentage: 0 }
+    ];
+  }
+
+  // Frequent: 6+ orders
+  const frequent = customers.filter(c => c.order_count >= 6).length;
+  // Regular: 3-5 orders
+  const regular = customers.filter(c => c.order_count >= 3 && c.order_count < 6).length;
+  // Occasional: 1-2 orders
+  const occasional = customers.filter(c => c.order_count >= 1 && c.order_count < 3).length;
+
+  return [
+    { 
+      name: 'Frequent Buyers', 
+      description: '6+ orders', 
+      count: frequent, 
+      percentage: total ? Math.round((frequent / total) * 100) : 0 
+    },
+    { 
+      name: 'Regular Buyers', 
+      description: '3-5 orders', 
+      count: regular, 
+      percentage: total ? Math.round((regular / total) * 100) : 0 
+    },
+    { 
+      name: 'Occasional Buyers', 
+      description: '1-2 orders', 
+      count: occasional, 
+      percentage: total ? Math.round((occasional / total) * 100) : 0 
+    }
+  ].filter(p => p.count > 0);
+}
+
+// ============================================
 // Odoo Sales Trend Query
 // ============================================
 
@@ -397,6 +452,7 @@ export async function getUnifiedAnalyticsData(): Promise<UnifiedAnalyticsData> {
     totalOdooCustomers,
     customerSegments,
     topCustomers,
+    behaviorPatterns,
     salesTrend,
     avgSentiment,
     sentimentDistribution,
@@ -408,6 +464,7 @@ export async function getUnifiedAnalyticsData(): Promise<UnifiedAnalyticsData> {
     getTotalOdooCustomers(),
     getOdooCustomerSegments(),
     getOdooTopCustomers(10),
+    getOdooBehaviorPatterns(),
     getOdooSalesTrend(30),
     getAvgSentimentScore(),
     getSentimentDistribution(30),
@@ -420,8 +477,19 @@ export async function getUnifiedAnalyticsData(): Promise<UnifiedAnalyticsData> {
   return {
     stats: {
       ...salesStats,
-      totalCustomers: totalOdooCustomers, // Use Odoo linked customers count
+      totalCustomers: totalOdooCustomers,
       avgSentiment
+    },
+    salesTrend,
+    segments: customerSegments,
+    topCustomers,
+    behaviorPatterns,
+    sentimentDistribution,
+    complaintCategories,
+    recentIssues,
+    topComplainers
+  };
+}
     },
     salesTrend,
     segments: customerSegments,
