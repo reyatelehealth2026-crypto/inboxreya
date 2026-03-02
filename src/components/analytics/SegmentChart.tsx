@@ -8,7 +8,8 @@ import {
   Cell,
   ResponsiveContainer,
   Tooltip,
-  Legend
+  Legend,
+  PieLabelRenderProps
 } from 'recharts';
 
 interface SegmentChartProps {
@@ -16,14 +17,14 @@ interface SegmentChartProps {
 }
 
 // Fintech color palette from ui-ux-pro-max
-const COLORS = {
+const COLORS: Record<string, string> = {
   vip: '#F59E0B',    // Amber for VIP
   gold: '#3B82F6',   // Blue for Gold
   silver: '#64748B', // Slate for Silver
   bronze: '#A16207'  // Dark amber for Bronze
 };
 
-interface PieData {
+interface ChartData {
   name: string;
   value: number;
   percentage: number;
@@ -31,14 +32,16 @@ interface PieData {
 }
 
 export function SegmentChart({ segments }: SegmentChartProps) {
-  const data: PieData[] = segments.map(s => ({
+  const data: ChartData[] = segments.map(s => ({
     name: s.name,
     value: s.count,
     percentage: s.percentage,
     tier: s.tier
   }));
 
-  const renderLabel = ({ name, percentage }: PieData) => {
+  const renderLabel = (props: PieLabelRenderProps & { payload?: ChartData }) => {
+    const { name, payload } = props;
+    const percentage = payload?.percentage ?? 0;
     return `${name} (${percentage}%)`;
   };
 
@@ -63,7 +66,7 @@ export function SegmentChart({ segments }: SegmentChartProps) {
               {data.map((entry, index) => (
                 <Cell 
                   key={`cell-${index}`} 
-                  fill={COLORS[entry.tier as keyof typeof COLORS] || '#3B82F6'} 
+                  fill={COLORS[entry.tier] || '#3B82F6'} 
                 />
               ))}
             </Pie>
