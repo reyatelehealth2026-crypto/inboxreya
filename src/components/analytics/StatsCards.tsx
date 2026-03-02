@@ -3,10 +3,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SalesStats } from '@/lib/analytics/types';
 import { formatCurrency, formatNumber } from '@/lib/utils';
-import { TrendingUp, Users, ShoppingCart, Package } from 'lucide-react';
+import { TrendingUp, Users, ShoppingCart, Package, Smile } from 'lucide-react';
 
 interface StatsCardsProps {
-  stats: SalesStats;
+  stats: SalesStats & { avgSentiment?: number };
 }
 
 export function StatsCards({ stats }: StatsCardsProps) {
@@ -28,20 +28,20 @@ export function StatsCards({ stats }: StatsCardsProps) {
       borderColor: 'border-blue-100'
     },
     {
-      title: 'มูลค่าออเดอร์เฉลี่ย',
-      value: formatCurrency(stats.avgOrderValue),
-      icon: ShoppingCart,
-      color: 'text-amber-600',
-      bgColor: 'bg-amber-50',
-      borderColor: 'border-amber-100'
-    },
-    {
       title: 'จำนวนออเดอร์',
       value: formatNumber(stats.totalOrders),
       icon: Package,
       color: 'text-blue-500',
       bgColor: 'bg-blue-50/60',
       borderColor: 'border-blue-100'
+    },
+    {
+      title: 'คะแนนความพึงพอใจ',
+      value: `${stats.avgSentiment ?? 50}%`,
+      icon: Smile,
+      color: getSentimentColor(stats.avgSentiment ?? 50),
+      bgColor: getSentimentBgColor(stats.avgSentiment ?? 50),
+      borderColor: getSentimentBorderColor(stats.avgSentiment ?? 50)
     }
   ];
 
@@ -67,4 +67,22 @@ export function StatsCards({ stats }: StatsCardsProps) {
       ))}
     </div>
   );
+}
+
+function getSentimentColor(score: number): string {
+  if (score >= 70) return 'text-green-600';
+  if (score >= 50) return 'text-yellow-600';
+  return 'text-red-600';
+}
+
+function getSentimentBgColor(score: number): string {
+  if (score >= 70) return 'bg-green-50';
+  if (score >= 50) return 'bg-yellow-50';
+  return 'bg-red-50';
+}
+
+function getSentimentBorderColor(score: number): string {
+  if (score >= 70) return 'border-green-100';
+  if (score >= 50) return 'border-yellow-100';
+  return 'border-red-100';
 }
