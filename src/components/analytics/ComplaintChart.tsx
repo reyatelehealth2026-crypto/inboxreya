@@ -10,8 +10,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Cell,
-  TooltipProps
+  Cell
 } from 'recharts';
 
 interface ComplaintChartProps {
@@ -38,21 +37,27 @@ interface ChartData extends ComplaintCategory {
   label: string;
 }
 
+// Custom Tooltip Content
+function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: ChartData }> }) {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="bg-white p-2 border border-gray-200 rounded shadow-sm">
+        <p className="font-medium">{data.label}</p>
+        <p className="text-sm text-gray-600">
+          จำนวน: {data.count} ({data.percentage}%)
+        </p>
+      </div>
+    );
+  }
+  return null;
+}
+
 export function ComplaintChart({ categories }: ComplaintChartProps) {
   const data: ChartData[] = categories.map(cat => ({
     ...cat,
     label: CATEGORY_LABELS[cat.category] || cat.category
   }));
-
-  // Custom tooltip formatter
-  const customFormatter = (value: number | string | Array<number | string>, name: string | number, props: TooltipProps<number | string, string>['payload']) => {
-    if (!props || !props.payload) return ['', ''];
-    
-    const payload = props.payload as unknown as ChartData;
-    const count = payload.count || 0;
-    const percentage = payload.percentage || 0;
-    return [`${count} (${percentage}%)`, 'จำนวน'];
-  };
 
   return (
     <Card className="border-blue-100">
@@ -80,14 +85,7 @@ export function ComplaintChart({ categories }: ComplaintChartProps) {
                 fontSize={12}
                 width={80}
               />
-              <Tooltip 
-                contentStyle={{
-                  backgroundColor: '#F8FAFC',
-                  border: '1px solid #E2E8F0',
-                  borderRadius: '8px'
-                }}
-                formatter={customFormatter}
-              />
+              <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                 {data.map((entry, index) => (
                   <Cell 
