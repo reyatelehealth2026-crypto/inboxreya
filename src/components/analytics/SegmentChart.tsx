@@ -73,7 +73,11 @@ export function SegmentChart({ segments }: SegmentChartProps) {
               outerRadius={70}
               fill="#8884d8"
               dataKey="value"
-              label={({ name, percentage }) => `${percentage}%`}
+              label={(props) => {
+                const payload = props?.payload as ChartData | undefined;
+                const percentage = payload?.percentage ?? 0;
+                return `${percentage}%`;
+              }}
             >
               {data.map((entry, index) => (
                 <Cell 

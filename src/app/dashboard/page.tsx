@@ -1,153 +1,97 @@
-'use client'
+'use client';
 
-import { auth } from "@/lib/auth"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { BarChart3, Users, MessageSquare, TrendingUp, Clock } from "lucide-react"
-import { useDashboardStats } from "@/hooks/use-dashboard-stats"
-import { Skeleton } from "@/components/ui/skeleton"
+import { useState } from 'react';
+import { InboxLayout } from '@/components/layout/InboxLayout';
+import { TabNavigation, AnalyticsTab } from '@/components/analytics/TabNavigation';
+import { OverviewTab } from '@/components/analytics/OverviewTab';
+import { SalesTab } from '@/components/analytics/SalesTab';
+import { CustomersTab } from '@/components/analytics/CustomersTab';
+import { AIInsightsTab } from '@/components/analytics/AIInsightsTab';
+import { useQuery } from '@tanstack/react-query';
+import { UnifiedAnalyticsData } from '@/lib/analytics/types';
+import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 
-function DashboardContent() {
-  const { data: stats, isLoading } = useDashboardStats()
-
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <Skeleton className="h-8 w-48 mb-2" />
-          <Skeleton className="h-4 w-96" />
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-4 w-4" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-8 w-16 mb-2" />
-                <Skeleton className="h-3 w-32" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
+function LoadingSkeleton() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">ภาพรวม</h1>
-        <p className="text-muted-foreground">
-          ภาพรวมระบบและสถิติสำคัญ
-        </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[...Array(4)].map((_, i) => (
+          <Card key={i}>
+            <CardContent className="pt-6">
+              <Skeleton className="h-4 w-24 mb-2" />
+              <Skeleton className="h-8 w-32" />
+            </CardContent>
+          </Card>
+        ))}
       </div>
-
-      {/* Quick Stats */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">ข้อความทั้งหมด</CardTitle>
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalMessages.toLocaleString() || 0}</div>
-            <p className="text-xs text-muted-foreground">
-              ข้อความทั้งหมดในระบบ
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">ลูกค้าทั้งหมด</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalCustomers.toLocaleString() || 0}</div>
-            <p className="text-xs text-muted-foreground">
-              ลูกค้าที่ลงทะเบียนในระบบ
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">อัตราตอบกลับ</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.responseRate || 0}%</div>
-            <p className="text-xs text-muted-foreground">
-              เปอร์เซ็นต์การตอบกลับข้อความ
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">เวลาตอบกลับเฉลี่ย</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {stats?.avgResponseTime ? `${stats.avgResponseTime} นาที` : '-'}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              เวลาเฉลี่ยในการตอบกลับ
-            </p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Skeleton className="h-[300px]" />
+        <Skeleton className="h-[300px]" />
       </div>
-
-      {/* Info Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>เริ่มต้นใช้งาน</CardTitle>
-          <CardDescription>
-            เลือกเมนูจาก Sidebar ด้านซ้ายเพื่อเข้าถึงฟีเจอร์ต่างๆ
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-100 text-green-600">
-              <MessageSquare className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="font-medium">กล่องข้อความ</p>
-              <p className="text-sm text-muted-foreground">
-                จัดการการสนทนากับลูกค้าผ่าน LINE
-              </p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
-              <BarChart3 className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="font-medium">Dashboard</p>
-              <p className="text-sm text-muted-foreground">
-                ดูสถิติและรายงานต่างๆ ของระบบ
-              </p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100 text-purple-600">
-              <Users className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="font-medium">จัดการลูกค้า</p>
-              <p className="text-sm text-muted-foreground">
-                ดูและจัดการข้อมูลลูกค้าทั้งหมด
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
-  )
+  );
 }
 
-export default function DashboardPage() {
-  return <DashboardContent />
+export default function AnalyticsPage() {
+  const [activeTab, setActiveTab] = useState<AnalyticsTab>('overview');
+
+  const { data, isLoading, error } = useQuery<UnifiedAnalyticsData>({
+    queryKey: ['unified-analytics'],
+    queryFn: async () => {
+      const response = await fetch('/api/analytics');
+      if (!response.ok) {
+        throw new Error('Failed to fetch analytics data');
+      }
+      return response.json();
+    },
+    refetchInterval: 5 * 60 * 1000, // Refresh every 5 minutes
+    staleTime: 60 * 1000 // Consider stale after 1 minute
+  });
+
+  const renderTabContent = () => {
+    if (isLoading) {
+      return <LoadingSkeleton />;
+    }
+
+    if (error || !data) {
+      return (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <p className="text-red-700">
+              ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่อีกครั้ง
+            </p>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    switch (activeTab) {
+      case 'overview':
+        return <OverviewTab data={data} />;
+      case 'sales':
+        return <SalesTab data={data} />;
+      case 'customers':
+        return <CustomersTab data={data} />;
+      case 'ai-insights':
+        return <AIInsightsTab data={data} />;
+      default:
+        return <OverviewTab data={data} />;
+    }
+  };
+
+  return (
+    <InboxLayout>
+      <div className="p-6">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600">ภาพรวมยอดขาย ลูกค้า และ AI Insights จาก Odoo</p>
+        </div>
+
+        <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />
+
+        {renderTabContent()}
+      </div>
+    </InboxLayout>
+  );
 }
