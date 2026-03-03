@@ -28,6 +28,7 @@ import {
   UserCog,
   Link2,
   Package,
+  Briefcase,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -55,6 +56,7 @@ const menuGroups: MenuGroup[] = [
     groupIcon: '📊',
     menus: [
       { title: 'หน้าแรก', icon: <Home className="h-4 w-4" />, href: '/dashboard' },
+      { title: 'งานของฉัน', icon: <Briefcase className="h-4 w-4" />, href: '/dashboard/my-work' },
       { title: 'Admin Dashboard', icon: <UserCog className="h-4 w-4" />, href: '/dashboard/admin' },
       { title: 'Customer Dashboard', icon: <Users className="h-4 w-4" />, href: '/dashboard/customers' },
     ],
@@ -66,14 +68,6 @@ const menuGroups: MenuGroup[] = [
     menus: [
       { title: 'กล่องข้อความ', icon: <MessageSquare className="h-4 w-4" />, href: '/inbox' },
       { title: 'แชทกลุ่ม', icon: <MessagesSquare className="h-4 w-4" />, href: '/inbox/groups' },
-    ],
-  },
-  {
-    groupId: 'orders',
-    groupTitle: 'ออเดอร์',
-    groupIcon: '📦',
-    menus: [
-      { title: 'Order Dashboard', icon: <Package className="h-4 w-4" />, href: '/inbox/orders/dashboard' },
     ],
   },
   {
