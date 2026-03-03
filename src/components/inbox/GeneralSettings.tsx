@@ -148,7 +148,7 @@ export function GeneralSettings() {
                             <div>
                                 <Label htmlFor="auto-advance" className="text-base font-semibold">เปลี่ยนแชทถัดไปอัตโนมัติ</Label>
                                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                                    เมื่อกด "ปิดงาน" (Mark as Resolved) จะเปลี่ยนไปแชทถัดไปทันที
+                                    เมื่อกด &quot;ปิดงาน&quot; (Mark as Resolved) จะเปลี่ยนไปแชทถัดไปทันที
                                 </p>
                             </div>
                         </div>

@@ -269,7 +269,7 @@ export function NotificationSettings() {
                         </Button>
                     </div>
                     <p className="text-xs text-amber-800 dark:text-amber-200 bg-amber-100 dark:bg-amber-900 p-3 rounded-lg">
-                        <strong>หมายเหตุ:</strong> หากไม่เห็นการแจ้งเตือนบนเดสก์ท็อป กรุณาคลิก "อนุญาตการแจ้งเตือน" และอนุญาตในการตั้งค่าเบราว์เซอร์
+                        <strong>หมายเหตุ:</strong> หากไม่เห็นการแจ้งเตือนบนเดสก์ท็อป กรุณาคลิก &quot;อนุญาตการแจ้งเตือน&quot; และอนุญาตในการตั้งค่าเบราว์เซอร์
                     </p>
                 </CardContent>
             </Card>
