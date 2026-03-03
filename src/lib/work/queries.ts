@@ -65,7 +65,7 @@ const mapStatusToApi = (dashboardStatus: WorkStatus): string => {
 export const getAllWork = async (assignedToMe: boolean = false): Promise<CustomerWork[]> => {
   try {
     const url = assignedToMe 
-      ? '/api/inbox/conversations?limit=200&assignedToIds=me' 
+      ? '/api/inbox/conversations?limit=200&assignedTo=me' 
       : '/api/inbox/conversations?limit=200';
       
     const response = await fetch(url);

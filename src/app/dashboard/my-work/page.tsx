@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -115,6 +116,7 @@ function DroppableColumn({ column, children, isOver }: DroppableColumnProps) {
 }
 
 export default function MyWorkPage() {
+  const router = useRouter();
   const [workItems, setWorkItems] = useState<CustomerWork[]>([]);
   const [filteredItems, setFilteredItems] = useState<CustomerWork[]>([]);
   const [summary, setSummary] = useState<WorkSummaryData | null>(null);
@@ -201,8 +203,8 @@ export default function MyWorkPage() {
     if (showLoading) setIsLoading(true);
     try {
       const [workData, summaryData] = await Promise.all([
-        getAllWork(),
-        getWorkSummary(),
+        getAllWork(true),
+        getWorkSummary(true),
       ]);
       setWorkItems(workData);
       setFilteredItems(workData);
@@ -229,7 +231,7 @@ export default function MyWorkPage() {
     }
 
     try {
-      const results = await searchWork(query, filters);
+      const results = await searchWork(query, { ...filters, assignedToMe: true });
       setFilteredItems(results);
     } catch (error) {
       console.error("Search failed:", error);
@@ -264,7 +266,7 @@ export default function MyWorkPage() {
     try {
       await updateWorkStatus(workId, newStatus);
       // Refresh summary after status change
-      const newSummary = await getWorkSummary();
+      const newSummary = await getWorkSummary(true);
       setSummary(newSummary);
     } catch (error) {
       // Revert on error
@@ -318,9 +320,9 @@ export default function MyWorkPage() {
 
   // Handle card click
   const handleCardClick = useCallback((work: CustomerWork) => {
-    // TODO: Open detail modal or navigate to detail page
-    console.log("Open work detail:", work.id);
-  }, []);
+    // Navigate to Inbox and open this specific conversation
+    router.push(`/inbox?userId=${work.customerId}`);
+  }, [router]);
 
   // Handle notification click
   const handleNotificationClick = useCallback((work: CustomerWork) => {

@@ -63,6 +63,14 @@ export default function InboxPageClient() {
 
   useInboxFilterSync()
 
+  // Handle initial conversation selection from query param
+  useEffect(() => {
+    const userId = searchParams.get('userId')
+    if (userId && userId !== selectedConversationId) {
+      setSelectedConversation(userId)
+    }
+  }, [searchParams, setSelectedConversation, selectedConversationId])
+
   // Register keyboard shortcuts
   useInboxKeyboardShortcuts({
     onSearchConversations: () => {

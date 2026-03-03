@@ -147,7 +147,12 @@ export async function GET(request: NextRequest) {
       where.conversationAssignees = {
         none: { status: 'active' },
       }
-    } else if (assignedTo) {
+    } else if (assignedTo === 'me' && !internalRequest && session?.user) {
+      // Filter for conversations assigned to the current user
+      where.conversationAssignees = {
+        some: { adminId: parseInt(session.user.id), status: 'active' },
+      }
+    } else if (assignedTo && assignedTo !== 'me') {
       const parsedAssignedTo = Number(assignedTo)
       if (!Number.isFinite(parsedAssignedTo)) {
         return NextResponse.json({ error: 'assignedTo must be a number' }, { status: 400 })

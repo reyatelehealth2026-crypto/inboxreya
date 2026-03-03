@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { InboxLayout } from '@/components/layout/InboxLayout';
@@ -55,6 +56,7 @@ function LoadingSkeleton() {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { data: session } = useSession();
   const [activeTab, setActiveTab] = useState<AnalyticsTab | 'command-center'>('command-center');
   const [workItems, setWorkItems] = useState<CustomerWork[]>([]);
@@ -96,6 +98,18 @@ export default function DashboardPage() {
     loadWorkData();
   }, [loadWorkData]);
 
+  // Handle card click
+  const handleCardClick = useCallback((work: CustomerWork) => {
+    // Navigate to Inbox and open this specific conversation
+    router.push(`/inbox?userId=${work.customerId}`);
+  }, [router]);
+
+  // Handle notification click
+  const handleNotificationClick = useCallback((work: CustomerWork) => {
+    // Scroll to the work item or highlight it
+    handleCardClick(work);
+  }, [handleCardClick]);
+
   const renderCommandCenter = () => {
     if (isAnalyticsLoading || isWorkLoading) return <LoadingSkeleton />;
 
@@ -132,7 +146,7 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {workItems.length > 0 ? (
                 workItems.map((work) => (
-                  <CustomerWorkCard key={work.id} work={work} />
+                  <CustomerWorkCard key={work.id} work={work} onClick={handleCardClick} />
                 ))
               ) : (
                 <div className="col-span-2 flex flex-col items-center justify-center py-12 bg-white rounded-2xl border border-dashed border-gray-300">
