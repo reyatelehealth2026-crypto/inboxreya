@@ -27,6 +27,7 @@ import {
   MessagesSquare,
   UserCog,
   Link2,
+  Package,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -65,6 +66,14 @@ const menuGroups: MenuGroup[] = [
     menus: [
       { title: 'กล่องข้อความ', icon: <MessageSquare className="h-4 w-4" />, href: '/inbox' },
       { title: 'แชทกลุ่ม', icon: <MessagesSquare className="h-4 w-4" />, href: '/inbox/groups' },
+    ],
+  },
+  {
+    groupId: 'orders',
+    groupTitle: 'ออเดอร์',
+    groupIcon: '📦',
+    menus: [
+      { title: 'Order Dashboard', icon: <Package className="h-4 w-4" />, href: '/inbox/orders/dashboard' },
     ],
   },
   {
