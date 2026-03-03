@@ -66,7 +66,7 @@ export function WorkSummary({ data, isLoading }: WorkSummaryProps) {
           >
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">{card.label}</p>
+                <p className="text-sm font-medium text-gray-600 whitespace-nowrap">{card.label}</p>
                 <div className="mt-2 flex items-baseline gap-2">
                   {isLoading ? (
                     <div className="h-8 w-16 animate-pulse rounded bg-gray-200" />

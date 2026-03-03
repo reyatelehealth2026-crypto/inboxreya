@@ -133,7 +133,7 @@ export function CustomerWorkCard({ work, onStatusChange, onClick, isDragging }: 
           
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <h4 className="font-semibold text-gray-900 truncate">{work.customerName}</h4>
+              <h4 className="font-semibold text-gray-900 truncate whitespace-nowrap">{work.customerName}</h4>
               {work.unreadCount > 0 && (
                 <span className="flex-shrink-0 inline-flex items-center justify-center w-5 h-5 text-xs font-medium text-white bg-red-500 rounded-full">
                   {work.unreadCount}
@@ -141,7 +141,7 @@ export function CustomerWorkCard({ work, onStatusChange, onClick, isDragging }: 
               )}
             </div>
             {work.lineDisplayName && (
-              <p className="text-sm text-gray-500 truncate">@{work.lineDisplayName}</p>
+              <p className="text-sm text-gray-500 truncate whitespace-nowrap">@{work.lineDisplayName}</p>
             )}
           </div>
         </div>
@@ -171,7 +171,7 @@ export function CustomerWorkCard({ work, onStatusChange, onClick, isDragging }: 
         
         <div className="mt-2 flex items-center gap-2">
           <StatusIcon className={`h-3.5 w-3.5 ${status.color}`} />
-          <span className={`text-xs ${status.color}`}>{status.label}</span>
+          <span className={`text-xs ${status.color} whitespace-nowrap`}>{status.label}</span>
           <span className="text-gray-300">•</span>
           <span className="text-xs text-gray-500">{timeAgo}</span>
         </div>

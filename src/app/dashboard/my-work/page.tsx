@@ -446,7 +446,7 @@ export default function MyWorkPage() {
                       {/* Column Header */}
                       <div className="flex items-center justify-between p-4 border-b border-gray-200/60">
                         <div className="flex items-center gap-2">
-                          <h3 className={`font-semibold ${column.color}`}>{column.title}</h3>
+                          <h3 className={`font-semibold ${column.color} whitespace-nowrap`}>{column.title}</h3>
                           <span className="inline-flex items-center justify-center w-6 h-6 text-xs font-medium bg-white rounded-full text-gray-600 border border-gray-200">
                             {items.length}
                           </span>
