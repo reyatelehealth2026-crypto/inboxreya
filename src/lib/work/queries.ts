@@ -62,9 +62,13 @@ const mapStatusToApi = (dashboardStatus: WorkStatus): string => {
 };
 
 // Get all work items from real API
-export const getAllWork = async (): Promise<CustomerWork[]> => {
+export const getAllWork = async (assignedToMe: boolean = false): Promise<CustomerWork[]> => {
   try {
-    const response = await fetch('/api/inbox/conversations?limit=200');
+    const url = assignedToMe 
+      ? '/api/inbox/conversations?limit=200&assignedToIds=me' 
+      : '/api/inbox/conversations?limit=200';
+      
+    const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch real data');
     const { data } = await response.json();
     
@@ -95,8 +99,8 @@ export const getAllWork = async (): Promise<CustomerWork[]> => {
 };
 
 // Get work summary
-export const getWorkSummary = async (): Promise<WorkSummaryData> => {
-  const items = await getAllWork();
+export const getWorkSummary = async (assignedToMe: boolean = false): Promise<WorkSummaryData> => {
+  const items = await getAllWork(assignedToMe);
   
   return {
     totalPending: items.filter(w => w.status === "pending").length,
@@ -114,9 +118,10 @@ export const searchWork = async (
     status?: WorkStatus[];
     priority?: Priority[];
     type?: WorkType[];
+    assignedToMe?: boolean;
   }
 ): Promise<CustomerWork[]> => {
-  let results = await getAllWork();
+  let results = await getAllWork(filters?.assignedToMe);
   
   if (query.trim()) {
     const searchTerm = query.toLowerCase();

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
 import { InboxLayout } from '@/components/layout/InboxLayout';
 import { TabNavigation, AnalyticsTab } from '@/components/analytics/TabNavigation';
 import { OverviewTab } from '@/components/analytics/OverviewTab';
@@ -54,6 +55,7 @@ function LoadingSkeleton() {
 }
 
 export default function DashboardPage() {
+  const { data: session } = useSession();
   const [activeTab, setActiveTab] = useState<AnalyticsTab | 'command-center'>('command-center');
   const [workItems, setWorkItems] = useState<CustomerWork[]>([]);
   const [workSummary, setWorkSummary] = useState<WorkSummaryData | null>(null);
@@ -77,8 +79,8 @@ export default function DashboardPage() {
     setIsWorkLoading(true);
     try {
       const [items, summary] = await Promise.all([
-        getAllWork(),
-        getWorkSummary(),
+        getAllWork(true), // Filter only assigned to me
+        getWorkSummary(true), // Filter only assigned to me
       ]);
       // Show only top 4 urgent/pending items in the Command Center
       setWorkItems(items.filter(i => i.status !== 'completed').slice(0, 4));
@@ -213,7 +215,7 @@ export default function DashboardPage() {
 
   return (
     <InboxLayout>
-      <div className="p-6 lg:p-10 max-w-[1600px] mx-auto min-h-screen">
+      <div className="p-6 lg:p-10 w-full min-h-screen">
         {/* Welcome Header - UX/UI Pro Max */}
         <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="space-y-1 animate-in slide-in-from-left-4 duration-500">
@@ -222,7 +224,7 @@ export default function DashboardPage() {
               {new Date().toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </div>
             <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">
-              ยินดีต้อนรับกลับมา, <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">คุณสมชาย</span> 👋
+              ยินดีต้อนรับกลับมา, <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">คุณ{session?.user?.name || 'สมชาย'}</span> 👋
             </h1>
             <p className="text-lg text-gray-500">วันนี้มีแชทที่รอดำเนินการ {workSummary?.totalPending || 0} รายการ มาจัดการให้จบกันเถอะ!</p>
           </div>
