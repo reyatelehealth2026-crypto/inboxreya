@@ -182,6 +182,29 @@ function MessageBubble({
   const metadata = (message.metadata as any) || {}
   const hasQuoteToken = !!metadata?.quoteToken
   const isLineQuoteReply = !isOutgoing && hasQuoteToken
+  
+  // Fetch quoted message content by quoteToken
+  const [quotedContent, setQuotedContent] = useState<string | null>(null)
+  const [isLoadingQuoted, setIsLoadingQuoted] = useState(false)
+  
+  useEffect(() => {
+    if (isLineQuoteReply && metadata?.quoteToken && !quoteTargetMessage) {
+      setIsLoadingQuoted(true)
+      fetch(`/api/inbox/messages/quoted?quoteToken=${encodeURIComponent(metadata.quoteToken)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.content) {
+            setQuotedContent(data.content)
+          }
+        })
+        .catch(() => {
+          // Silent fail - will show default text
+        })
+        .finally(() => {
+          setIsLoadingQuoted(false)
+        })
+    }
+  }, [isLineQuoteReply, metadata?.quoteToken, quoteTargetMessage])
 
   // Parse flex payload - check explicit flex type, JSON content, or metadata
   const isFlexType = message.messageType === 'flex'
@@ -305,13 +328,21 @@ function MessageBubble({
             {!quoteTargetMessage && isLineQuoteReply && (
               <div 
                 className={cn(
-                  'text-sm opacity-70 italic',
+                  'text-sm opacity-90',
                   isOutgoing 
-                    ? 'text-primary-foreground/70' 
+                    ? 'text-primary-foreground/80' 
                     : 'text-muted-foreground'
                 )}
               >
-                [ข้อความต้นฉบับ]
+                {isLoadingQuoted ? (
+                  '<กำลังโหลด...>'
+                ) : quotedContent ? (
+                  quotedContent.length > 100 
+                    ? quotedContent.slice(0, 100) + '...' 
+                    : quotedContent
+                ) : (
+                  '[ไม่พบข้อความต้นฉบับ]'
+                )}
               </div>
             )}
           </div>
