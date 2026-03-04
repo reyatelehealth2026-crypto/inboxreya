@@ -64,12 +64,26 @@ async function handleSyncMessage(data: any) {
     timestamp,
     lineAccountId, // optional, ID of the LINE account
     metadata,
-    quoteToken
+    quoteToken,
+    lineMessageId,
+    quotedMessageId
   } = data
 
   if (!lineUserId) return
   const safePictureUrl = normalizePictureUrl(pictureUrl)
   const createdAt = timestamp ? new Date(timestamp) : new Date()
+
+  const parsedMetadata = (() => {
+    if (!metadata) return null
+    try {
+      return typeof metadata === 'string' ? JSON.parse(metadata) : metadata
+    } catch {
+      return null
+    }
+  })()
+
+  const resolvedLineMessageId = lineMessageId ?? parsedMetadata?.lineMessageId
+  const resolvedQuotedMessageId = quotedMessageId ?? parsedMetadata?.quotedMessageId
 
   // 1. Resolve LineAccount
   // Convert lineAccountId to integer if provided (it comes as string from JSON)
@@ -164,14 +178,19 @@ async function handleSyncMessage(data: any) {
       }
     }
 
-    if (quoteToken) {
+    const extra: Record<string, any> = {}
+    if (quoteToken) extra.quoteToken = quoteToken
+    if (resolvedLineMessageId) extra.lineMessageId = resolvedLineMessageId
+    if (resolvedQuotedMessageId) extra.quotedMessageId = resolvedQuotedMessageId
+
+    if (Object.keys(extra).length > 0) {
       if (base && typeof base === 'object') {
-        return JSON.stringify({ ...base, quoteToken })
+        return JSON.stringify({ ...base, ...extra })
       }
       if (typeof base === 'string' && base.trim().length > 0) {
-        return JSON.stringify({ raw: base, quoteToken })
+        return JSON.stringify({ raw: base, ...extra })
       }
-      return JSON.stringify({ quoteToken })
+      return JSON.stringify(extra)
     }
 
     if (base) {
@@ -197,6 +216,30 @@ async function handleSyncMessage(data: any) {
     return
   }
 
+  let replyToId: number | null = null
+  if (resolvedQuotedMessageId) {
+    const recentMessages = await prisma.message.findMany({
+      where: {
+        userId: user.id,
+        metadata: { not: null },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    })
+
+    for (const msg of recentMessages) {
+      try {
+        const parsed = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata
+        if (parsed?.lineMessageId === resolvedQuotedMessageId) {
+          replyToId = msg.id
+          break
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+  }
+
   const createdMessage = await prisma.message.create({
     data: {
       lineAccountId: accountId as number,
@@ -207,7 +250,8 @@ async function handleSyncMessage(data: any) {
       mediaUrl: mediaUrl || null,
       metadata: metadataValue,
       createdAt,
-      isRead: direction === 'outgoing' ? true : false
+      isRead: direction === 'outgoing' ? true : false,
+      replyToId,
     }
   })
 
