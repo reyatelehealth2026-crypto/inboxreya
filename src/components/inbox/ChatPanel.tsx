@@ -301,6 +301,8 @@ function MessageBubble({
                   : quoteTargetMessage.content || '[ไม่มีข้อความ]'}
               </div>
             )}
+          </div>
+        )}
         {shouldShowFlex && (
           <div className="max-w-full overflow-hidden">
             <FlexPreview flex={flexPayload} />
