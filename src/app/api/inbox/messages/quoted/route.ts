@@ -16,9 +16,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'quoteToken is required' }, { status: 400 })
     }
 
+    console.log('[DEBUG] Looking for quoteToken:', quoteToken.substring(0, 20) + '...')
+
     // Find message by quoteToken in metadata
-    // Note: This is a simplified query. In production, you might want to add an index
-    // or store quoteToken in a separate column for better performance
     const messages = await prisma.message.findMany({
       where: {
         direction: 'outgoing',
@@ -29,25 +29,44 @@ export async function GET(request: NextRequest) {
       orderBy: {
         createdAt: 'desc',
       },
-      take: 100, // Limit to recent messages for performance
+      take: 200,
     })
 
+    console.log('[DEBUG] Found', messages.length, 'messages with metadata')
+
     // Parse metadata and find matching quoteToken
-    const matchedMessage = messages.find((msg) => {
+    let matchedMessage = null
+    for (const msg of messages) {
       try {
         const metadata = typeof msg.metadata === 'string' 
           ? JSON.parse(msg.metadata) 
           : msg.metadata
-        return metadata?.quoteToken === quoteToken
-      } catch {
-        return false
+        
+        if (metadata?.quoteToken === quoteToken) {
+          matchedMessage = msg
+          console.log('[DEBUG] Found match! Message ID:', msg.id)
+          break
+        }
+      } catch (e) {
+        // Ignore parse errors
       }
-    })
+    }
 
     if (!matchedMessage) {
+      // Debug: Show some sample metadata
+      const samples = messages.slice(0, 5).map(m => ({
+        id: m.id,
+        metadata: typeof m.metadata === 'string' ? JSON.parse(m.metadata || '{}') : m.metadata
+      }))
+      console.log('[DEBUG] Sample metadata:', JSON.stringify(samples, null, 2))
+      
       return NextResponse.json({ 
         error: 'Message not found',
-        content: null 
+        content: null,
+        debug: {
+          searched: messages.length,
+          quoteTokenPrefix: quoteToken.substring(0, 20)
+        }
       }, { status: 404 })
     }
 
