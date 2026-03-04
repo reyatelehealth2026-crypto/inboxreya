@@ -262,6 +262,7 @@ export async function POST(request: NextRequest) {
 
     // Try to send via PHP API if configured (platform-aware)
     let platformSendSuccess = false
+    let returnedQuoteToken: string | null = null
 
     if (process.env.PHP_API_URL) {
       try {
@@ -274,6 +275,11 @@ export async function POST(request: NextRequest) {
           quoteToken,
         })
         platformSendSuccess = sendResult.success
+        
+        // Capture the quoteToken returned from LINE API (for future replies)
+        if (sendResult.success && sendResult.quoteToken) {
+          returnedQuoteToken = sendResult.quoteToken
+        }
 
         if (!sendResult.success) {
           console.warn(`${userPlatform} message send failed (will still save message):`, sendResult.error)
@@ -289,6 +295,13 @@ export async function POST(request: NextRequest) {
     const now = new Date()
     // Add 7 hours to ensure DATETIME columns receive the Bangkok face-value time
     const bangkokNow = new Date(now.getTime() + 7 * 60 * 60 * 1000)
+    
+    // Build metadata including the quoteToken from LINE
+    const messageMetadata: any = metadata || {}
+    if (returnedQuoteToken) {
+      messageMetadata.quoteToken = returnedQuoteToken
+      messageMetadata.sentAt = new Date().toISOString()
+    }
 
     // Save to Prisma database (PHP no longer saves to avoid duplicates)
     const message = await prisma.message.create({
@@ -299,7 +312,7 @@ export async function POST(request: NextRequest) {
         messageType,
         content,
         mediaUrl,
-        metadata: metadata ? JSON.stringify(metadata) : null,
+        metadata: Object.keys(messageMetadata).length > 0 ? JSON.stringify(messageMetadata) : null,
         sentBy: session?.user?.id ?? null,
         replyToId: parsedReplyToId,
         isRead: true,
