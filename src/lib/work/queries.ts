@@ -1,5 +1,7 @@
 // Daily Work Dashboard - Queries with Real Data Integration
-// Using the existing Inbox API
+// Using the existing Inbox API + Odoo Webhooks
+
+import { getOdooOrders, mapOdooOrderToWorkItem, OdooOrder } from './odooOrders';
 
 export type Priority = "urgent" | "high" | "normal" | "low";
 export type WorkStatus = "pending" | "in_progress" | "waiting" | "completed";
@@ -23,6 +25,10 @@ export interface CustomerWork {
   assignedTo?: string;
   createdAt: string;
   updatedAt: string;
+  source?: "inbox" | "odoo";      // แหล่งที่มาของข้อมูล
+  odooOrderId?: number;           // ถ้าเป็นออเดอร์จาก Odoo
+  odooEventType?: string;         // event type จาก Odoo
+  odooPayload?: any;              // ข้อมูลเต็มจาก Odoo
 }
 
 export interface WorkSummaryData {
@@ -31,6 +37,8 @@ export interface WorkSummaryData {
   waitingResponse: number;
   completedToday: number;
   urgentCount: number;
+  odooOrdersCount?: number;       // จำนวนออเดอร์จาก Odoo
+  conversationsCount?: number;    // จำนวนแชทจาก Inbox
 }
 
 /**
@@ -61,16 +69,21 @@ const mapStatusToApi = (dashboardStatus: WorkStatus): string => {
   return "new";
 };
 
-// Get all work items from real API
-export const getAllWork = async (assignedToMe: boolean = false): Promise<CustomerWork[]> => {
+// Get Conversations from Inbox API
+export const getInboxConversations = async (assignedToMe: boolean = false): Promise<CustomerWork[]> => {
   try {
     const url = assignedToMe 
       ? '/api/inbox/conversations?limit=200&assignedTo=me' 
       : '/api/inbox/conversations?limit=200';
-      
+    
+    console.log('[DEBUG] getInboxConversations - url:', url);
+    
     const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to fetch real data');
-    const { data } = await response.json();
+    if (!response.ok) throw new Error('Failed to fetch conversations');
+    const result = await response.json();
+    const { data } = result;
+    
+    console.log('[DEBUG] getInboxConversations - items:', data?.length);
     
     if (!data) return [];
 
@@ -82,7 +95,7 @@ export const getAllWork = async (assignedToMe: boolean = false): Promise<Custome
       lineDisplayName: conv.user.lineUserId,
       type: "chat",
       status: mapStatusToDashboard(conv.status),
-      priority: (conv.unreadCount > 5) ? "urgent" : "normal", // Simple logic for priority
+      priority: (conv.unreadCount > 5) ? "urgent" : "normal",
       title: conv.lastMessage?.content?.slice(0, 30) || "No message",
       lastMessage: conv.lastMessage?.content || "",
       lastMessageTime: conv.updatedAt || new Date().toISOString(),
@@ -91,16 +104,62 @@ export const getAllWork = async (assignedToMe: boolean = false): Promise<Custome
       assignedTo: conv.assignees?.[0]?.id,
       createdAt: conv.user.createdAt,
       updatedAt: conv.updatedAt || new Date().toISOString(),
+      source: "inbox",
     }));
   } catch (error) {
-    console.error("Error fetching real work data:", error);
+    console.error("Error fetching conversations:", error);
     return [];
   }
+};
+
+// Get Odoo Orders
+export const getOdooWorkOrders = async (assignedToMe: boolean = false): Promise<CustomerWork[]> => {
+  try {
+    const result = await getOdooOrders({ assignedToMe, limit: 100 });
+    
+    if (!result.success) {
+      console.error('[DEBUG] getOdooWorkOrders - failed:', result);
+      return [];
+    }
+
+    console.log('[DEBUG] getOdooWorkOrders - items:', result.data?.length);
+    
+    return result.data.map(mapOdooOrderToWorkItem);
+  } catch (error) {
+    console.error("Error fetching Odoo orders:", error);
+    return [];
+  }
+};
+
+// Get ALL Work Items (Inbox + Odoo) - ฟังก์ชันหลักที่ใช้ใน Dashboard
+export const getAllWork = async (assignedToMe: boolean = false): Promise<CustomerWork[]> => {
+  console.log('[DEBUG] getAllWork - START, assignedToMe:', assignedToMe);
+  
+  // ดึงข้อมูลทั้งสองแหล่งพร้อมกัน
+  const [conversations, odooOrders] = await Promise.all([
+    getInboxConversations(assignedToMe),
+    getOdooWorkOrders(assignedToMe),
+  ]);
+  
+  console.log('[DEBUG] getAllWork - Conversations:', conversations.length, 'Odoo Orders:', odooOrders.length);
+  
+  // รวมข้อมูลและเรียงตามเวลาล่าสุด
+  const combined = [...conversations, ...odooOrders].sort((a, b) => {
+    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+  });
+  
+  console.log('[DEBUG] getAllWork - TOTAL:', combined.length);
+  
+  return combined;
 };
 
 // Get work summary
 export const getWorkSummary = async (assignedToMe: boolean = false): Promise<WorkSummaryData> => {
   const items = await getAllWork(assignedToMe);
+  
+  // แยกนับตามแหล่งที่มา
+  const conversationsCount = items.filter(i => i.source === "inbox" || !i.source).length;
+  const odooOrdersCount = items.filter(i => i.source === "odoo").length;
   
   return {
     totalPending: items.filter(w => w.status === "pending").length,
@@ -108,6 +167,8 @@ export const getWorkSummary = async (assignedToMe: boolean = false): Promise<Wor
     waitingResponse: items.filter(w => w.status === "waiting").length,
     completedToday: items.filter(w => w.status === "completed").length,
     urgentCount: items.filter(w => w.priority === "urgent" && w.status !== "completed").length,
+    conversationsCount,
+    odooOrdersCount,
   };
 };
 
@@ -130,12 +191,17 @@ export const searchWork = async (
       w.lineDisplayName?.toLowerCase().includes(searchTerm) ||
       w.title.toLowerCase().includes(searchTerm) ||
       w.lastMessage.toLowerCase().includes(searchTerm) ||
-      w.tags.some(t => t.toLowerCase().includes(searchTerm))
+      w.tags.some(t => t.toLowerCase().includes(searchTerm)) ||
+      w.odooOrderId?.toString().includes(searchTerm)  // ค้นหาจาก Order ID
     );
   }
   
   if (filters?.status?.length) {
     results = results.filter(w => filters.status!.includes(w.status));
+  }
+  
+  if (filters?.type?.length) {
+    results = results.filter(w => filters.type!.includes(w.type));
   }
   
   return results;
@@ -146,6 +212,14 @@ export const updateWorkStatus = async (
   workId: string, 
   newStatus: WorkStatus
 ): Promise<CustomerWork | null> => {
+  // ถ้าเป็น Odoo Order (id ขึ้นต้นด้วย odoo-)
+  if (workId.startsWith('odoo-')) {
+    console.log('[DEBUG] Updating Odoo order status - not implemented yet:', workId);
+    // TODO: ส่งคำขอไปยัง Odoo API หรือบันทึกลง database
+    return null;
+  }
+  
+  // สำหรับ Inbox Conversations
   const apiStatus = mapStatusToApi(newStatus);
 
   try {

@@ -118,10 +118,9 @@ export function CustomerWorkCard({ work, onStatusChange, onClick, isDragging }: 
       className={`
         group relative bg-white rounded-xl border border-gray-200 p-4
         hover:shadow-lg hover:border-gray-300 transition-all duration-200
-        cursor-pointer ${isUpdating ? "opacity-70" : ""}
+        ${isUpdating ? "opacity-70" : ""}
         ${isDragging ? "shadow-2xl ring-2 ring-blue-400 rotate-2 scale-105 z-50" : ""}
       `}
-      onClick={() => onClick?.(work)}
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
@@ -198,7 +197,7 @@ export function CustomerWorkCard({ work, onStatusChange, onClick, isDragging }: 
             <Button 
               variant="ghost" 
               size="sm" 
-              className="h-8 text-gray-600 hover:text-gray-900"
+              className="h-8 text-gray-600 hover:text-gray-900 pointer-events-auto"
               disabled={isUpdating}
             >
               <MoreHorizontal className="h-4 w-4 mr-1" />
@@ -228,9 +227,11 @@ export function CustomerWorkCard({ work, onStatusChange, onClick, isDragging }: 
         <Button 
           variant="ghost" 
           size="sm" 
-          className="h-8 text-gray-600 hover:text-gray-900 group-hover:bg-gray-50"
+          className="h-8 text-gray-600 hover:text-gray-900 group-hover:bg-gray-50 pointer-events-auto"
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
+            e.preventDefault();
             onClick?.(work);
           }}
         >

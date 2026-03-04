@@ -39,6 +39,12 @@ export function SortableWorkCard({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  // Handle click on the card - only trigger if not clicking on interactive elements
+  const handleCardClick = (workItem: CustomerWork) => {
+    if (isDragging) return; // Don't trigger click while dragging
+    onClick?.(workItem);
+  };
+
   return (
     <div
       ref={setNodeRef}
@@ -54,7 +60,7 @@ export function SortableWorkCard({
       <CustomerWorkCard
         work={work}
         onStatusChange={onStatusChange}
-        onClick={onClick}
+        onClick={handleCardClick}
         isDragging={isDragging}
       />
     </div>

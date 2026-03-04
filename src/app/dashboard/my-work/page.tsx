@@ -206,6 +206,7 @@ export default function MyWorkPage() {
         getAllWork(true),
         getWorkSummary(true),
       ]);
+      console.log('[DEBUG] MyWorkPage - loaded workItems count:', workData.length);
       setWorkItems(workData);
       setFilteredItems(workData);
       setSummary(summaryData);
