@@ -341,7 +341,9 @@ function MessageBubble({
                     ? quotedContent.slice(0, 100) + '...' 
                     : quotedContent
                 ) : (
-                  '[ไม่พบข้อความต้นฉบับ]'
+                  <span title={`Token: ${metadata?.quoteToken?.substring(0, 30)}...`}>
+                    [ไม่พบข้อความต้นฉบับ]
+                  </span>
                 )}
               </div>
             )}
