@@ -252,6 +252,28 @@ export default function DashboardPage() {
           </div>
           
           <div className="flex items-center gap-3">
+             {/* Date Range Filter Buttons */}
+             <div className="flex items-center bg-gray-100 rounded-lg p-1 mr-2">
+                {[ 
+                  { label: 'วันนี้', value: 1 },
+                  { label: '7 วัน', value: 7 },
+                  { label: '30 วัน', value: 30 }
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => setDaysFilter(option.value)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200",
+                      daysFilter === option.value
+                        ? "bg-white text-blue-600 shadow-sm"
+                        : "text-gray-600 hover:text-gray-900"
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+             </div>
+
              <div className="flex items-center bg-gray-100 rounded-xl p-1.5 shadow-inner">
                 <button
                   onClick={() => setActiveTab('command-center')}
