@@ -183,8 +183,9 @@ function MessageBubble({
   // We only show quote reply UI when there's an actual replyTo relation
 
   // Parse flex payload - check explicit flex type, JSON content, or metadata
-  const isFlexType = message.messageType === 'flex'
-  const isFlexJson = message.messageType === 'text' && isFlexMessageContent(message.content)
+  const normalizedMessageType = message.messageType || 'text'
+  const isFlexType = normalizedMessageType === 'flex'
+  const isFlexJson = normalizedMessageType === 'text' && isFlexMessageContent(message.content)
   const flexPayload = parseFlexPayload(message)
   const shouldShowFlex = Boolean(flexPayload) || isFlexType || isFlexJson
 
@@ -226,7 +227,7 @@ function MessageBubble({
   })()
 
   // Check if it's a LINE message JSON (type: text, etc.)
-  const isLineJson = message.messageType === 'text' && !isFlexJson && isLineMessageJson(message.content)
+  const isLineJson = normalizedMessageType === 'text' && !isFlexJson && isLineMessageJson(message.content)
   const lineDisplayText = isLineJson ? getLineMessageDisplayText(message.content || '') : null
 
   return (
@@ -309,7 +310,13 @@ function MessageBubble({
           </div>
         )}
 
-        {message.messageType === 'image' && (message.mediaUrl || message.content) && (
+        {normalizedMessageType === 'text' && !shouldShowFlex && (
+          <div className="text-sm whitespace-pre-wrap break-words">
+            <MessageTextWithLinks content={(lineDisplayText ?? message.content ?? '').toString()} isOutgoing={isOutgoing} />
+          </div>
+        )}
+
+        {normalizedMessageType === 'image' && (message.mediaUrl || message.content) && (
           <div className="relative w-full max-w-full">
             {(() => {
               const imgUrl = resolveContentUrl(message.content, message.mediaUrl)
@@ -485,7 +492,7 @@ function MessageBubble({
           </div>
         )}
 
-        {message.messageType === 'video' && (message.mediaUrl || message.content) && (
+        {normalizedMessageType === 'video' && (message.mediaUrl || message.content) && (
           <div className="rounded-xl overflow-hidden max-w-[300px] border shadow-sm bg-black">
             {(() => {
               const videoUrl = resolveContentUrl(message.content, message.mediaUrl)
@@ -502,7 +509,7 @@ function MessageBubble({
           </div>
         )}
 
-        {message.messageType === 'audio' && (message.mediaUrl || message.content) && (
+        {normalizedMessageType === 'audio' && (message.mediaUrl || message.content) && (
           <div className="bg-white rounded-xl border shadow-sm p-3 max-w-[300px]">
             <div className="flex items-center gap-3">
               <span className="text-lg">🔊</span>
@@ -522,7 +529,7 @@ function MessageBubble({
           </div>
         )}
 
-        {message.messageType === 'location' && (
+        {normalizedMessageType === 'location' && (
           <div className="bg-white rounded-xl border shadow-sm overflow-hidden max-w-[300px]">
             {(() => {
               const location =
@@ -558,18 +565,18 @@ function MessageBubble({
           </div>
         )}
 
-        {message.messageType === 'sticker' && message.metadata && (
+        {normalizedMessageType === 'sticker' && message.metadata && (
           <div className="text-4xl">😊</div>
         )}
 
-        {message.messageType === 'location' && message.metadata && (
+        {normalizedMessageType === 'location' && message.metadata && (
           <div className="flex items-center gap-2">
             <span>📍</span>
             <span>{(message.metadata as any).address || 'ตำแหน่ง'}</span>
           </div>
         )}
 
-        {message.messageType === 'file' && (
+        {normalizedMessageType === 'file' && (
           <div className="bg-white rounded-xl border shadow-sm p-3 max-w-[300px]">
             {(() => {
               const fileUrl = resolveContentUrl(message.content, message.mediaUrl)
