@@ -37,7 +37,8 @@ describe('Analytics API Routes', () => {
 
       vi.mocked(getUnifiedAnalyticsData).mockResolvedValueOnce(mockData);
 
-      const response = await getAnalytics();
+      const request = new Request('http://localhost/api/analytics');
+      const response = await getAnalytics(request);
       const json = await response.json();
 
       expect(response.status).toBe(200);
@@ -48,7 +49,8 @@ describe('Analytics API Routes', () => {
     it('should return 500 on error', async () => {
       vi.mocked(getUnifiedAnalyticsData).mockRejectedValueOnce(new Error('DB Error'));
 
-      const response = await getAnalytics();
+      const request = new Request('http://localhost/api/analytics');
+      const response = await getAnalytics(request);
       const json = await response.json();
 
       expect(response.status).toBe(500);

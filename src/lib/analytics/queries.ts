@@ -12,7 +12,7 @@ import {
 // Odoo-based Sales Stats Queries
 // ============================================
 
-export async function getOdooSalesStats(): Promise<SalesStats> {
+export async function getOdooSalesStats(days: number = 1): Promise<SalesStats> {
   // Get stats from odoo_orders instead of users table
   const [rows] = await pool.execute(`
     SELECT 
@@ -22,7 +22,8 @@ export async function getOdooSalesStats(): Promise<SalesStats> {
       COUNT(*) as total_orders
     FROM odoo_orders
     WHERE state NOT IN ('cancel', 'draft')
-  `);
+      AND date_order >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+  `, [days]);
 
   const result = (rows as any[])[0];
   return {
@@ -51,7 +52,7 @@ export async function getTotalOdooCustomers(): Promise<number> {
 // Odoo Customer Segment Queries (based on order values)
 // ============================================
 
-export async function getOdooCustomerSegments(): Promise<CustomerSegment[]> {
+export async function getOdooCustomerSegments(days: number = 1): Promise<CustomerSegment[]> {
   // Get customer spending from odoo_orders
   const [customerSpending] = await pool.execute(`
     SELECT 
@@ -60,8 +61,9 @@ export async function getOdooCustomerSegments(): Promise<CustomerSegment[]> {
       COUNT(*) as order_count
     FROM odoo_orders
     WHERE state NOT IN ('cancel', 'draft')
+      AND date_order >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
     GROUP BY partner_id
-  `);
+  `, [days]);
 
   const customers = customerSpending as any[];
   const total = customers.length;
@@ -88,7 +90,7 @@ export async function getOdooCustomerSegments(): Promise<CustomerSegment[]> {
 // Top Customers from Odoo
 // ============================================
 
-export async function getOdooTopCustomers(limit: number = 10): Promise<TopCustomer[]> {
+export async function getOdooTopCustomers(limit: number = 10, days: number = 1): Promise<TopCustomer[]> {
   const [rows] = await pool.execute(`
     SELECT 
       o.partner_id,
@@ -99,10 +101,11 @@ export async function getOdooTopCustomers(limit: number = 10): Promise<TopCustom
     FROM odoo_orders o
     LEFT JOIN odoo_line_users olu ON o.partner_id = olu.odoo_partner_id
     WHERE o.state NOT IN ('cancel', 'draft')
+      AND o.date_order >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
     GROUP BY o.partner_id
     ORDER BY total_spent DESC
     LIMIT ?
-  `, [limit]);
+  `, [days, limit]);
 
   return (rows as any[]).map((user, index) => ({
     memberId: user.member_id || `CUST-${user.partner_id}`,
@@ -125,7 +128,7 @@ function getTierBySpending(spent: number): string {
 // Odoo Behavior Patterns Query (NEW)
 // ============================================
 
-export async function getOdooBehaviorPatterns(): Promise<BehaviorPattern[]> {
+export async function getOdooBehaviorPatterns(days: number = 1): Promise<BehaviorPattern[]> {
   // Get order counts per customer from odoo_orders
   const [customerOrders] = await pool.execute(`
     SELECT 
@@ -133,8 +136,9 @@ export async function getOdooBehaviorPatterns(): Promise<BehaviorPattern[]> {
       COUNT(*) as order_count
     FROM odoo_orders
     WHERE state NOT IN ('cancel', 'draft')
+      AND date_order >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
     GROUP BY partner_id
-  `);
+  `, [days]);
 
   const customers = customerOrders as any[];
   const total = customers.length;
@@ -204,7 +208,7 @@ export async function getOdooSalesTrend(days: number = 30): Promise<SalesTrendPo
 // Order Status Distribution (from Odoo)
 // ============================================
 
-export async function getOdooOrderStatusStats(): Promise<Array<{
+export async function getOdooOrderStatusStats(days: number = 1): Promise<Array<{
   status: string;
   count: number;
   percentage: number;
@@ -215,9 +219,10 @@ export async function getOdooOrderStatusStats(): Promise<Array<{
       COUNT(*) as count,
       ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as percentage
     FROM odoo_orders
+    WHERE date_order >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
     GROUP BY state_display
     ORDER BY count DESC
-  `);
+  `, [days]);
 
   return (rows as any[]).map(row => ({
     status: row.status,
@@ -230,7 +235,7 @@ export async function getOdooOrderStatusStats(): Promise<Array<{
 // Recent Odoo Orders
 // ============================================
 
-export async function getRecentOdooOrders(limit: number = 10): Promise<Array<{
+export async function getRecentOdooOrders(limit: number = 10, days: number = 1): Promise<Array<{
   id: string;
   orderName: string;
   customerName: string;
@@ -252,9 +257,10 @@ export async function getRecentOdooOrders(limit: number = 10): Promise<Array<{
       o.is_delivered as isDelivered
     FROM odoo_orders o
     LEFT JOIN odoo_line_users olu ON o.partner_id = olu.odoo_partner_id
+    WHERE o.date_order >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
     ORDER BY o.date_order DESC
     LIMIT ?
-  `, [limit]);
+  `, [days, limit]);
 
   return (rows as any[]).map(row => ({
     id: String(row.id),
@@ -445,7 +451,7 @@ export async function getTopComplainers(limit: number = 10): Promise<Array<{
 // Unified Analytics Query (Odoo-based)
 // ============================================
 
-export async function getUnifiedAnalyticsData(): Promise<UnifiedAnalyticsData> {
+export async function getUnifiedAnalyticsData(days: number = 1): Promise<UnifiedAnalyticsData> {
   // Fetch all data in parallel using Odoo tables
   const [
     salesStats,
@@ -460,15 +466,15 @@ export async function getUnifiedAnalyticsData(): Promise<UnifiedAnalyticsData> {
     recentIssues,
     topComplainers
   ] = await Promise.all([
-    getOdooSalesStats(),
+    getOdooSalesStats(days),
     getTotalOdooCustomers(),
-    getOdooCustomerSegments(),
-    getOdooTopCustomers(10),
-    getOdooBehaviorPatterns(),
-    getOdooSalesTrend(30),
+    getOdooCustomerSegments(days),
+    getOdooTopCustomers(10, days),
+    getOdooBehaviorPatterns(days),
+    getOdooSalesTrend(days),
     getAvgSentimentScore(),
-    getSentimentDistribution(30),
-    getComplaintCategories(30),
+    getSentimentDistribution(days),
+    getComplaintCategories(days),
     getRecentIssues(10),
     getTopComplainers(10)
   ]);

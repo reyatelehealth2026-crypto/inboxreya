@@ -1,9 +1,9 @@
-import { describe, test, expect } from '@jest/globals';
-import { getAllAnalyticsData } from '@/lib/analytics/queries';
+import { describe, test, expect } from 'vitest';
+import { getUnifiedAnalyticsData } from '@/lib/analytics/queries';
 
 describe('Analytics Dashboard Integration', () => {
   test('should fetch all analytics data successfully', async () => {
-    const data = await getAllAnalyticsData();
+    const data = await getUnifiedAnalyticsData(1);
     
     // Verify structure
     expect(data).toHaveProperty('segments');
@@ -30,7 +30,7 @@ describe('Analytics Dashboard Integration', () => {
   });
 
   test('should have valid customer segments', async () => {
-    const data = await getAllAnalyticsData();
+    const data = await getUnifiedAnalyticsData(1);
     
     if (data.segments.length > 0) {
       const segment = data.segments[0];
@@ -44,7 +44,7 @@ describe('Analytics Dashboard Integration', () => {
   });
 
   test('should have valid top customers', async () => {
-    const data = await getAllAnalyticsData();
+    const data = await getUnifiedAnalyticsData(1);
     
     if (data.topCustomers.length > 0) {
       const customer = data.topCustomers[0];

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getUnifiedAnalyticsData } from '@/lib/analytics/queries';
 
 /**
@@ -9,9 +9,13 @@ import { getUnifiedAnalyticsData } from '@/lib/analytics/queries';
  * - AI sentiment analysis
  * - Complaint categories and recent issues
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const data = await getUnifiedAnalyticsData();
+    const { searchParams } = new URL(request.url);
+    const daysParam = searchParams.get('days');
+    const days = daysParam ? parseInt(daysParam) : 1; // Default to 1 day (today)
+
+    const data = await getUnifiedAnalyticsData(days);
     return NextResponse.json(data);
   } catch (error) {
     console.error('Analytics API error:', error);

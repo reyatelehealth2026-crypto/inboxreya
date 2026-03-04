@@ -23,7 +23,14 @@ import {
   Zap,
   CheckCircle2,
   Users,
+  Filter
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import Link from 'next/link';
 import { WorkSummary } from '@/components/work/WorkSummary';
 import { CustomerWorkCard } from '@/components/work/CustomerWorkCard';
@@ -59,15 +66,16 @@ export default function DashboardPage() {
   const router = useRouter();
   const { data: session } = useSession();
   const [activeTab, setActiveTab] = useState<AnalyticsTab | 'command-center'>('command-center');
+  const [daysFilter, setDaysFilter] = useState<number>(1);
   const [workItems, setWorkItems] = useState<CustomerWork[]>([]);
   const [workSummary, setWorkSummary] = useState<WorkSummaryData | null>(null);
   const [isWorkLoading, setIsWorkLoading] = useState(true);
 
   // Fetch Analytics Data
   const { data: analyticsData, isLoading: isAnalyticsLoading, error: analyticsError } = useQuery<UnifiedAnalyticsData>({
-    queryKey: ['unified-analytics'],
+    queryKey: ['unified-analytics', daysFilter],
     queryFn: async () => {
-      const response = await fetch('/api/analytics');
+      const response = await fetch(`/api/analytics?days=${daysFilter}`);
       if (!response.ok) {
         throw new Error('Failed to fetch analytics data');
       }
