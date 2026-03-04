@@ -178,33 +178,9 @@ function MessageBubble({
   const isQuoteReply = !!message.replyTo
   const quoteTargetMessage = message.replyTo
   
-  // Check if this message has quoteToken from LINE (incoming message that was a quote reply)
-  const metadata = (message.metadata as any) || {}
-  const hasQuoteToken = !!metadata?.quoteToken
-  const isLineQuoteReply = !isOutgoing && hasQuoteToken
-  
-  // Fetch quoted message content by quoteToken
-  const [quotedContent, setQuotedContent] = useState<string | null>(null)
-  const [isLoadingQuoted, setIsLoadingQuoted] = useState(false)
-  
-  useEffect(() => {
-    if (isLineQuoteReply && metadata?.quoteToken && !quoteTargetMessage) {
-      setIsLoadingQuoted(true)
-      fetch(`/api/inbox/messages/quoted?quoteToken=${encodeURIComponent(metadata.quoteToken)}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.content) {
-            setQuotedContent(data.content)
-          }
-        })
-        .catch(() => {
-          // Silent fail - will show default text
-        })
-        .finally(() => {
-          setIsLoadingQuoted(false)
-        })
-    }
-  }, [isLineQuoteReply, metadata?.quoteToken, quoteTargetMessage])
+  // Note: LINE sends quoteToken in ALL messages via webhook, not just replies
+  // So we cannot use quoteToken to detect quote replies reliably
+  // We only show quote reply UI when there's an actual replyTo relation
 
   // Parse flex payload - check explicit flex type, JSON content, or metadata
   const isFlexType = message.messageType === 'flex'
@@ -297,8 +273,8 @@ function MessageBubble({
             : 'bg-muted rounded-bl-sm'
         )}
       >
-        {/* Quote Reply Indicator */}
-        {(isQuoteReply || isLineQuoteReply) && (
+        {/* Quote Reply Indicator - Only show when there's a real replyTo relation */}
+        {isQuoteReply && quoteTargetMessage && (
           <div 
             className={cn(
               'mb-2 pb-2 border-b border-dashed',
