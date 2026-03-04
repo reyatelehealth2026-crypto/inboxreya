@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,67 +18,72 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(100, parseInt(searchParams.get('limit') || '50'));
     const assignedToMe = searchParams.get('assignedToMe') === 'true';
 
-    // Build where clause
-    const where: any = {
-      // ดึงเฉพาะ event ที่เกี่ยวกับออเดอร์
-      event_type: {
-        in: [
-          'order.validated',
-          'order.confirmed', 
-          'order.processing',
-          'order.shipped',
-          'order.delivered',
-          'order.cancelled'
-        ]
-      },
-      // ดึงเฉพาะที่ประมวลผลสำเร็จหรือกำลังประมวลผล
-      status: {
-        in: ['success', 'processing', 'received']
-      }
-    };
+    let eventTypes = [
+      'order.validated',
+      'order.confirmed', 
+      'order.processing',
+      'order.shipped',
+      'order.delivered',
+      'order.cancelled'
+    ];
 
-    // Filter by order status if specified
-    if (status) {
-      switch (status) {
-        case 'pending':
-          where.event_type = 'order.validated';
-          break;
-        case 'processing':
-          where.event_type = { in: ['order.confirmed', 'order.processing'] };
-          break;
-        case 'completed':
-          where.event_type = { in: ['order.shipped', 'order.delivered'] };
-          break;
-      }
+    if (status === 'pending') {
+      eventTypes = ['order.validated'];
+    } else if (status === 'processing') {
+      eventTypes = ['order.confirmed', 'order.processing'];
+    } else if (status === 'completed') {
+      eventTypes = ['order.shipped', 'order.delivered'];
     }
 
-    // Filter by assigned admin
+    let odooOrders;
+
     if (assignedToMe && session.user.id) {
-      // เชื่อมกับตาราง conversationAssignees เพื่อหางานที่มอบหมายให้แอดมินคนนี้
-      where.line_account_id = session.user.lineAccountId;
+      const adminId = parseInt(session.user.id);
+      
+      odooOrders = await prisma.$queryRaw`
+        SELECT 
+          o.id,
+          o.order_id,
+          o.event_type,
+          o.payload,
+          o.line_user_id,
+          o.status as webhook_status,
+          o.received_at,
+          o.processing_started_at,
+          o.processed_at,
+          o.retry_count,
+          o.error_message
+        FROM odoo_webhooks_log o
+        INNER JOIN users u ON o.line_user_id = u.line_user_id
+        INNER JOIN conversation_multi_assignees cma ON u.id = cma.user_id
+        WHERE o.event_type IN (${Prisma.join(eventTypes)})
+          AND o.status IN ('success', 'processing', 'received')
+          AND cma.admin_id = ${adminId}
+          AND cma.status = 'active'
+        ORDER BY o.received_at DESC
+        LIMIT ${limit}
+      `;
+    } else {
+      odooOrders = await prisma.$queryRaw`
+        SELECT 
+          id,
+          order_id,
+          event_type,
+          payload,
+          line_user_id,
+          status as webhook_status,
+          received_at,
+          processing_started_at,
+          processed_at,
+          retry_count,
+          error_message
+        FROM odoo_webhooks_log
+        WHERE event_type IN (${Prisma.join(eventTypes)})
+          AND status IN ('success', 'processing', 'received')
+        ORDER BY received_at DESC
+        LIMIT ${limit}
+      `;
     }
-
-    // Query ข้อมูลจาก odoo_webhooks_log
-    const odooOrders = await prisma.$queryRaw`
-      SELECT 
-        id,
-        order_id,
-        event_type,
-        payload,
-        line_user_id,
-        status as webhook_status,
-        received_at,
-        processing_started_at,
-        processed_at,
-        retry_count,
-        error_message
-      FROM odoo_webhooks_log
-      WHERE ${where.event_type ? prisma.$queryRaw`event_type IN (${where.event_type})` : prisma.$queryRaw`1=1`}
-        AND status IN ('success', 'processing', 'received')
-        ${assignedToMe && session.user.lineAccountId ? prisma.$queryRaw`AND line_account_id = ${session.user.lineAccountId}` : prisma.$queryRaw``}
-      ORDER BY received_at DESC
-      LIMIT ${limit}
-    `;
 
     // แปลงข้อมูลให้เหมาะสมกับ Dashboard
     const formattedOrders = (odooOrders as any[]).map((order) => {
