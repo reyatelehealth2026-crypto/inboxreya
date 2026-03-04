@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(100, parseInt(searchParams.get('limit') || '50'));
     const assignedToMe = searchParams.get('assignedToMe') === 'true';
 
-    // สร้าง IN clause สำหรับ event types
+    // สร้าง IN clause สำหรับ event types (ปลอดภัย - ใช้ค่าที่ควบคุมได้เอง)
     let eventTypes = [
       'order.validated',
       'order.confirmed', 
@@ -35,14 +35,16 @@ export async function GET(request: NextRequest) {
       eventTypes = ['order.shipped', 'order.delivered'];
     }
 
-    const eventTypesIn = eventTypes.map(et => `'${et}'`).join(',');
+    // สร้าง placeholders สำหรับ parameterized query
+    const eventPlaceholders = eventTypes.map(() => '?').join(',');
+    const adminId = session.user.id ? parseInt(session.user.id) : null;
 
     let query: string;
     let params: any[] = [];
 
-    if (assignedToMe && session.user.id) {
-      const adminId = parseInt(session.user.id);
-      
+    if (assignedToMe && adminId) {
+      // Query แบบกรองเฉพาะงานที่มอบหมายให้แอดมินคนนี้
+      // ใช้ INNER JOIN กับ users และ conversation_multi_assignees
       query = `
         SELECT 
           o.id,
@@ -59,15 +61,16 @@ export async function GET(request: NextRequest) {
         FROM odoo_webhooks_log o
         INNER JOIN users u ON o.line_user_id = u.line_user_id
         INNER JOIN conversation_multi_assignees cma ON u.id = cma.user_id
-        WHERE o.event_type IN (${eventTypesIn})
+        WHERE o.event_type IN (${eventPlaceholders})
           AND o.status IN ('success', 'processing', 'received')
           AND cma.admin_id = ?
           AND cma.status = 'active'
         ORDER BY o.received_at DESC
         LIMIT ?
       `;
-      params = [adminId, limit];
+      params = [...eventTypes, adminId, limit];
     } else {
+      // Query แบบไม่กรอง (ดึงทั้งหมด)
       query = `
         SELECT 
           id,
@@ -82,17 +85,34 @@ export async function GET(request: NextRequest) {
           retry_count,
           error_message
         FROM odoo_webhooks_log
-        WHERE event_type IN (${eventTypesIn})
+        WHERE event_type IN (${eventPlaceholders})
           AND status IN ('success', 'processing', 'received')
         ORDER BY received_at DESC
         LIMIT ?
       `;
-      params = [limit];
+      params = [...eventTypes, limit];
     }
 
-    // ใช้ mysql2/pool แทน Prisma $queryRaw
+    // Debug log
+    console.log('[DEBUG] Odoo Orders Query:', {
+      assignedToMe,
+      adminId,
+      eventTypesCount: eventTypes.length,
+      paramsCount: params.length
+    });
+
+    // Execute query
     const [rows] = await pool.execute(query, params);
     const odooOrders = rows as any[];
+
+    console.log('[DEBUG] Odoo Orders Result:', {
+      count: odooOrders.length,
+      firstOrder: odooOrders[0] ? { 
+        id: odooOrders[0].id, 
+        event_type: odooOrders[0].event_type,
+        order_id: odooOrders[0].order_id
+      } : null
+    });
 
     // แปลงข้อมูลให้เหมาะสมกับ Dashboard
     const formattedOrders = odooOrders.map((order) => {
@@ -153,12 +173,22 @@ export async function GET(request: NextRequest) {
       success: true,
       data: formattedOrders,
       summary,
+      debug: {
+        assignedToMe,
+        adminId,
+        queryEventTypes: eventTypes,
+        rawCount: odooOrders.length
+      }
     });
 
   } catch (error: any) {
     console.error('Error fetching Odoo orders:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch Odoo orders', details: error?.message || 'Unknown error' },
+      { 
+        error: 'Failed to fetch Odoo orders', 
+        details: error?.message || 'Unknown error',
+        stack: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+      },
       { status: 500 }
     );
   }
