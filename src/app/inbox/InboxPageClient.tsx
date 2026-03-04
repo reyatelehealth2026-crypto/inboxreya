@@ -6,7 +6,17 @@ import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Menu, ArrowLeft } from 'lucide-react'
 import { ConversationList } from '@/components/inbox/ConversationList'
-import { ChatPanel } from '@/components/inbox/ChatPanel'
+const ChatPanel = dynamic(
+  () => import('@/components/inbox/ChatPanel').then((mod) => mod.ChatPanel),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+        กำลังโหลดแชต...
+      </div>
+    ),
+  }
+)
 import { useRealtime } from '@/hooks/use-realtime'
 import { usePusher } from '@/hooks/use-pusher'
 import { useInboxFilterSync } from '@/hooks/use-inbox-filter-sync'
