@@ -23,7 +23,8 @@ import {
   Zap,
   CheckCircle2,
   Users,
-  Filter
+  Filter,
+  TrendingUp
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -40,6 +41,7 @@ import {
   CustomerWork, 
   WorkSummaryData 
 } from '@/lib/work/queries';
+import { SalesReport } from '@/components/reports/SalesReport';
 import { cn } from '@/lib/utils';
 
 function LoadingSkeleton() {
@@ -191,11 +193,11 @@ export default function DashboardPage() {
             <div className="space-y-3">
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider px-2">เมนูอื่นๆ</h3>
               <div className="grid grid-cols-1 gap-2">
-                <Button variant="ghost" className="justify-start gap-3 text-gray-700 hover:bg-white hover:shadow-sm" onClick={() => setActiveTab('overview')}>
-                  <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
-                    <Calendar className="h-4 w-4 text-indigo-600" />
+                <Button variant="ghost" className="justify-start gap-3 text-gray-700 hover:bg-white hover:shadow-sm" onClick={() => setActiveTab('sales')}>
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
+                    <TrendingUp className="h-4 w-4 text-emerald-600" />
                   </div>
-                  วิเคราะห์ยอดขาย
+                  รายงานยอดขาย
                 </Button>
                 <Button variant="ghost" className="justify-start gap-3 text-gray-700 hover:bg-white hover:shadow-sm" onClick={() => setActiveTab('customers')}>
                   <div className="w-8 h-8 rounded-lg bg-pink-50 flex items-center justify-center">
@@ -228,7 +230,7 @@ export default function DashboardPage() {
 
     switch (activeTab) {
       case 'overview': return <OverviewTab data={analyticsData} />;
-      case 'sales': return <SalesTab data={analyticsData} />;
+      case 'sales': return <SalesReport days={daysFilter} />;
       case 'customers': return <CustomersTab data={analyticsData} />;
       case 'ai-insights': return <AIInsightsTab data={analyticsData} />;
       default: return renderCommandCenter();
