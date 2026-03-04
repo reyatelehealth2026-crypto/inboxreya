@@ -21,7 +21,6 @@ export async function GET(request: NextRequest) {
     // Find message by quoteToken in metadata
     const messages = await prisma.message.findMany({
       where: {
-        direction: 'outgoing',
         metadata: {
           not: null,
         },
