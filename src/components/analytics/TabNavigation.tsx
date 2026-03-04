@@ -8,7 +8,7 @@ import {
   BrainCircuit 
 } from 'lucide-react';
 
-export type AnalyticsTab = 'overview' | 'sales' | 'customers' | 'ai-insights';
+export type AnalyticsTab = 'overview' | 'sales' | 'customers' | 'ai-insights' | 'odoo-php';
 
 interface TabNavigationProps {
   activeTab: AnalyticsTab;

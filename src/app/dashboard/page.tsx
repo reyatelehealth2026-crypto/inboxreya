@@ -24,7 +24,8 @@ import {
   CheckCircle2,
   Users,
   Filter,
-  TrendingUp
+  TrendingUp,
+  Package
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -41,6 +42,7 @@ import {
   CustomerWork, 
   WorkSummaryData 
 } from '@/lib/work/queries';
+import { OdooDashboardFromPhp } from '@/components/odoo/OdooDashboardFromPhp';
 import { SalesReport } from '@/components/reports/SalesReport';
 import { cn } from '@/lib/utils';
 
@@ -199,6 +201,12 @@ export default function DashboardPage() {
                   </div>
                   รายงานยอดขาย
                 </Button>
+                <Button variant="ghost" className="justify-start gap-3 text-gray-700 hover:bg-white hover:shadow-sm" onClick={() => setActiveTab('odoo-php')}>
+                  <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center">
+                    <Package className="h-4 w-4 text-orange-600" />
+                  </div>
+                  Odoo Dashboard (PHP)
+                </Button>
                 <Button variant="ghost" className="justify-start gap-3 text-gray-700 hover:bg-white hover:shadow-sm" onClick={() => setActiveTab('customers')}>
                   <div className="w-8 h-8 rounded-lg bg-pink-50 flex items-center justify-center">
                     <Users className="h-4 w-4 text-pink-600" />
@@ -231,6 +239,7 @@ export default function DashboardPage() {
     switch (activeTab) {
       case 'overview': return <OverviewTab data={analyticsData} />;
       case 'sales': return <SalesReport days={daysFilter} />;
+      case 'odoo-php': return <OdooDashboardFromPhp />;
       case 'customers': return <CustomersTab data={analyticsData} />;
       case 'ai-insights': return <AIInsightsTab data={analyticsData} />;
       default: return renderCommandCenter();
