@@ -154,16 +154,30 @@ async function handleSyncMessage(data: any) {
   }
 
   const metadataValue = (() => {
+    let base: any = null
+
     if (metadata) {
       try {
-        return typeof metadata === 'string' ? metadata : JSON.stringify(metadata)
+        base = typeof metadata === 'string' ? JSON.parse(metadata) : metadata
       } catch {
-        return null
+        base = metadata
       }
     }
+
     if (quoteToken) {
+      if (base && typeof base === 'object') {
+        return JSON.stringify({ ...base, quoteToken })
+      }
+      if (typeof base === 'string' && base.trim().length > 0) {
+        return JSON.stringify({ raw: base, quoteToken })
+      }
       return JSON.stringify({ quoteToken })
     }
+
+    if (base) {
+      return typeof base === 'string' ? base : JSON.stringify(base)
+    }
+
     return null
   })()
 
