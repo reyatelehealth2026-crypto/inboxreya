@@ -33,19 +33,27 @@ export async function GET(request: NextRequest) {
         AND state NOT IN ('cancel', 'draft')
     `, [startDateStr]);
 
-    // 2. สถานะออเดอร์
+    // 2. สถานะออเดอร์ - แก้ไขให้ใช้ subquery แทน window function
     const [orderStatus] = await pool.execute(`
       SELECT 
         state_display as status,
         COUNT(*) as count,
-        COALESCE(SUM(amount_total), 0) as total_amount,
-        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) as percentage
+        COALESCE(SUM(amount_total), 0) as total_amount
       FROM odoo_orders
       WHERE date_order >= ?
         AND state NOT IN ('cancel', 'draft')
       GROUP BY state_display
       ORDER BY count DESC
     `, [startDateStr]);
+
+    // คำนวณ percentage แยก
+    const totalOrdersForPercent = (orderStatus as any[]).reduce((sum, s) => sum + Number(s.count), 0);
+    const orderStatusWithPercent = (orderStatus as any[]).map(s => ({
+      ...s,
+      percentage: totalOrdersForPercent > 0 
+        ? ((Number(s.count) / totalOrdersForPercent) * 100).toFixed(1)
+        : '0'
+    }));
 
     // 3. Top ลูกค้า
     const [topCustomers] = await pool.execute(`
@@ -65,22 +73,29 @@ export async function GET(request: NextRequest) {
       LIMIT ?
     `, [startDateStr, limit]);
 
-    // 4. Top เซลล์ (จาก assignees หรือผู้สร้างออเดอร์)
-    const [topSales] = await pool.execute(`
-      SELECT 
-        COALESCE(a.name, 'ไม่ระบุ') as sales_name,
-        COUNT(*) as order_count,
-        SUM(o.amount_total) as total_sales,
-        AVG(o.amount_total) as avg_order_value
-      FROM odoo_orders o
-      LEFT JOIN admin_users a ON o.user_id = a.id
-      WHERE o.date_order >= ?
-        AND o.state NOT IN ('cancel', 'draft')
-        AND o.user_id IS NOT NULL
-      GROUP BY o.user_id, a.name
-      ORDER BY total_sales DESC
-      LIMIT 3
-    `, [startDateStr]);
+    // 4. Top เซลล์ - แก้ไขให้รองรับกรณีไม่มีข้อมูล
+    let topSales: any[] = [];
+    try {
+      const [salesResult] = await pool.execute(`
+        SELECT 
+          COALESCE(a.name, 'ไม่ระบุ') as sales_name,
+          COUNT(*) as order_count,
+          SUM(o.amount_total) as total_sales,
+          AVG(o.amount_total) as avg_order_value
+        FROM odoo_orders o
+        LEFT JOIN admin_users a ON o.user_id = a.id
+        WHERE o.date_order >= ?
+          AND o.state NOT IN ('cancel', 'draft')
+          AND o.user_id IS NOT NULL
+        GROUP BY o.user_id, a.name
+        ORDER BY total_sales DESC
+        LIMIT 3
+      `, [startDateStr]);
+      topSales = salesResult as any[];
+    } catch (e) {
+      console.log('Top sales query failed, returning empty:', e);
+      topSales = [];
+    }
 
     // 5. สถิติรายวัน
     const [dailyStats] = await pool.execute(`
@@ -151,7 +166,7 @@ export async function GET(request: NextRequest) {
         avgOrderValue: Number(current.avg_order_value),
         changes
       },
-      orderStatus: orderStatus as any[],
+      orderStatus: orderStatusWithPercent,
       topCustomers: (topCustomers as any[]).map((c, i) => ({
         rank: i + 1,
         customerCode: c.customer_code || `CUST-${c.partner_id}`,
