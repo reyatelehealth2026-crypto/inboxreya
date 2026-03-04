@@ -43,6 +43,13 @@ export interface NewMessageEvent {
     messageType: string
     content: string | null
     mediaUrl: string | null
+    metadata?: any
+    replyToId?: string | null
+    replyTo?: {
+      id: string
+      content: string | null
+      messageType: string | null
+    } | null
     createdAt: string
     sentBy: string | null
     platform?: 'line' | 'facebook' | 'tiktok'

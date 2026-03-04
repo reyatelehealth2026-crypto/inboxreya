@@ -249,6 +249,8 @@ async function handleMessage(
       messageType: messageType ?? 'text',
       content: content,
       mediaUrl: mediaUrl,
+      metadata: metadata ? JSON.parse(metadata) : null,
+      replyToId: replyToId ? replyToId.toString() : null,
       createdAt: createdMessage.createdAt.toISOString(),
       sentBy: null,
     },

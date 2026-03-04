@@ -288,6 +288,8 @@ async function handleSyncMessage(data: any) {
       messageType: createdMessage.messageType ?? 'text',
       content: createdMessage.content,
       mediaUrl: createdMessage.mediaUrl,
+      metadata: createdMessage.metadata ? JSON.parse(createdMessage.metadata) : null,
+      replyToId: createdMessage.replyToId ? createdMessage.replyToId.toString() : null,
       createdAt: createdMessage.createdAt.toISOString(),
       sentBy: createdMessage.sentBy?.toString() || null,
     },
