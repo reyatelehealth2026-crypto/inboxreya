@@ -174,6 +174,15 @@ function MessageBubble({
   const [slipAmount, setSlipAmount] = useState('')
   const [slipDate, setSlipDate] = useState(() => new Date().toISOString().slice(0, 10))
 
+  // Check if this message is a quote reply (has replyTo relation)
+  const isQuoteReply = !!message.replyTo
+  const quoteTargetMessage = message.replyTo
+  
+  // Check if this message has quoteToken from LINE (incoming message that was a quote reply)
+  const metadata = (message.metadata as any) || {}
+  const hasQuoteToken = !!metadata?.quoteToken
+  const isLineQuoteReply = !isOutgoing && hasQuoteToken
+
   // Parse flex payload - check explicit flex type, JSON content, or metadata
   const isFlexType = message.messageType === 'flex'
   const isFlexJson = message.messageType === 'text' && isFlexMessageContent(message.content)
@@ -265,6 +274,49 @@ function MessageBubble({
             : 'bg-muted rounded-bl-sm'
         )}
       >
+        {/* Quote Reply Indicator */}
+        {(isQuoteReply || isLineQuoteReply) && (
+          <div 
+            className={cn(
+              'mb-2 pb-2 border-b border-dashed',
+              isOutgoing 
+                ? 'border-primary-foreground/30' 
+                : 'border-border/50'
+            )}
+          >
+            <div className="flex items-center gap-1.5 text-xs opacity-80 mb-1">
+              <Reply className="h-3 w-3" />
+              <span>{isOutgoing ? 'ตอบกลับ' : 'ตอบกลับข้อความ'}</span>
+            </div>            
+            {quoteTargetMessage && (
+              <div 
+                className={cn(
+                  'text-sm line-clamp-2 opacity-90',
+                  isOutgoing 
+                    ? 'text-primary-foreground/80' 
+                    : 'text-muted-foreground'
+                )}
+              >
+                {quoteTargetMessage.content && quoteTargetMessage.content.length > 100
+                  ? quoteTargetMessage.content.slice(0, 100) + '...'
+                  : quoteTargetMessage.content || '[ไม่มีข้อความ]'}
+              </div>
+            )}
+            {!quoteTargetMessage && isLineQuoteReply && (
+              <div 
+                className={cn(
+                  'text-sm opacity-70 italic',
+                  isOutgoing 
+                    ? 'text-primary-foreground/70' 
+                    : 'text-muted-foreground'
+                )}
+              >
+                [ข้อความต้นฉบับ]
+              </div>
+            )}
+          </div>
+        )}
+
         {message.messageType === 'text' && !isFlexJson && !isLineJson && (
           <div className="flex flex-col gap-1">
             <p className="whitespace-pre-wrap break-words">
