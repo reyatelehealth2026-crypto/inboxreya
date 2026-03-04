@@ -301,49 +301,6 @@ function MessageBubble({
                   : quoteTargetMessage.content || '[ไม่มีข้อความ]'}
               </div>
             )}
-            {!quoteTargetMessage && isLineQuoteReply && (
-              <div 
-                className={cn(
-                  'text-sm opacity-90',
-                  isOutgoing 
-                    ? 'text-primary-foreground/80' 
-                    : 'text-muted-foreground'
-                )}
-              >
-                {isLoadingQuoted ? (
-                  '<กำลังโหลด...>'
-                ) : quotedContent ? (
-                  quotedContent.length > 100 
-                    ? quotedContent.slice(0, 100) + '...' 
-                    : quotedContent
-                ) : (
-                  <span title={`Token: ${metadata?.quoteToken?.substring(0, 30)}...`}>
-                    [ไม่พบข้อความต้นฉบับ]
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {message.messageType === 'text' && !isFlexJson && !isLineJson && (
-          <div className="flex flex-col gap-1">
-            <p className="whitespace-pre-wrap break-words">
-              <MessageTextWithLinks content={message.content || ''} isOutgoing={isOutgoing} />
-            </p>
-            {(() => {
-              const urls = extractUrls(message.content || '')
-              return urls.length > 0 ? (
-                <LinkPreview url={urls[0]} isOutgoing={isOutgoing} />
-              ) : null
-            })()}
-          </div>
-        )}
-
-        {isLineJson && lineDisplayText && (
-          <p className="whitespace-pre-wrap break-words">{lineDisplayText}</p>
-        )}
-
         {shouldShowFlex && (
           <div className="max-w-full overflow-hidden">
             <FlexPreview flex={flexPayload} />
