@@ -3,8 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import prisma from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
+import pool from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,6 +17,7 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(100, parseInt(searchParams.get('limit') || '50'));
     const assignedToMe = searchParams.get('assignedToMe') === 'true';
 
+    // สร้าง IN clause สำหรับ event types
     let eventTypes = [
       'order.validated',
       'order.confirmed', 
@@ -35,12 +35,15 @@ export async function GET(request: NextRequest) {
       eventTypes = ['order.shipped', 'order.delivered'];
     }
 
-    let odooOrders;
+    const eventTypesIn = eventTypes.map(et => `'${et}'`).join(',');
+
+    let query: string;
+    let params: any[] = [];
 
     if (assignedToMe && session.user.id) {
       const adminId = parseInt(session.user.id);
       
-      odooOrders = await prisma.$queryRaw`
+      query = `
         SELECT 
           o.id,
           o.order_id,
@@ -56,15 +59,16 @@ export async function GET(request: NextRequest) {
         FROM odoo_webhooks_log o
         INNER JOIN users u ON o.line_user_id = u.line_user_id
         INNER JOIN conversation_multi_assignees cma ON u.id = cma.user_id
-        WHERE o.event_type IN (${Prisma.join(eventTypes)})
+        WHERE o.event_type IN (${eventTypesIn})
           AND o.status IN ('success', 'processing', 'received')
-          AND cma.admin_id = ${adminId}
+          AND cma.admin_id = ?
           AND cma.status = 'active'
         ORDER BY o.received_at DESC
-        LIMIT ${limit}
+        LIMIT ?
       `;
+      params = [adminId, limit];
     } else {
-      odooOrders = await prisma.$queryRaw`
+      query = `
         SELECT 
           id,
           order_id,
@@ -78,15 +82,20 @@ export async function GET(request: NextRequest) {
           retry_count,
           error_message
         FROM odoo_webhooks_log
-        WHERE event_type IN (${Prisma.join(eventTypes)})
+        WHERE event_type IN (${eventTypesIn})
           AND status IN ('success', 'processing', 'received')
         ORDER BY received_at DESC
-        LIMIT ${limit}
+        LIMIT ?
       `;
+      params = [limit];
     }
 
+    // ใช้ mysql2/pool แทน Prisma $queryRaw
+    const [rows] = await pool.execute(query, params);
+    const odooOrders = rows as any[];
+
     // แปลงข้อมูลให้เหมาะสมกับ Dashboard
-    const formattedOrders = (odooOrders as any[]).map((order) => {
+    const formattedOrders = odooOrders.map((order) => {
       let payload: any = {};
       try {
         payload = JSON.parse(order.payload || '{}');
@@ -127,7 +136,6 @@ export async function GET(request: NextRequest) {
         retryCount: order.retry_count,
         errorMessage: order.error_message,
         rawPayload: payload,
-        // สำหรับเชื่อมกับระบบแชท
         lineUserId: order.line_user_id,
       };
     });
