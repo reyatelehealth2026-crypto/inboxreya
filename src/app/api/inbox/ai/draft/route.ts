@@ -62,8 +62,15 @@ Draft:`
     })
 
     return NextResponse.json({ text })
-  } catch (error) {
+  } catch (error: any) {
     console.error('AI draft error:', error)
-    return NextResponse.json({ error: 'Failed to generate draft' }, { status: 500 })
+    return NextResponse.json(
+      { 
+        error: 'Failed to generate draft',
+        message: error?.message || 'Unknown error',
+        ...(process.env.NODE_ENV === 'development' && { stack: error?.stack })
+      }, 
+      { status: 500 }
+    )
   }
 }
