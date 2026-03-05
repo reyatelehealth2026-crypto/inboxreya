@@ -29,6 +29,7 @@ import {
   Link2,
   Package,
   Briefcase,
+  Megaphone,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -68,6 +69,7 @@ const menuGroups: MenuGroup[] = [
     groupIcon: '💬',
     menus: [
       { title: 'กล่องข้อความ', icon: <MessageSquare className="h-4 w-4" />, href: '/inbox' },
+      { title: 'Broadcast', icon: <Megaphone className="h-4 w-4" />, href: '/inbox/broadcasts' },
       { title: 'แชทกลุ่ม', icon: <MessagesSquare className="h-4 w-4" />, href: '/inbox/groups' },
     ],
   },
