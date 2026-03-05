@@ -321,8 +321,8 @@ function MessageBubble({
             : 'bg-muted rounded-bl-sm'
         )}
       >
-        {/* Quote Reply Indicator - Show for replyTo relation or LINE quote */}
-        {(isQuoteReply || isLineQuoteReply) && (
+        {/* Quote Reply Indicator - Show only for replyTo relation (not LINE quoteToken) */}
+        {isQuoteReply && quoteTargetMessage && (
           <div 
             className={cn(
               'mb-2 pb-2 border-b border-dashed',
@@ -335,22 +335,18 @@ function MessageBubble({
               <Reply className="h-3 w-3" />
               <span>{isOutgoing ? 'ตอบกลับ' : 'ตอบกลับข้อความ'}</span>
             </div>            
-            {quoteTargetMessage ? (
-              <div 
-                className={cn(
-                  'text-sm line-clamp-2 opacity-90',
-                  isOutgoing 
-                    ? 'text-primary-foreground/80' 
-                    : 'text-muted-foreground'
-                )}
-              >
-                {quoteTargetMessage.content && quoteTargetMessage.content.length > 100
-                  ? quoteTargetMessage.content.slice(0, 100) + '...'
-                  : quoteTargetMessage.content || '[ไม่มีข้อความ]'}
-              </div>
-            ) : isLineQuoteReply ? (
-              <LineQuoteMessage quotedMessageId={quotedMessageId} isOutgoing={isOutgoing} />
-            ) : null}
+            <div 
+              className={cn(
+                'text-sm line-clamp-2 opacity-90',
+                isOutgoing 
+                  ? 'text-primary-foreground/80' 
+                  : 'text-muted-foreground'
+              )}
+            >
+              {quoteTargetMessage.content && quoteTargetMessage.content.length > 100
+                ? quoteTargetMessage.content.slice(0, 100) + '...'
+                : quoteTargetMessage.content || '[ไม่มีข้อความ]'}
+            </div>
           </div>
         )}
         {shouldShowFlex && (
