@@ -371,8 +371,8 @@ function MessageBubble({
           </div>
         )}
 
-        {/* Fallback text display - always show content if nothing else rendered */}
-        {(!shouldShowFlex && normalizedMessageType !== 'image' && normalizedMessageType !== 'video' && normalizedMessageType !== 'audio' && normalizedMessageType !== 'file' && normalizedMessageType !== 'location' && normalizedMessageType !== 'sticker') && (
+        {/* Fallback for non-text types that don't have specific handling */}
+        {(normalizedMessageType !== 'text' && normalizedMessageType !== 'image' && normalizedMessageType !== 'video' && normalizedMessageType !== 'audio' && normalizedMessageType !== 'file' && normalizedMessageType !== 'location' && normalizedMessageType !== 'sticker' && !shouldShowFlex) && (
           <div 
             className="text-sm whitespace-pre-wrap break-words"
             style={{ color: isOutgoing ? 'white' : 'inherit' }}
