@@ -93,6 +93,11 @@ async function handleSyncMessage(data: any) {
   const resolvedLineMessageId = lineMessageId ?? parsedMetadata?.lineMessageId
   const resolvedQuotedMessageId = quotedMessageId ?? parsedMetadata?.quotedMessageId
 
+  // PHP stores DATETIME as Bangkok wall-clock time (no timezone).
+  // Prisma reads it as UTC. To keep consistency, we add +7h so the stored
+  // face-value matches what PHP would have written directly.
+  const bangkokCreatedAt = new Date(createdAt.getTime() + 7 * 60 * 60 * 1000)
+
   // 1. Resolve LineAccount
   // Convert lineAccountId to integer if provided (it comes as string from JSON)
   let accountId: number | undefined = lineAccountId ? parseInt(String(lineAccountId), 10) : undefined
@@ -208,20 +213,37 @@ async function handleSyncMessage(data: any) {
     return null
   })()
 
-  // 3. Create Message
-  const existingMessage = await prisma.message.findFirst({
-    where: {
-      userId: user.id,
-      direction: direction || 'incoming',
-      messageType: type || 'text',
-      content: content || null,
-      mediaUrl: mediaUrl || null,
-      createdAt,
-    },
-  })
-
-  if (existingMessage) {
-    return
+  // 3. Dedup check - use lineMessageId as primary key, fallback to content+direction within 10s window
+  if (resolvedLineMessageId) {
+    // Primary: LINE message ID is globally unique per message
+    const existingByLineId = await prisma.message.findFirst({
+      where: {
+        userId: user.id,
+        metadata: { contains: resolvedLineMessageId },
+      },
+      select: { id: true },
+    })
+    if (existingByLineId) {
+      console.log('[handleSyncMessage] Duplicate skipped (lineMessageId):', resolvedLineMessageId)
+      return
+    }
+  } else {
+    // Fallback: same content + direction within a 10-second window
+    const windowStart = new Date(bangkokCreatedAt.getTime() - 10000)
+    const windowEnd = new Date(bangkokCreatedAt.getTime() + 10000)
+    const existingMessage = await prisma.message.findFirst({
+      where: {
+        userId: user.id,
+        direction: direction || 'incoming',
+        content: content || null,
+        createdAt: { gte: windowStart, lte: windowEnd },
+      },
+      select: { id: true },
+    })
+    if (existingMessage) {
+      console.log('[handleSyncMessage] Duplicate skipped (content+window):', content?.substring(0, 30))
+      return
+    }
   }
 
   let replyToId: number | null = null
@@ -257,7 +279,8 @@ async function handleSyncMessage(data: any) {
       content: content || null,
       mediaUrl: mediaUrl || null,
       metadata: metadataValue,
-      createdAt,
+      createdAt: bangkokCreatedAt,
+      updatedAt: bangkokCreatedAt,
       isRead: direction === 'outgoing' ? true : false,
       replyToId,
     },

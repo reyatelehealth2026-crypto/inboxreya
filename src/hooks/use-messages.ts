@@ -53,9 +53,10 @@ export function useMessages(
         markRead: options?.markRead,
       }),
     enabled: !!userId,
-    staleTime: 10 * 1000, // 10 seconds
-    refetchInterval: 10 * 1000,
-    refetchIntervalInBackground: true,
+    staleTime: 15 * 1000, // 15 seconds
+    refetchInterval: 30 * 1000, // 30s fallback polling (real-time handles instant updates)
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
   })
 }
 
@@ -81,9 +82,10 @@ export function useInfiniteMessages(
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.pagination.cursor || undefined,
     enabled: !!userId,
-    staleTime: 10 * 1000,
-    refetchInterval: 10 * 1000,
-    refetchIntervalInBackground: true,
+    staleTime: 15 * 1000,
+    refetchInterval: 30 * 1000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
   })
 }
 

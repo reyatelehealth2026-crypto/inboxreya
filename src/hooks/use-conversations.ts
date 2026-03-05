@@ -68,8 +68,9 @@ export function useConversations() {
       limit: 1000, // No practical limit - show all conversations
     }),
     staleTime: 30 * 1000, // 30 seconds
-    refetchInterval: 15 * 1000,
-    refetchIntervalInBackground: true,
+    refetchInterval: 60 * 1000, // 60s fallback polling (real-time handles instant updates)
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false, // Handled by real-time events
     retry: (failureCount, error) => {
       // Don't retry on 4xx errors
       if (error.message.includes('401') || error.message.includes('403')) {
@@ -102,8 +103,9 @@ export function useInfiniteConversations() {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.pagination.cursor || undefined,
     staleTime: 30 * 1000,
-    refetchInterval: 15 * 1000,
-    refetchIntervalInBackground: true,
+    refetchInterval: 60 * 1000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
     retry: (failureCount, error) => {
       if (error.message.includes('401') || error.message.includes('403')) {
         return false

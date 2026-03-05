@@ -744,9 +744,8 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                         $filepath = $uploadDir . $filename;
 
                         if (file_put_contents($filepath, $imageData)) {
-                            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
-                            $host = $_SERVER['HTTP_HOST'] ?? (defined('BASE_URL') ? parse_url(BASE_URL, PHP_URL_HOST) : 'localhost');
-                            $savedMediaUrl = $protocol . $host . '/uploads/line_images/' . $filename;
+                            $baseUrl = defined('BASE_URL') ? rtrim(BASE_URL, '/') : (((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? 'localhost'));
+                            $savedMediaUrl = $baseUrl . '/uploads/line_images/' . $filename;
                         }
                     }
                 } catch (Exception $e) {
@@ -774,9 +773,8 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                         $filepath = $uploadDir . $filename;
 
                         if (file_put_contents($filepath, $videoData)) {
-                            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
-                            $host = $_SERVER['HTTP_HOST'] ?? (defined('BASE_URL') ? parse_url(BASE_URL, PHP_URL_HOST) : 'localhost');
-                            $savedMediaUrl = $protocol . $host . '/uploads/line_videos/' . $filename;
+                            $baseUrl = defined('BASE_URL') ? rtrim(BASE_URL, '/') : (((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? 'localhost'));
+                            $savedMediaUrl = $baseUrl . '/uploads/line_videos/' . $filename;
                         }
                     }
                 } catch (Exception $e) {
@@ -877,6 +875,8 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
             if (function_exists('syncMessageToNextjs')) {
                 // ใช้ $savedMediaUrl ถ้ามี (สำหรับ image/video) หรือ null
                 $syncMediaUrl = isset($savedMediaUrl) ? $savedMediaUrl : (isset($mediaUrl) ? $mediaUrl : null);
+                // ส่ง lineMessageId จาก event เพื่อใช้ตรวจ duplicate
+                $lineEventMessageId = $event['message']['id'] ?? null;
                 syncMessageToNextjs($userId, $user, [
                     'id' => $messageId,
                     'direction' => 'incoming',
@@ -884,6 +884,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                     'content' => $messageContent,
                     'mediaUrl' => $syncMediaUrl,
                     'timestamp' => time() * 1000, // milliseconds
+                    'lineMessageId' => $lineEventMessageId,
                 ], $lineAccountId);
             }
         } catch (Exception $e) {
@@ -3360,6 +3361,7 @@ function syncMessageToNextjs($lineUserId, $user, $messageData, $lineAccountId = 
                 'mediaUrl' => $messageData['mediaUrl'] ?? null,
                 'timestamp' => isset($messageData['timestamp']) ? $messageData['timestamp'] : (time() * 1000), // milliseconds
                 'lineAccountId' => $lineAccountId,
+                'lineMessageId' => $messageData['lineMessageId'] ?? null, // LINE message ID for dedup
             ],
         ];
 

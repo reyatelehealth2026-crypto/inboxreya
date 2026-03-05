@@ -61,18 +61,13 @@ export function usePusher(options: UsePusherOptions = {}) {
 
   // Handle new message event
   const handleNewMessage = useCallback((data: NewMessageEvent) => {
-    console.log('[Pusher] New message received:', data)
-    
-    // Use the correct query key format that matches useMessages
     const messagesQueryKey = queryKeys.messagesForUser(data.conversationId)
     
     // Optimistically update messages cache if the conversation is open
     const allMessagesQueries = queryClient.getQueriesData({
       queryKey: messagesQueryKey,
-      exact: false, // Match all queries that start with ['messages', conversationId]
+      exact: false,
     })
-    
-    console.log('[Pusher] Found queries to update:', allMessagesQueries.length)
     
     allMessagesQueries.forEach(([queryKey, cachedData]) => {
       if (cachedData && typeof cachedData === 'object' && 'data' in cachedData) {
@@ -109,48 +104,41 @@ export function usePusher(options: UsePusherOptions = {}) {
             ...cachedData,
             data: [...existingMessages, newMessage],
           })
-          console.log('[Pusher] Optimistically updated messages cache for query:', queryKey, 'New message:', newMessage)
-        } else {
-          console.log('[Pusher] Message already exists in cache:', data.message.id)
         }
       }
     })
     
-    // Invalidate all messages queries for this conversation (prefix match)
-    // This will mark queries as stale and refetch active ones
+    // Mark queries as stale - they'll refetch on next access or polling cycle
+    // No immediate refetch since we already optimistically updated the cache above
     queryClient.invalidateQueries({
       queryKey: messagesQueryKey,
-      exact: false, // Match all queries that start with this key
-      refetchType: 'active', // Refetch active queries immediately
+      exact: false,
+      refetchType: 'none',
     })
     
-    // Invalidate all conversations queries (prefix match)
+    // Mark conversations as stale for unread count updates etc.
     queryClient.invalidateQueries({
       queryKey: queryKeys.conversationsRoot(),
-      exact: false, // Match all conversations queries
-      refetchType: 'active', // Refetch active queries immediately
+      exact: false,
+      refetchType: 'active',
     })
-    
-    console.log('[Pusher] Queries invalidated for conversation:', data.conversationId)
   }, [queryClient])
 
   // Handle conversation update event
   const handleConversationUpdate = useCallback((data: ConversationUpdatedEvent) => {
     console.log('[Pusher] Conversation updated:', data)
     
-    // Invalidate and refetch all conversations queries (prefix match)
     queryClient.invalidateQueries({
       queryKey: queryKeys.conversationsRoot(),
-      exact: false, // Match all conversations queries
-      refetchType: 'active', // Refetch active queries immediately
+      exact: false,
+      refetchType: 'active',
     })
     
-    // If it's the selected conversation, invalidate messages too
     if (data.conversationId === selectedConversationId) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.messagesForUser(data.conversationId),
-        exact: false, // Match all messages queries for this conversation
-        refetchType: 'active', // Refetch active queries immediately
+        exact: false,
+        refetchType: 'none',
       })
     }
   }, [queryClient, selectedConversationId])

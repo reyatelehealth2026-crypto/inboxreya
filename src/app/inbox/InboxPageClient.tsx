@@ -157,17 +157,16 @@ export default function InboxPageClient() {
     }
   }, [isMobile, selectedConversationId])
 
-  // Set up real-time connection (SSE fallback)
-  const { error: sseError } = useRealtime({
-    enabled: status === 'authenticated',
-  })
-
   // Set up Pusher real-time connection (primary)
   const { error: pusherError, isConnected: pusherConnected } = usePusher({
     enabled: status === 'authenticated',
   })
 
-  // Use Pusher error if available, otherwise SSE error
+  // SSE as fallback only when Pusher is not connected
+  const { error: sseError } = useRealtime({
+    enabled: status === 'authenticated' && !pusherConnected,
+  })
+
   const error = pusherError || sseError
 
   // Redirect to login if not authenticated
