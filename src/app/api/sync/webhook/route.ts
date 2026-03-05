@@ -7,43 +7,43 @@ import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
 // Protected by INTERNAL_API_SECRET
 
 export async function POST(request: NextRequest) {
+  console.log('=== SYNC WEBHOOK START ===')
   try {
-    console.log('[POST /api/sync/webhook] Received request')
-    
     // 1. Check Authentication
     const authHeader = request.headers.get('authorization')
     const internalSecret = process.env.INTERNAL_API_SECRET || process.env.NEXTAUTH_SECRET
     
-    console.log('[POST /api/sync/webhook] Auth header:', authHeader ? 'present' : 'missing')
+    console.log('Auth header present:', !!authHeader)
+    console.log('Secret configured:', !!internalSecret)
 
     if (!authHeader || authHeader !== `Bearer ${internalSecret}`) {
-      console.error('[POST /api/sync/webhook] Unauthorized')
+      console.error('Unauthorized - invalid auth')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // 2. Parse Payload
     const body = await request.json()
+    console.log('Received body:', JSON.stringify(body).substring(0, 200))
+    
     const { event, data } = body
-
+    
     if (!event || !data) {
-      console.error('Sync webhook: Invalid payload - missing event or data', { event, hasData: !!data })
+      console.error('Invalid payload')
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
     }
+    
+    console.log(`Processing ${event} event`)
 
-    console.log(`Sync webhook: Received ${event} event for user ${data.lineUserId}`)
-
-    // 3. Handle Events
     if (event === 'message') {
       await handleSyncMessage(data)
-    } else if (event === 'user_update') {
-      await handleSyncUser(data)
     } else {
-      console.warn(`Sync webhook: Unknown event type: ${event}`)
+      console.warn('Unknown event:', event)
     }
-
+    
+    console.log('=== SYNC WEBHOOK SUCCESS ===')
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Sync webhook error:', error)
+    console.error('=== SYNC WEBHOOK ERROR ===', error)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }
