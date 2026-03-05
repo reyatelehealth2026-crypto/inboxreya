@@ -16,6 +16,8 @@ import {
   Building2,
   Save,
   X,
+  Clock,
+  CreditCard,
 } from 'lucide-react'
 import { useCustomerProfile, useUpdateCustomerProfile } from '@/hooks/use-customer-profile'
 import { Button } from '@/components/ui/button'
@@ -35,6 +37,9 @@ import { OdooPartnerSection } from './OdooPartnerSection'
 import { OdooOrdersSection } from './OdooOrdersSection'
 import { OdooInvoicesSection } from './OdooInvoicesSection'
 import { OdooSlipsSection } from './OdooSlipsSection'
+import { OdooCreditCard } from './OdooCreditCard'
+import { OdooOrderTimeline } from './OdooOrderTimeline'
+import { Customer360Section } from './Customer360Section'
 import type { LineUser } from '@/types'
 
 interface CustomerDetailPageProps {
@@ -272,6 +277,9 @@ export function CustomerDetailPage({ userId }: CustomerDetailPageProps) {
               </div>
               <OdooSlipsSection userId={userId} />
             </Card>
+
+            {/* Customer 360 - Credit & Timeline */}
+            <Customer360Section userId={userId} lineUserId={user.lineUserId} memberId={user.memberId} />
           </div>
         </div>
       </div>

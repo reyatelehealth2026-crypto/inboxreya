@@ -16,6 +16,11 @@ import type {
     OdooConnectionResponse,
     CreateOrderRequest,
     CreateOrderResponse,
+    Customer360Response,
+    WebhookStatsMiniResponse,
+    WebhookDashboardStatsResponse,
+    DlqListResponse,
+    DlqStatsResponse,
 } from '@/types/odoo';
 
 const API_BASE = '/api/odoo';
@@ -95,6 +100,62 @@ export const odooApi = {
     // Delivery
     calculateDeliveryFee: (province: string, weight: number) =>
         fetchOdoo<OdooDeliveryFeeResponse>('calculate_delivery_fee', { province, weight: weight.toString() }),
+};
+
+// Dashboard API — uses separate proxy route /api/odoo-dashboard
+const DASHBOARD_API = '/api/odoo-dashboard';
+
+async function fetchDashboard<T>(
+    action: string,
+    body?: Record<string, unknown>
+): Promise<T> {
+    const response = await fetch(DASHBOARD_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...body }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error(error.error || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+}
+
+export const odooDashboardApi = {
+    // Stats
+    getStats: () =>
+        fetchDashboard<WebhookDashboardStatsResponse>('stats'),
+
+    // Customer 360
+    getCustomer360: (lineUserId: string, partnerId?: string, customerRef?: string) =>
+        fetchDashboard<Customer360Response>('customer_360', {
+            line_user_id: lineUserId,
+            partner_id: partnerId || '',
+            customer_ref: customerRef || '',
+        }),
+
+    // Webhook stats mini (for sidebar badges)
+    getWebhookStatsMini: (params: { line_user_id?: string; partner_id?: string; customer_ref?: string }) =>
+        fetchDashboard<WebhookStatsMiniResponse>('webhook_stats_mini', params),
+
+    // DLQ
+    getDlqList: (offset: number = 0, limit: number = 30, status?: string) =>
+        fetchDashboard<DlqListResponse>('dlq_list', { offset, limit, status: status || '' }),
+
+    getDlqStats: () =>
+        fetchDashboard<DlqStatsResponse>('dlq_stats'),
+
+    retryDlqItem: (dlqId: number) =>
+        fetchDashboard<{ success: boolean; data?: { message: string }; error?: string }>('dlq_retry', { dlq_id: dlqId }),
+
+    // Order timeline
+    getOrderTimeline: (orderId?: string, orderName?: string) =>
+        fetchDashboard<{ success: boolean; data?: { events: unknown[]; total_events: number } }>('order_timeline', {
+            order_id: orderId || '',
+            order_name: orderName || '',
+        }),
 };
 
 export default odooApi;

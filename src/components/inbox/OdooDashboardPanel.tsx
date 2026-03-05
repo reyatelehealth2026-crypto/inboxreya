@@ -3,13 +3,16 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Image from 'next/image'
-import { ShoppingBag, FileText, Receipt, Eye, AlertCircle } from 'lucide-react'
+import { ShoppingBag, FileText, Receipt, Eye, AlertCircle, Clock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { OdooSlipsSection } from './OdooSlipsSection'
+import { OdooCreditCard } from './OdooCreditCard'
+import { OdooOrderTimeline } from './OdooOrderTimeline'
+import type { Customer360TimelineEvent, Customer360Credit } from '@/types/odoo'
 
 interface OdooDashboardPanelProps {
   partnerId?: number | null
@@ -58,7 +61,7 @@ async function fetchDashboardData(partnerId: number | null, customerRef: string 
 
   const pid = partnerId && partnerId > 0 ? String(partnerId) : ''
 
-  const [ordRes, invRes, slipRes] = await Promise.all([
+  const [ordRes, invRes, slipRes, c360Res] = await Promise.all([
     fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -74,7 +77,14 @@ async function fetchDashboardData(partnerId: number | null, customerRef: string 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'odoo_slips', partner_id: pid, line_user_id: lineUserId || '' }),
     }).then(r => r.json()).catch(() => ({ success: false })),
+    fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'customer_360', partner_id: pid, customer_ref: customerRef || '', line_user_id: lineUserId || '', orders_limit: 10, invoices_limit: 10, timeline_limit: 20 }),
+    }).then(r => r.json()).catch(() => ({ success: false })),
   ])
+
+  const c360Data = c360Res?.success ? c360Res.data : null
 
   return {
     orders: ordRes?.success ? (ordRes.data?.orders || []) as OdooOrderItem[] : [],
@@ -83,6 +93,9 @@ async function fetchDashboardData(partnerId: number | null, customerRef: string 
     invoicesTotal: invRes?.success ? (invRes.data?.total || 0) : 0,
     slips: slipRes?.success ? (slipRes.data?.slips || []) as SlipItem[] : [],
     slipsTotal: slipRes?.success ? (slipRes.data?.total || 0) : 0,
+    credit: (c360Data?.credit || null) as Customer360Credit | null,
+    timeline: (c360Data?.timeline || []) as Customer360TimelineEvent[],
+    webhookSummary: c360Data?.webhook_summary || null,
   }
 }
 
@@ -124,7 +137,7 @@ const slipStatusMap: Record<string, { label: string; color: string }> = {
   failed: { label: 'ไม่สำเร็จ', color: 'bg-red-100 text-red-700' },
 }
 
-type DashTab = 'orders' | 'invoices' | 'slips'
+type DashTab = 'orders' | 'invoices' | 'slips' | 'timeline'
 
 export function OdooDashboardPanel({ partnerId, customerRef, lineUserId, userId }: OdooDashboardPanelProps) {
   const [activeTab, setActiveTab] = useState<DashTab>('orders')
@@ -179,10 +192,14 @@ export function OdooDashboardPanel({ partnerId, customerRef, lineUserId, userId 
     return true
   })
 
+  const timeline = data?.timeline || []
+  const credit = data?.credit || null
+
   const tabs: { id: DashTab; label: string; count: number; icon: typeof ShoppingBag }[] = [
     { id: 'orders', label: 'ออเดอร์', count: orders.length, icon: ShoppingBag },
     { id: 'invoices', label: 'ใบแจ้งหนี้', count: data?.invoicesTotal || invoices.length, icon: FileText },
     { id: 'slips', label: 'สลิป', count: 0, icon: Receipt },
+    { id: 'timeline', label: 'Timeline', count: timeline.length, icon: Clock },
   ]
 
   return (
@@ -220,6 +237,13 @@ export function OdooDashboardPanel({ partnerId, customerRef, lineUserId, userId 
         </div>
       </div>
 
+      {/* Credit Card - shown above content when available */}
+      {credit && (credit.credit_limit || credit.total_due || credit.overdue_amount) && (
+        <div className="flex-shrink-0 px-3 pt-2">
+          <OdooCreditCard credit={credit} />
+        </div>
+      )}
+
       {/* Content */}
       {activeTab === 'slips' ? (
         <div className="flex-1 overflow-y-auto p-3">
@@ -232,6 +256,12 @@ export function OdooDashboardPanel({ partnerId, customerRef, lineUserId, userId 
             </div>
           )}
         </div>
+      ) : activeTab === 'timeline' ? (
+        <ScrollArea className="flex-1">
+          <div className="p-3">
+            <OdooOrderTimeline events={timeline} maxItems={20} />
+          </div>
+        </ScrollArea>
       ) : (
         <ScrollArea className="flex-1">
           <div className="p-3">
