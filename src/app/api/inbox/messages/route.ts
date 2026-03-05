@@ -154,6 +154,11 @@ export async function GET(request: NextRequest) {
       updatedAt: toBangkokWallTime(msg.updatedAt),
     }))
 
+    // DEBUG: Log first and last message content
+    if (formattedMessages.length > 0) {
+      console.log('[GET messages] First:', formattedMessages[0]?.content, 'Last:', formattedMessages[formattedMessages.length - 1]?.content)
+    }
+
     // Reverse to show oldest first
     formattedMessages.reverse()
 
@@ -262,6 +267,8 @@ export async function POST(request: NextRequest) {
 
     // Try to send via PHP API if configured (platform-aware)
     let platformSendSuccess = false
+    let returnedQuoteToken: string | null = null
+    let returnedLineMessageId: string | null = null
 
     if (process.env.PHP_API_URL) {
       try {
@@ -274,6 +281,19 @@ export async function POST(request: NextRequest) {
           quoteToken,
         })
         platformSendSuccess = sendResult.success
+        
+        // Capture quoteToken and lineMessageId returned from LINE API
+        // LINE API returns: { sentMessages: [{ id: "LINE_MSG_ID", quoteToken: "..." }] }
+        if (sendResult.success) {
+          if (sendResult.quoteToken) returnedQuoteToken = sendResult.quoteToken
+          if (sendResult.lineMessageId) returnedLineMessageId = sendResult.lineMessageId
+          // Also try sentMessages array format
+          const sentMsg = sendResult.sentMessages?.[0]
+          if (sentMsg) {
+            if (!returnedQuoteToken && sentMsg.quoteToken) returnedQuoteToken = sentMsg.quoteToken
+            if (!returnedLineMessageId && sentMsg.id) returnedLineMessageId = sentMsg.id
+          }
+        }
 
         if (!sendResult.success) {
           console.warn(`${userPlatform} message send failed (will still save message):`, sendResult.error)
@@ -289,6 +309,16 @@ export async function POST(request: NextRequest) {
     const now = new Date()
     // Add 7 hours to ensure DATETIME columns receive the Bangkok face-value time
     const bangkokNow = new Date(now.getTime() + 7 * 60 * 60 * 1000)
+    
+    // Build metadata including quoteToken and lineMessageId from LINE API response
+    const messageMetadata: any = metadata || {}
+    if (returnedQuoteToken) {
+      messageMetadata.quoteToken = returnedQuoteToken
+    }
+    if (returnedLineMessageId) {
+      // lineMessageId stored on outgoing messages enables incoming quote-reply mapping
+      messageMetadata.lineMessageId = returnedLineMessageId
+    }
 
     // Save to Prisma database (PHP no longer saves to avoid duplicates)
     const message = await prisma.message.create({
@@ -299,7 +329,7 @@ export async function POST(request: NextRequest) {
         messageType,
         content,
         mediaUrl,
-        metadata: metadata ? JSON.stringify(metadata) : null,
+        metadata: Object.keys(messageMetadata).length > 0 ? JSON.stringify(messageMetadata) : null,
         sentBy: session?.user?.id ?? null,
         replyToId: parsedReplyToId,
         isRead: true,
@@ -363,6 +393,9 @@ export async function POST(request: NextRequest) {
         messageType: responsePayload.messageType ?? 'text',
         content: responsePayload.content,
         mediaUrl: responsePayload.mediaUrl,
+        metadata: responsePayload.metadata,
+        replyToId: responsePayload.replyToId,
+        replyTo: responsePayload.replyTo,
         createdAt: responsePayload.createdAt || new Date().toISOString(),
         sentBy: responsePayload.sentBy,
         platform: userPlatform,

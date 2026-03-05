@@ -142,6 +142,11 @@ export interface MessageMetadata {
   // For image/video
   previewUrl?: string
   duration?: number
+
+  // For LINE quote reply
+  quotedMessageId?: string  // LINE message ID of the quoted message
+  lineMessageId?: string    // LINE message ID of this message (for dedup + quote lookup)
+  quoteToken?: string       // LINE quoteToken returned after sending (stored on outgoing msgs)
 }
 
 // Tag types

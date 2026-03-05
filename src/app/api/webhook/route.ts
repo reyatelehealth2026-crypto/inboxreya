@@ -140,6 +140,15 @@ async function handleMessage(
   let mediaUrl = null
   let metadataObj: Record<string, any> = {}
 
+  // Store LINE message id for reply matching
+  if (message.id) {
+    metadataObj.lineMessageId = message.id
+  }
+
+  if (message.quotedMessageId) {
+    metadataObj.quotedMessageId = message.quotedMessageId
+  }
+
   // Store quoteToken from LINE message (used for quote reply feature)
   if (message.quoteToken) {
     metadataObj.quoteToken = message.quoteToken
@@ -182,6 +191,30 @@ async function handleMessage(
 
   const metadata = Object.keys(metadataObj).length > 0 ? JSON.stringify(metadataObj) : null
 
+  let replyToId: number | null = null
+  if (message.quotedMessageId) {
+    const recentMessages = await prisma.message.findMany({
+      where: {
+        userId: user.id,
+        metadata: { not: null },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    })
+
+    for (const msg of recentMessages) {
+      try {
+        const parsed = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata
+        if (parsed?.lineMessageId === message.quotedMessageId) {
+          replyToId = msg.id
+          break
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+  }
+
   const createdMessage = await prisma.message.create({
     data: {
       userId: user.id,
@@ -193,6 +226,7 @@ async function handleMessage(
       metadata,
       replyToken,
       isRead: false,
+      replyToId,
     },
   })
 
@@ -215,6 +249,8 @@ async function handleMessage(
       messageType: messageType ?? 'text',
       content: content,
       mediaUrl: mediaUrl,
+      metadata: metadata ? JSON.parse(metadata) : null,
+      replyToId: replyToId ? replyToId.toString() : null,
       createdAt: createdMessage.createdAt.toISOString(),
       sentBy: null,
     },

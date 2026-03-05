@@ -43,6 +43,8 @@ export async function GET(request: NextRequest) {
     const tagIdsParam = searchParams.get('tagIds')
     const search = searchParams.get('search')
     const assignedTo = searchParams.get('assignedTo')
+    console.log('[DEBUG] assignedTo param:', assignedTo)
+    
     const assignedToParam = searchParams.get('assignedToIds')
     const unreadOnly = searchParams.get('unreadOnly')
     const startDate = searchParams.get('startDate')
@@ -147,7 +149,13 @@ export async function GET(request: NextRequest) {
       where.conversationAssignees = {
         none: { status: 'active' },
       }
-    } else if (assignedTo) {
+    } else if (assignedTo === 'me' && !internalRequest && session?.user) {
+      // Filter for conversations assigned to the current user
+      console.log('[DEBUG] assignedTo=me, session.user.id:', session.user.id, 'parsed:', parseInt(session.user.id))
+      where.conversationAssignees = {
+        some: { adminId: parseInt(session.user.id), status: 'active' },
+      }
+    } else if (assignedTo && assignedTo !== 'me') {
       const parsedAssignedTo = Number(assignedTo)
       if (!Number.isFinite(parsedAssignedTo)) {
         return NextResponse.json({ error: 'assignedTo must be a number' }, { status: 400 })
@@ -179,6 +187,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get users with their latest messages (without admin relation to avoid orphan issues)
+    console.log('[DEBUG] Final where clause:', JSON.stringify(where, null, 2))
     const users = await prisma.lineUser.findMany({
       where,
       select: {

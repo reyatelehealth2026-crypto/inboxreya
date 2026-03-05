@@ -6,7 +6,17 @@ import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Menu, ArrowLeft } from 'lucide-react'
 import { ConversationList } from '@/components/inbox/ConversationList'
-import { ChatPanel } from '@/components/inbox/ChatPanel'
+const ChatPanel = dynamic(
+  () => import('@/components/inbox/ChatPanel').then((mod) => mod.ChatPanel),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+        กำลังโหลดแชต...
+      </div>
+    ),
+  }
+)
 import { useRealtime } from '@/hooks/use-realtime'
 import { usePusher } from '@/hooks/use-pusher'
 import { useInboxFilterSync } from '@/hooks/use-inbox-filter-sync'
@@ -62,6 +72,14 @@ export default function InboxPageClient() {
   const [isShortcutsHelpOpen, setIsShortcutsHelpOpen] = useState(false)
 
   useInboxFilterSync()
+
+  // Handle initial conversation selection from query param
+  useEffect(() => {
+    const userId = searchParams.get('userId')
+    if (userId && userId !== selectedConversationId) {
+      setSelectedConversation(userId)
+    }
+  }, [searchParams, setSelectedConversation, selectedConversationId])
 
   // Register keyboard shortcuts
   useInboxKeyboardShortcuts({
@@ -139,17 +157,16 @@ export default function InboxPageClient() {
     }
   }, [isMobile, selectedConversationId])
 
-  // Set up real-time connection (SSE fallback)
-  const { error: sseError } = useRealtime({
-    enabled: status === 'authenticated',
-  })
-
   // Set up Pusher real-time connection (primary)
   const { error: pusherError, isConnected: pusherConnected } = usePusher({
     enabled: status === 'authenticated',
   })
 
-  // Use Pusher error if available, otherwise SSE error
+  // SSE as fallback only when Pusher is not connected
+  const { error: sseError } = useRealtime({
+    enabled: status === 'authenticated' && !pusherConnected,
+  })
+
   const error = pusherError || sseError
 
   // Redirect to login if not authenticated

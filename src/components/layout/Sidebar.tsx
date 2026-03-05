@@ -27,6 +27,8 @@ import {
   MessagesSquare,
   UserCog,
   Link2,
+  Package,
+  Briefcase,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -54,6 +56,7 @@ const menuGroups: MenuGroup[] = [
     groupIcon: '📊',
     menus: [
       { title: 'หน้าแรก', icon: <Home className="h-4 w-4" />, href: '/dashboard' },
+      { title: 'งานของฉัน', icon: <Briefcase className="h-4 w-4" />, href: '/dashboard/my-work' },
       { title: 'Admin Dashboard', icon: <UserCog className="h-4 w-4" />, href: '/dashboard/admin' },
       { title: 'Customer Dashboard', icon: <Users className="h-4 w-4" />, href: '/dashboard/customers' },
     ],
@@ -165,12 +168,12 @@ export function Sidebar({ className }: SidebarProps) {
       </div>
 
       {/* Menu Groups */}
-      <nav className="flex-1 overflow-y-auto p-2">
+      <nav className="flex-1 overflow-y-auto p-2 space-y-1">
         {menuGroups.map((group) => {
           const isExpanded = expandedGroups.includes(group.groupId);
 
           return (
-            <div key={group.groupId} className="mb-2">
+            <div key={group.groupId} className="">
               {/* Group Header */}
               <button
                 onClick={() => !collapsed && toggleGroup(group.groupId)}
@@ -183,7 +186,7 @@ export function Sidebar({ className }: SidebarProps) {
                 <span className="text-lg">{group.groupIcon}</span>
                 {!collapsed && (
                   <>
-                    <span className="flex-1 text-left">{group.groupTitle}</span>
+                    <span className="flex-1 text-left whitespace-nowrap">{group.groupTitle}</span>
                     {isExpanded ? (
                       <ChevronUp className="h-4 w-4" />
                     ) : (

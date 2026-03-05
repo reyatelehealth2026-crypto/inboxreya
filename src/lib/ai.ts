@@ -21,47 +21,73 @@ export async function generateAiText({
 }: GeminiRequestOptions) {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
-    throw new Error('Missing GEMINI_API_KEY')
+    console.error('[AI Error] Missing GEMINI_API_KEY environment variable')
+    throw new Error('AI service not configured: Missing GEMINI_API_KEY')
   }
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts }],
-        generationConfig: {
-          temperature,
-          maxOutputTokens: maxTokens,
-        },
-        ...(systemPrompt
-          ? {
-            systemInstruction: {
-              parts: [{ text: systemPrompt }],
-            },
-          }
-          : {}),
-      }),
+  // Log request for debugging (remove in production)
+  console.log('[AI Request]', {
+    model,
+    partsCount: parts.length,
+    hasSystemPrompt: !!systemPrompt,
+    maxTokens,
+  })
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts }],
+          generationConfig: {
+            temperature,
+            maxOutputTokens: maxTokens,
+          },
+          ...(systemPrompt
+            ? {
+              systemInstruction: {
+                parts: [{ text: systemPrompt }],
+              },
+            }
+            : {}),
+        }),
+      }
+    )
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[AI Error] Gemini API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      })
+      throw new Error(`AI API error (${response.status}): ${errorText}`)
     }
-  )
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(errorText || 'AI request failed')
+    const data = await response.json()
+    
+    // Check for blocked content or other issues
+    if (data?.candidates?.[0]?.finishReason === 'SAFETY') {
+      throw new Error('Content blocked by safety filters')
+    }
+    
+    const text =
+      data?.candidates?.[0]?.content?.parts
+        ?.map((part: { text?: string }) => part.text || '')
+        .join('') || ''
+
+    if (!text.trim()) {
+      console.error('[AI Error] Empty response from Gemini:', data)
+      throw new Error('AI response was empty')
+    }
+
+    return text.trim()
+  } catch (error) {
+    console.error('[AI Error] Failed to generate text:', error)
+    throw error
   }
-
-  const data = await response.json()
-  const text =
-    data?.candidates?.[0]?.content?.parts
-      ?.map((part: { text?: string }) => part.text || '')
-      .join('') || ''
-
-  if (!text.trim()) {
-    throw new Error('AI response was empty')
-  }
-
-  return text.trim()
 }
 
 export async function fetchImageAsInlineData(imageUrl: string) {

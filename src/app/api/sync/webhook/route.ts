@@ -7,39 +7,43 @@ import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
 // Protected by INTERNAL_API_SECRET
 
 export async function POST(request: NextRequest) {
+  console.log('=== SYNC WEBHOOK START ===')
   try {
     // 1. Check Authentication
     const authHeader = request.headers.get('authorization')
     const internalSecret = process.env.INTERNAL_API_SECRET || process.env.NEXTAUTH_SECRET
+    
+    console.log('Auth header present:', !!authHeader)
+    console.log('Secret configured:', !!internalSecret)
 
     if (!authHeader || authHeader !== `Bearer ${internalSecret}`) {
-      console.error('Sync webhook: Unauthorized - missing or invalid auth header')
+      console.error('Unauthorized - invalid auth')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // 2. Parse Payload
     const body = await request.json()
+    console.log('Received body:', JSON.stringify(body).substring(0, 200))
+    
     const { event, data } = body
-
+    
     if (!event || !data) {
-      console.error('Sync webhook: Invalid payload - missing event or data', { event, hasData: !!data })
+      console.error('Invalid payload')
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
     }
+    
+    console.log(`Processing ${event} event`)
 
-    console.log(`Sync webhook: Received ${event} event for user ${data.lineUserId}`)
-
-    // 3. Handle Events
     if (event === 'message') {
       await handleSyncMessage(data)
-    } else if (event === 'user_update') {
-      await handleSyncUser(data)
     } else {
-      console.warn(`Sync webhook: Unknown event type: ${event}`)
+      console.warn('Unknown event:', event)
     }
-
+    
+    console.log('=== SYNC WEBHOOK SUCCESS ===')
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Sync webhook error:', error)
+    console.error('=== SYNC WEBHOOK ERROR ===', error)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }
@@ -53,23 +57,46 @@ function normalizePictureUrl(value: unknown) {
 }
 
 async function handleSyncMessage(data: any) {
+  console.log('[handleSyncMessage] Received data:', JSON.stringify(data))
+  
   const {
     lineUserId,
     displayName,
     pictureUrl,
-    direction, // 'incoming' | 'outgoing'
-    type,      // 'text' | 'image' | ...
+    direction,
+    type,
     content,
     mediaUrl,
     timestamp,
-    lineAccountId, // optional, ID of the LINE account
+    lineAccountId,
     metadata,
-    quoteToken
+    quoteToken,
+    lineMessageId,
+    quotedMessageId
   } = data
+  
+  console.log('[handleSyncMessage] content:', content, 'type:', type)
 
   if (!lineUserId) return
   const safePictureUrl = normalizePictureUrl(pictureUrl)
   const createdAt = timestamp ? new Date(timestamp) : new Date()
+
+  const parsedMetadata = (() => {
+    if (!metadata) return null
+    try {
+      return typeof metadata === 'string' ? JSON.parse(metadata) : metadata
+    } catch {
+      return null
+    }
+  })()
+
+  const resolvedLineMessageId = lineMessageId ?? parsedMetadata?.lineMessageId
+  const resolvedQuotedMessageId = quotedMessageId ?? parsedMetadata?.quotedMessageId
+
+  // PHP stores DATETIME as Bangkok wall-clock time (no timezone).
+  // Prisma reads it as UTC. To keep consistency, we add +7h so the stored
+  // face-value matches what PHP would have written directly.
+  const bangkokCreatedAt = new Date(createdAt.getTime() + 7 * 60 * 60 * 1000)
 
   // 1. Resolve LineAccount
   // Convert lineAccountId to integer if provided (it comes as string from JSON)
@@ -154,33 +181,94 @@ async function handleSyncMessage(data: any) {
   }
 
   const metadataValue = (() => {
+    let base: any = null
+
     if (metadata) {
       try {
-        return typeof metadata === 'string' ? metadata : JSON.stringify(metadata)
+        base = typeof metadata === 'string' ? JSON.parse(metadata) : metadata
       } catch {
-        return null
+        base = metadata
       }
     }
-    if (quoteToken) {
-      return JSON.stringify({ quoteToken })
+
+    const extra: Record<string, any> = {}
+    if (quoteToken) extra.quoteToken = quoteToken
+    if (resolvedLineMessageId) extra.lineMessageId = resolvedLineMessageId
+    if (resolvedQuotedMessageId) extra.quotedMessageId = resolvedQuotedMessageId
+
+    if (Object.keys(extra).length > 0) {
+      if (base && typeof base === 'object') {
+        return JSON.stringify({ ...base, ...extra })
+      }
+      if (typeof base === 'string' && base.trim().length > 0) {
+        return JSON.stringify({ raw: base, ...extra })
+      }
+      return JSON.stringify(extra)
     }
+
+    if (base) {
+      return typeof base === 'string' ? base : JSON.stringify(base)
+    }
+
     return null
   })()
 
-  // 3. Create Message
-  const existingMessage = await prisma.message.findFirst({
-    where: {
-      userId: user.id,
-      direction: direction || 'incoming',
-      messageType: type || 'text',
-      content: content || null,
-      mediaUrl: mediaUrl || null,
-      createdAt,
-    },
-  })
+  // 3. Dedup check - use lineMessageId as primary key, fallback to content+direction within 10s window
+  if (resolvedLineMessageId) {
+    // Primary: LINE message ID is globally unique per message
+    // Use exact JSON key match to avoid false positives (e.g. quotedMessageId containing the same value)
+    const existingByLineId = await prisma.message.findFirst({
+      where: {
+        userId: user.id,
+        metadata: { contains: `"lineMessageId":"${resolvedLineMessageId}"` },
+      },
+      select: { id: true },
+    })
+    if (existingByLineId) {
+      console.log('[handleSyncMessage] Duplicate skipped (lineMessageId):', resolvedLineMessageId)
+      return
+    }
+  } else {
+    // Fallback: same content + direction within a 10-second window
+    const windowStart = new Date(bangkokCreatedAt.getTime() - 10000)
+    const windowEnd = new Date(bangkokCreatedAt.getTime() + 10000)
+    const existingMessage = await prisma.message.findFirst({
+      where: {
+        userId: user.id,
+        direction: direction || 'incoming',
+        content: content || null,
+        createdAt: { gte: windowStart, lte: windowEnd },
+      },
+      select: { id: true },
+    })
+    if (existingMessage) {
+      console.log('[handleSyncMessage] Duplicate skipped (content+window):', content?.substring(0, 30))
+      return
+    }
+  }
 
-  if (existingMessage) {
-    return
+  let replyToId: number | null = null
+  if (resolvedQuotedMessageId) {
+    const recentMessages = await prisma.message.findMany({
+      where: {
+        userId: user.id,
+        metadata: { not: null },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    })
+
+    for (const msg of recentMessages) {
+      try {
+        const parsed = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata
+        if (parsed?.lineMessageId === resolvedQuotedMessageId) {
+          replyToId = msg.id
+          break
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
   }
 
   const createdMessage = await prisma.message.create({
@@ -192,9 +280,18 @@ async function handleSyncMessage(data: any) {
       content: content || null,
       mediaUrl: mediaUrl || null,
       metadata: metadataValue,
-      createdAt,
-      isRead: direction === 'outgoing' ? true : false
-    }
+      createdAt: bangkokCreatedAt,
+      updatedAt: bangkokCreatedAt,
+      isRead: direction === 'outgoing' ? true : false,
+      replyToId,
+    },
+    include: { replyTo: true },
+  })
+  
+  console.log('[handleSyncMessage] Created message:', {
+    id: createdMessage.id,
+    content: createdMessage.content,
+    messageType: createdMessage.messageType
   })
 
   // Broadcast via SSE (existing)
@@ -214,6 +311,13 @@ async function handleSyncMessage(data: any) {
         isRead: createdMessage.isRead,
         sentBy: createdMessage.sentBy,
         replyToId: createdMessage.replyToId,
+        replyTo: createdMessage.replyTo
+          ? {
+              id: createdMessage.replyTo.id.toString(),
+              content: createdMessage.replyTo.content,
+              messageType: createdMessage.replyTo.messageType,
+            }
+          : null,
         createdAt: createdMessage.createdAt.toISOString(),
         updatedAt: createdMessage.updatedAt.toISOString()
       }
@@ -230,6 +334,15 @@ async function handleSyncMessage(data: any) {
       messageType: createdMessage.messageType ?? 'text',
       content: createdMessage.content,
       mediaUrl: createdMessage.mediaUrl,
+      metadata: createdMessage.metadata ? JSON.parse(createdMessage.metadata) : null,
+      replyToId: createdMessage.replyToId ? createdMessage.replyToId.toString() : null,
+      replyTo: createdMessage.replyTo
+        ? {
+            id: createdMessage.replyTo.id.toString(),
+            content: createdMessage.replyTo.content,
+            messageType: createdMessage.replyTo.messageType,
+          }
+        : null,
       createdAt: createdMessage.createdAt.toISOString(),
       sentBy: createdMessage.sentBy?.toString() || null,
     },

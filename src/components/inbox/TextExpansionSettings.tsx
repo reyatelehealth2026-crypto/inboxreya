@@ -109,7 +109,7 @@ export function TextExpansionSettings() {
             <div className="text-center py-8 text-gray-500">
               <Zap className="h-12 w-12 mx-auto mb-3 text-gray-300" />
               <p className="text-sm">ยังไม่มีข้อความอัตโนมัติ</p>
-              <p className="text-xs mt-1">คลิก "เพิ่มรายการ" ด้านบนเพื่อเริ่มใช้งาน</p>
+              <p className="text-xs mt-1">คลิก &quot;เพิ่มรายการ&quot; ด้านบนเพื่อเริ่มใช้งาน</p>
             </div>
           ) : (
             <div className="space-y-2">

@@ -129,6 +129,63 @@ function getLineMessageDisplayText(content: string): string | null {
 }
 
 
+// Component to fetch and display LINE quoted message
+function LineQuoteMessage({ quotedMessageId, isOutgoing }: { quotedMessageId: string, isOutgoing: boolean }) {
+  const [quotedContent, setQuotedContent] = useState<string | null>(null)
+  const [quotedType, setQuotedType] = useState<string>('text')
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    if (!quotedMessageId) return
+    
+    const fetchQuotedMessage = async () => {
+      try {
+        const response = await fetch(`/api/inbox/messages/quoted?quotedMessageId=${encodeURIComponent(quotedMessageId)}`)
+        if (response.ok) {
+          const data = await response.json()
+          setQuotedContent(data.content || null)
+          setQuotedType(data.messageType || 'text')
+        } else {
+          setQuotedContent(null)
+        }
+      } catch {
+        setQuotedContent(null)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    
+    fetchQuotedMessage()
+  }, [quotedMessageId])
+
+  if (isLoading) {
+    return <div className="text-xs opacity-50 italic">กำลังโหลด...</div>
+  }
+
+  const displayText = (() => {
+    if (!quotedContent) return '[ไม่พบข้อความ]'
+    if (quotedType === 'image') return '[รูปภาพ]'
+    if (quotedType === 'sticker') return '[สติกเกอร์]'
+    if (quotedType === 'video') return '[วิดีโอ]'
+    if (quotedType === 'audio') return '[เสียง]'
+    if (quotedType === 'file') return '[ไฟล์]'
+    return quotedContent.length > 100 ? quotedContent.slice(0, 100) + '...' : quotedContent
+  })()
+
+  return (
+    <div 
+      className={cn(
+        'text-sm line-clamp-2 opacity-90',
+        isOutgoing 
+          ? 'text-primary-foreground/80' 
+          : 'text-muted-foreground'
+      )}
+    >
+      {displayText}
+    </div>
+  )
+}
+
 const MessageTextWithLinks = ({ content, isOutgoing }: { content: string, isOutgoing: boolean }) => {
   if (!content) return null
   const parts = content.split(/(\bhttps?:\/\/[^\s]+)/g)
@@ -174,9 +231,20 @@ function MessageBubble({
   const [slipAmount, setSlipAmount] = useState('')
   const [slipDate, setSlipDate] = useState(() => new Date().toISOString().slice(0, 10))
 
+  // Check if this message is a quote reply (has replyTo relation)
+  const isQuoteReply = !!message.replyTo
+  const quoteTargetMessage = message.replyTo
+  
+  // For LINE quote messages: check metadata for quotedMessageId
+  // Works for both incoming (customer quoted our msg) and outgoing (we quoted customer msg via LINE)
+  const quotedMessageId = message.metadata?.quotedMessageId
+  // Show LINE quote block when: has quotedMessageId AND no replyTo relation already resolved
+  const isLineQuoteReply = !!quotedMessageId && !isQuoteReply
+
   // Parse flex payload - check explicit flex type, JSON content, or metadata
-  const isFlexType = message.messageType === 'flex'
-  const isFlexJson = message.messageType === 'text' && isFlexMessageContent(message.content)
+  const normalizedMessageType = message.messageType || 'text'
+  const isFlexType = normalizedMessageType === 'flex'
+  const isFlexJson = normalizedMessageType === 'text' && isFlexMessageContent(message.content)
   const flexPayload = parseFlexPayload(message)
   const shouldShowFlex = Boolean(flexPayload) || isFlexType || isFlexJson
 
@@ -218,7 +286,7 @@ function MessageBubble({
   })()
 
   // Check if it's a LINE message JSON (type: text, etc.)
-  const isLineJson = message.messageType === 'text' && !isFlexJson && isLineMessageJson(message.content)
+  const isLineJson = normalizedMessageType === 'text' && !isFlexJson && isLineMessageJson(message.content)
   const lineDisplayText = isLineJson ? getLineMessageDisplayText(message.content || '') : null
 
   return (
@@ -265,31 +333,86 @@ function MessageBubble({
             : 'bg-muted rounded-bl-sm'
         )}
       >
-        {message.messageType === 'text' && !isFlexJson && !isLineJson && (
-          <div className="flex flex-col gap-1">
-            <p className="whitespace-pre-wrap break-words">
-              <MessageTextWithLinks content={message.content || ''} isOutgoing={isOutgoing} />
-            </p>
-            {(() => {
-              const urls = extractUrls(message.content || '')
-              return urls.length > 0 ? (
-                <LinkPreview url={urls[0]} isOutgoing={isOutgoing} />
-              ) : null
-            })()}
+        {/* Quote Reply Indicator - Show only for replyTo relation (not LINE quoteToken) */}
+        {isQuoteReply && quoteTargetMessage && (
+          <div 
+            className={cn(
+              'mb-2 pb-2 border-b border-dashed',
+              isOutgoing 
+                ? 'border-primary-foreground/30' 
+                : 'border-border/50'
+            )}
+          >
+            <div className="flex items-center gap-1.5 text-xs opacity-80 mb-1">
+              <Reply className="h-3 w-3" />
+              <span>{isOutgoing ? 'ตอบกลับ' : 'ตอบกลับข้อความ'}</span>
+            </div>            
+            <div 
+              className={cn(
+                'text-sm line-clamp-2 opacity-90',
+                isOutgoing 
+                  ? 'text-primary-foreground/80' 
+                  : 'text-muted-foreground'
+              )}
+            >
+              {quoteTargetMessage.content && quoteTargetMessage.content.length > 100
+                ? quoteTargetMessage.content.slice(0, 100) + '...'
+                : quoteTargetMessage.content || '[ไม่มีข้อความ]'}
+            </div>
           </div>
         )}
 
-        {isLineJson && lineDisplayText && (
-          <p className="whitespace-pre-wrap break-words">{lineDisplayText}</p>
+        {/* LINE Quote Reply - customer quoted one of our messages via LINE app */}
+        {isLineQuoteReply && (
+          <div 
+            className={cn(
+              'mb-2 pb-2 border-b border-dashed',
+              isOutgoing ? 'border-primary-foreground/30' : 'border-border/50'
+            )}
+          >
+            <div className={cn(
+              'flex items-center gap-1.5 text-xs opacity-80 mb-1',
+              isOutgoing ? 'text-primary-foreground/70' : 'text-muted-foreground'
+            )}>
+              <Reply className="h-3 w-3" />
+              <span>ตอบกลับข้อความ</span>
+            </div>
+            <LineQuoteMessage quotedMessageId={quotedMessageId} isOutgoing={isOutgoing} />
+          </div>
         )}
-
         {shouldShowFlex && (
           <div className="max-w-full overflow-hidden">
             <FlexPreview flex={flexPayload} />
           </div>
         )}
 
-        {message.messageType === 'image' && (message.mediaUrl || message.content) && (
+        {normalizedMessageType === 'text' && !shouldShowFlex && (
+          <div 
+            className="text-sm whitespace-pre-wrap break-words min-h-[1.5em]"
+            style={{ color: isOutgoing ? 'white' : 'inherit' }}
+          >
+            {(lineDisplayText ?? message.content ?? '') ? (
+              <MessageTextWithLinks 
+                content={(lineDisplayText ?? message.content ?? '').toString()} 
+                isOutgoing={isOutgoing} 
+              />
+            ) : (
+              <span className="text-muted-foreground italic">[ไม่มีข้อความ]</span>
+            )}
+          </div>
+        )}
+
+        {/* Fallback for non-text types that don't have specific handling */}
+        {(normalizedMessageType !== 'text' && normalizedMessageType !== 'image' && normalizedMessageType !== 'video' && normalizedMessageType !== 'audio' && normalizedMessageType !== 'file' && normalizedMessageType !== 'location' && normalizedMessageType !== 'sticker' && !shouldShowFlex) && (
+          <div 
+            className="text-sm whitespace-pre-wrap break-words"
+            style={{ color: isOutgoing ? 'white' : 'inherit' }}
+          >
+            {message.content || '[ไม่มีข้อความ]'}
+          </div>
+        )}
+
+        {normalizedMessageType === 'image' && (message.mediaUrl || message.content) && (
           <div className="relative w-full max-w-full">
             {(() => {
               const imgUrl = resolveContentUrl(message.content, message.mediaUrl)
@@ -465,7 +588,7 @@ function MessageBubble({
           </div>
         )}
 
-        {message.messageType === 'video' && (message.mediaUrl || message.content) && (
+        {normalizedMessageType === 'video' && (message.mediaUrl || message.content) && (
           <div className="rounded-xl overflow-hidden max-w-[300px] border shadow-sm bg-black">
             {(() => {
               const videoUrl = resolveContentUrl(message.content, message.mediaUrl)
@@ -482,7 +605,7 @@ function MessageBubble({
           </div>
         )}
 
-        {message.messageType === 'audio' && (message.mediaUrl || message.content) && (
+        {normalizedMessageType === 'audio' && (message.mediaUrl || message.content) && (
           <div className="bg-white rounded-xl border shadow-sm p-3 max-w-[300px]">
             <div className="flex items-center gap-3">
               <span className="text-lg">🔊</span>
@@ -502,7 +625,7 @@ function MessageBubble({
           </div>
         )}
 
-        {message.messageType === 'location' && (
+        {normalizedMessageType === 'location' && (
           <div className="bg-white rounded-xl border shadow-sm overflow-hidden max-w-[300px]">
             {(() => {
               const location =
@@ -538,18 +661,18 @@ function MessageBubble({
           </div>
         )}
 
-        {message.messageType === 'sticker' && message.metadata && (
+        {normalizedMessageType === 'sticker' && message.metadata && (
           <div className="text-4xl">😊</div>
         )}
 
-        {message.messageType === 'location' && message.metadata && (
+        {normalizedMessageType === 'location' && message.metadata && (
           <div className="flex items-center gap-2">
             <span>📍</span>
             <span>{(message.metadata as any).address || 'ตำแหน่ง'}</span>
           </div>
         )}
 
-        {message.messageType === 'file' && (
+        {normalizedMessageType === 'file' && (
           <div className="bg-white rounded-xl border shadow-sm p-3 max-w-[300px]">
             {(() => {
               const fileUrl = resolveContentUrl(message.content, message.mediaUrl)
