@@ -73,25 +73,37 @@ export async function GET(request: NextRequest) {
       LIMIT ?
     `, [startDateStr, limit]);
 
-    // 4. Top เซลล์ - แก้ไขให้รองรับกรณีไม่มีข้อมูล
+    // 4. Top เซลล์ - ใช้ salesperson_id ถ้ามี ไม่เช่นนั้น return empty
     let topSales: any[] = [];
     try {
-      const [salesResult] = await pool.execute(`
-        SELECT 
-          COALESCE(a.display_name, a.username, 'ไม่ระบุ') as sales_name,
-          COUNT(*) as order_count,
-          SUM(o.amount_total) as total_sales,
-          AVG(o.amount_total) as avg_order_value
-        FROM odoo_orders o
-        LEFT JOIN admin_users a ON o.user_id = a.id
-        WHERE o.date_order >= ?
-          AND o.state NOT IN ('cancel', 'draft')
-          AND o.user_id IS NOT NULL
-        GROUP BY o.user_id, a.display_name, a.username
-        ORDER BY total_sales DESC
-        LIMIT 3
-      `, [startDateStr]);
-      topSales = salesResult as any[];
+      // ตรวจสอบว่า odoo_orders มี column salesperson_id หรือ user_id
+      const [colCheck] = await pool.execute(`
+        SELECT COLUMN_NAME 
+        FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'odoo_orders'
+          AND COLUMN_NAME IN ('salesperson_id', 'user_id', 'salesman_id')
+      `);
+      const salesCol = (colCheck as any[])[0]?.COLUMN_NAME as string | undefined;
+
+      if (salesCol) {
+        const [salesResult] = await pool.execute(`
+          SELECT 
+            COALESCE(a.display_name, a.username, 'ไม่ระบุ') as sales_name,
+            COUNT(*) as order_count,
+            SUM(o.amount_total) as total_sales,
+            AVG(o.amount_total) as avg_order_value
+          FROM odoo_orders o
+          LEFT JOIN admin_users a ON o.${salesCol} = a.id
+          WHERE o.date_order >= ?
+            AND o.state NOT IN ('cancel', 'draft')
+            AND o.${salesCol} IS NOT NULL
+          GROUP BY o.${salesCol}, a.display_name, a.username
+          ORDER BY total_sales DESC
+          LIMIT 3
+        `, [startDateStr]);
+        topSales = salesResult as any[];
+      }
     } catch (e) {
       console.log('Top sales query failed, returning empty:', e);
       topSales = [];
