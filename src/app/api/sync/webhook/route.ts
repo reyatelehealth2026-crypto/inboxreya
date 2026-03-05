@@ -8,12 +8,16 @@ import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('[POST /api/sync/webhook] Received request')
+    
     // 1. Check Authentication
     const authHeader = request.headers.get('authorization')
     const internalSecret = process.env.INTERNAL_API_SECRET || process.env.NEXTAUTH_SECRET
+    
+    console.log('[POST /api/sync/webhook] Auth header:', authHeader ? 'present' : 'missing')
 
     if (!authHeader || authHeader !== `Bearer ${internalSecret}`) {
-      console.error('Sync webhook: Unauthorized - missing or invalid auth header')
+      console.error('[POST /api/sync/webhook] Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
