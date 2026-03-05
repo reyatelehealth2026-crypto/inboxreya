@@ -154,6 +154,11 @@ export async function GET(request: NextRequest) {
       updatedAt: toBangkokWallTime(msg.updatedAt),
     }))
 
+    // DEBUG: Log first and last message content
+    if (formattedMessages.length > 0) {
+      console.log('[GET messages] First:', formattedMessages[0]?.content, 'Last:', formattedMessages[formattedMessages.length - 1]?.content)
+    }
+
     // Reverse to show oldest first
     formattedMessages.reverse()
 
