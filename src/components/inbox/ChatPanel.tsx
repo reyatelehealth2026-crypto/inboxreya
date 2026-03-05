@@ -325,6 +325,10 @@ function MessageBubble({
 
         {normalizedMessageType === 'text' && !shouldShowFlex && (
           <div className="text-sm whitespace-pre-wrap break-words">
+            {(() => {
+              console.log('[Render Text] message.id:', message.id, 'content:', message.content)
+              return null
+            })()}
             <MessageTextWithLinks content={(lineDisplayText ?? message.content ?? '').toString()} isOutgoing={isOutgoing} />
           </div>
         )}
