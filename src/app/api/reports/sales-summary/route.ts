@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     // 2. สถานะออเดอร์ - แก้ไขให้ใช้ subquery แทน window function
     const [orderStatus] = await pool.execute(`
       SELECT 
-        state_display as status,
+        COALESCE(state_display, 'ไม่ระบุ') as status,
         COUNT(*) as count,
         COALESCE(SUM(amount_total), 0) as total_amount
       FROM odoo_orders
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
     try {
       const [salesResult] = await pool.execute(`
         SELECT 
-          COALESCE(a.name, 'ไม่ระบุ') as sales_name,
+          COALESCE(a.display_name, a.username, 'ไม่ระบุ') as sales_name,
           COUNT(*) as order_count,
           SUM(o.amount_total) as total_sales,
           AVG(o.amount_total) as avg_order_value
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
         WHERE o.date_order >= ?
           AND o.state NOT IN ('cancel', 'draft')
           AND o.user_id IS NOT NULL
-        GROUP BY o.user_id, a.name
+        GROUP BY o.user_id, a.display_name, a.username
         ORDER BY total_sales DESC
         LIMIT 3
       `, [startDateStr]);

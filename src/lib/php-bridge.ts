@@ -44,6 +44,9 @@ export async function callPhpApi<T = any>(
 
     const url = isAbsolute ? endpoint : `${baseUrl}${endpoint}`
     
+    // Detect cross-origin requests - cannot use credentials: 'include' with wildcard CORS
+    const isCrossOrigin = typeof window !== 'undefined' && url.startsWith('http') && !url.startsWith(window.location.origin)
+    
     // Add timeout to prevent hanging requests
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
@@ -52,7 +55,7 @@ export async function callPhpApi<T = any>(
       const response = await fetch(url, {
         ...options,
         signal: controller.signal,
-        credentials: 'include',
+        credentials: isCrossOrigin ? 'omit' : 'include',
         headers: {
           'Content-Type': 'application/json',
           'X-Internal-Request': 'true',

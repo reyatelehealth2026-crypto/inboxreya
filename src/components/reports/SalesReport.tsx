@@ -171,24 +171,28 @@ export function SalesReport({ days }: SalesReportProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {orderStatus.map((status) => (
-              <div key={status.status} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">{statusIcons[status.status.toLowerCase()] || '📦'}</span>
-                  <span className="font-medium">{status.status}</span>
+            {orderStatus.map((status) => {
+              const statusLabel = status.status || 'ไม่ระบุ';
+              const statusKey = statusLabel.toLowerCase();
+              return (
+                <div key={statusLabel} className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">{statusIcons[statusKey] || '📦'}</span>
+                    <span className="font-medium">{statusLabel}</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-right">
+                    <span className="font-bold">{status.count} ราย</span>
+                    <span className="text-gray-500 w-24">{(status.total_amount || 0).toLocaleString()} บาท</span>
+                    <span className={cn(
+                      "px-2 py-1 rounded-full text-xs font-medium",
+                      statusColors[statusKey] || 'text-gray-600 bg-gray-100'
+                    )}>
+                      {status.percentage}%
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4 text-right">
-                  <span className="font-bold">{status.count} ราย</span>
-                  <span className="text-gray-500 w-24">{status.total_amount.toLocaleString()} บาท</span>
-                  <span className={cn(
-                    "px-2 py-1 rounded-full text-xs font-medium",
-                    statusColors[status.status.toLowerCase()] || 'text-gray-600 bg-gray-100'
-                  )}>
-                    {status.percentage}%
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>

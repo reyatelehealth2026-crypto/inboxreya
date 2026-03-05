@@ -452,6 +452,9 @@ export async function getTopComplainers(limit: number = 10): Promise<Array<{
 // ============================================
 
 export async function getUnifiedAnalyticsData(days: number = 1): Promise<UnifiedAnalyticsData> {
+  // Customer analysis uses a wider window (min 30 days) so data isn't empty on quiet days
+  const customerAnalysisDays = Math.max(days, 30);
+
   // Fetch all data in parallel using Odoo tables
   const [
     salesStats,
@@ -468,9 +471,9 @@ export async function getUnifiedAnalyticsData(days: number = 1): Promise<Unified
   ] = await Promise.all([
     getOdooSalesStats(days),
     getTotalOdooCustomers(),
-    getOdooCustomerSegments(days),
-    getOdooTopCustomers(10, days),
-    getOdooBehaviorPatterns(days),
+    getOdooCustomerSegments(customerAnalysisDays),
+    getOdooTopCustomers(10, customerAnalysisDays),
+    getOdooBehaviorPatterns(customerAnalysisDays),
     getOdooSalesTrend(days),
     getAvgSentimentScore(),
     getSentimentDistribution(days),
