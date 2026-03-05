@@ -690,6 +690,10 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
 
         // Get markAsReadToken from message event (for LINE Mark as Read feature)
         $markAsReadToken = $event['message']['markAsReadToken'] ?? null;
+        $quoteToken = $event['message']['quoteToken'] ?? null;
+        // quotedMessageId = LINE message ID of the message being quoted by the customer
+        $quotedMessageId = $event['message']['quotedMessageId'] ?? null;
+
 
         // Debug: Log markAsReadToken
         if ($markAsReadToken) {
@@ -813,6 +817,8 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                                 'mediaUrl' => $syncMediaUrl,
                                 'timestamp' => time() * 1000,
                                 'lineMessageId' => $lineEventMessageId,
+                                'quoteToken' => $quoteToken,
+                                'quotedMessageId' => $quotedMessageId,
                             ], $lineAccountId);
                         }
                     } catch (Exception $e) {
@@ -887,6 +893,8 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                     'mediaUrl' => $syncMediaUrl,
                     'timestamp' => time() * 1000, // milliseconds
                     'lineMessageId' => $lineEventMessageId,
+                    'quoteToken' => $quoteToken,
+                    'quotedMessageId' => $quotedMessageId,
                 ], $lineAccountId);
             }
         } catch (Exception $e) {

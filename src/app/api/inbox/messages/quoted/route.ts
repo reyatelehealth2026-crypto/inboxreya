@@ -10,68 +10,66 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const quoteToken = searchParams.get('quoteToken')
+    // quotedMessageId = LINE message ID of the quoted message (from LINE webhook quotedMessageId field)
+    // quoteToken = legacy param (quoteToken stored in outgoing message metadata)
+    const quotedMessageId = searchParams.get('quotedMessageId') || searchParams.get('quoteToken')
 
-    if (!quoteToken) {
-      return NextResponse.json({ error: 'quoteToken is required' }, { status: 400 })
+    if (!quotedMessageId) {
+      return NextResponse.json({ error: 'quotedMessageId is required' }, { status: 400 })
     }
 
-    console.log('[DEBUG] Looking for quoteToken:', quoteToken.substring(0, 20) + '...')
-
-    // Find message by quoteToken in metadata
+    // Search recent messages for one whose metadata.lineMessageId matches quotedMessageId
+    // This covers both incoming (lineMessageId) and outgoing (quoteToken) messages
     const messages = await prisma.message.findMany({
       where: {
-        metadata: {
-          not: null,
-        },
+        metadata: { not: null },
       },
-      orderBy: {
-        createdAt: 'desc',
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+      select: {
+        id: true,
+        content: true,
+        messageType: true,
+        direction: true,
+        metadata: true,
       },
-      take: 200,
     })
 
-    console.log('[DEBUG] Found', messages.length, 'messages with metadata')
+    let matchedMessage: typeof messages[number] | null = null
 
-    // Parse metadata and find matching quoteToken
-    let matchedMessage = null
     for (const msg of messages) {
       try {
-        const metadata = typeof msg.metadata === 'string' 
-          ? JSON.parse(msg.metadata) 
+        const meta = typeof msg.metadata === 'string'
+          ? JSON.parse(msg.metadata)
           : msg.metadata
-        
-        if (metadata?.quoteToken === quoteToken) {
+
+        // Primary: match by lineMessageId (LINE's unique message ID stored when saving)
+        if (meta?.lineMessageId === quotedMessageId) {
           matchedMessage = msg
-          console.log('[DEBUG] Found match! Message ID:', msg.id)
           break
         }
-      } catch (e) {
-        // Ignore parse errors
+        // Fallback: match by quoteToken (stored on outgoing messages from LINE API response)
+        if (meta?.quoteToken === quotedMessageId) {
+          matchedMessage = msg
+          break
+        }
+      } catch {
+        // ignore parse errors
       }
     }
 
     if (!matchedMessage) {
-      // Debug: Show some sample metadata
-      const samples = messages.slice(0, 5).map(m => ({
-        id: m.id,
-        metadata: typeof m.metadata === 'string' ? JSON.parse(m.metadata || '{}') : m.metadata
-      }))
-      console.log('[DEBUG] Sample metadata:', JSON.stringify(samples, null, 2))
-      
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Message not found',
         content: null,
-        debug: {
-          searched: messages.length,
-          quoteTokenPrefix: quoteToken.substring(0, 20)
-        }
       }, { status: 404 })
     }
 
     return NextResponse.json({
       success: true,
       content: matchedMessage.content,
+      messageType: matchedMessage.messageType,
+      direction: matchedMessage.direction,
       messageId: matchedMessage.id.toString(),
     })
   } catch (error) {

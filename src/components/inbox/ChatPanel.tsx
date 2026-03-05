@@ -132,6 +132,7 @@ function getLineMessageDisplayText(content: string): string | null {
 // Component to fetch and display LINE quoted message
 function LineQuoteMessage({ quotedMessageId, isOutgoing }: { quotedMessageId: string, isOutgoing: boolean }) {
   const [quotedContent, setQuotedContent] = useState<string | null>(null)
+  const [quotedType, setQuotedType] = useState<string>('text')
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -139,15 +140,16 @@ function LineQuoteMessage({ quotedMessageId, isOutgoing }: { quotedMessageId: st
     
     const fetchQuotedMessage = async () => {
       try {
-        const response = await fetch(`/api/inbox/messages/quoted?quoteToken=${encodeURIComponent(quotedMessageId)}`)
+        const response = await fetch(`/api/inbox/messages/quoted?quotedMessageId=${encodeURIComponent(quotedMessageId)}`)
         if (response.ok) {
           const data = await response.json()
-          setQuotedContent(data.content || '[ไม่มีข้อความ]')
+          setQuotedContent(data.content || null)
+          setQuotedType(data.messageType || 'text')
         } else {
-          setQuotedContent('[ไม่พบข้อความ]')
+          setQuotedContent(null)
         }
-      } catch (error) {
-        setQuotedContent('[ไม่สามารถโหลดข้อความ]')
+      } catch {
+        setQuotedContent(null)
       } finally {
         setIsLoading(false)
       }
@@ -157,8 +159,18 @@ function LineQuoteMessage({ quotedMessageId, isOutgoing }: { quotedMessageId: st
   }, [quotedMessageId])
 
   if (isLoading) {
-    return <div className="text-sm opacity-70 italic">กำลังโหลด...</div>
+    return <div className="text-xs opacity-50 italic">กำลังโหลด...</div>
   }
+
+  const displayText = (() => {
+    if (!quotedContent) return '[ไม่พบข้อความ]'
+    if (quotedType === 'image') return '[รูปภาพ]'
+    if (quotedType === 'sticker') return '[สติกเกอร์]'
+    if (quotedType === 'video') return '[วิดีโอ]'
+    if (quotedType === 'audio') return '[เสียง]'
+    if (quotedType === 'file') return '[ไฟล์]'
+    return quotedContent.length > 100 ? quotedContent.slice(0, 100) + '...' : quotedContent
+  })()
 
   return (
     <div 
@@ -169,9 +181,7 @@ function LineQuoteMessage({ quotedMessageId, isOutgoing }: { quotedMessageId: st
           : 'text-muted-foreground'
       )}
     >
-      {quotedContent && quotedContent.length > 100
-        ? quotedContent.slice(0, 100) + '...'
-        : quotedContent || '[ไม่มีข้อความ]'}
+      {displayText}
     </div>
   )
 }
@@ -347,6 +357,17 @@ function MessageBubble({
                 ? quoteTargetMessage.content.slice(0, 100) + '...'
                 : quoteTargetMessage.content || '[ไม่มีข้อความ]'}
             </div>
+          </div>
+        )}
+
+        {/* LINE Quote Reply - customer quoted one of our messages via LINE app */}
+        {isLineQuoteReply && !isQuoteReply && (
+          <div className="mb-2 pb-2 border-b border-dashed border-border/50">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+              <Reply className="h-3 w-3" />
+              <span>ตอบกลับข้อความ</span>
+            </div>
+            <LineQuoteMessage quotedMessageId={quotedMessageId} isOutgoing={false} />
           </div>
         )}
         {shouldShowFlex && (
