@@ -42,8 +42,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
             staleTime: 30 * 1000, // 30 seconds - data is fresh for 30s
             gcTime: 30 * 60 * 1000, // 30 minutes - keep unused data in cache for 30min
 
-            // Refetch configuration - rely on real-time (Pusher/SSE) for updates
-            refetchOnWindowFocus: false,
+            // Refetch when user returns to the window for instant updates
+            refetchOnWindowFocus: true,
             refetchOnReconnect: true,
             refetchOnMount: true,
 

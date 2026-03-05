@@ -108,15 +108,14 @@ export function usePusher(options: UsePusherOptions = {}) {
       }
     })
     
-    // Mark queries as stale - they'll refetch on next access or polling cycle
-    // No immediate refetch since we already optimistically updated the cache above
+    // Refetch messages immediately after Pusher event for real-time feel
     queryClient.invalidateQueries({
       queryKey: messagesQueryKey,
       exact: false,
-      refetchType: 'none',
+      refetchType: 'active',
     })
     
-    // Mark conversations as stale for unread count updates etc.
+    // Refetch conversations for unread count updates
     queryClient.invalidateQueries({
       queryKey: queryKeys.conversationsRoot(),
       exact: false,
