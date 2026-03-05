@@ -188,6 +188,19 @@ function MessageBubble({
   const isFlexJson = normalizedMessageType === 'text' && isFlexMessageContent(message.content)
   const flexPayload = parseFlexPayload(message)
   const shouldShowFlex = Boolean(flexPayload) || isFlexType || isFlexJson
+  
+  // DEBUG: Log render conditions
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    console.log('[MessageBubble] Render check:', {
+      id: message.id,
+      normalizedMessageType,
+      isFlexType,
+      isFlexJson,
+      shouldShowFlex,
+      content: message.content?.substring(0, 30),
+      hasFlexPayload: !!flexPayload
+    })
+  }
 
   const resolveContentUrl = (content: string | null, mediaUrl?: string | null) => {
     if (mediaUrl) return mediaUrl
