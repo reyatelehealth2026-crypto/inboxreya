@@ -804,6 +804,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                     try {
                         if (function_exists('syncMessageToNextjs')) {
                             $syncMediaUrl = isset($savedMediaUrl) ? $savedMediaUrl : null;
+                            $lineEventMessageId = $event['message']['id'] ?? null;
                             syncMessageToNextjs($userId, $user, [
                                 'id' => $slipMessageId,
                                 'direction' => 'incoming',
@@ -811,18 +812,19 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                                 'content' => $messageContent,
                                 'mediaUrl' => $syncMediaUrl,
                                 'timestamp' => time() * 1000,
+                                'lineMessageId' => $lineEventMessageId,
                             ], $lineAccountId);
                         }
                     } catch (Exception $e) {
                         error_log('Next.js sync failed (slip): ' . $e->getMessage());
                     }
 
-                    // Handle slip
+                    // Handle slip - always return here to prevent double-insert below
                     $slipHandled = handlePaymentSlipForOrder($db, $line, $user['id'], $messageId, $replyToken, $orderId);
                     if ($slipHandled) {
                         clearUserState($db, $user['id']);
-                        return;
                     }
+                    return;
                 }
             }
         } elseif ($messageType === 'sticker') {
