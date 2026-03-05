@@ -129,6 +129,53 @@ function getLineMessageDisplayText(content: string): string | null {
 }
 
 
+// Component to fetch and display LINE quoted message
+function LineQuoteMessage({ quotedMessageId, isOutgoing }: { quotedMessageId: string, isOutgoing: boolean }) {
+  const [quotedContent, setQuotedContent] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    if (!quotedMessageId) return
+    
+    const fetchQuotedMessage = async () => {
+      try {
+        const response = await fetch(`/api/inbox/messages/quoted?quoteToken=${encodeURIComponent(quotedMessageId)}`)
+        if (response.ok) {
+          const data = await response.json()
+          setQuotedContent(data.content || '[ไม่มีข้อความ]')
+        } else {
+          setQuotedContent('[ไม่พบข้อความ]')
+        }
+      } catch (error) {
+        setQuotedContent('[ไม่สามารถโหลดข้อความ]')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    
+    fetchQuotedMessage()
+  }, [quotedMessageId])
+
+  if (isLoading) {
+    return <div className="text-sm opacity-70 italic">กำลังโหลด...</div>
+  }
+
+  return (
+    <div 
+      className={cn(
+        'text-sm line-clamp-2 opacity-90',
+        isOutgoing 
+          ? 'text-primary-foreground/80' 
+          : 'text-muted-foreground'
+      )}
+    >
+      {quotedContent && quotedContent.length > 100
+        ? quotedContent.slice(0, 100) + '...'
+        : quotedContent || '[ไม่มีข้อความ]'}
+    </div>
+  )
+}
+
 const MessageTextWithLinks = ({ content, isOutgoing }: { content: string, isOutgoing: boolean }) => {
   if (!content) return null
   const parts = content.split(/(\bhttps?:\/\/[^\s]+)/g)
@@ -178,9 +225,9 @@ function MessageBubble({
   const isQuoteReply = !!message.replyTo
   const quoteTargetMessage = message.replyTo
   
-  // Note: LINE sends quoteToken in ALL messages via webhook, not just replies
-  // So we cannot use quoteToken to detect quote replies reliably
-  // We only show quote reply UI when there's an actual replyTo relation
+  // For LINE quote messages: check metadata for quotedMessageId
+  const quotedMessageId = (message.metadata as any)?.quotedMessageId
+  const isLineQuoteReply = !isOutgoing && quotedMessageId
 
   // Parse flex payload - check explicit flex type, JSON content, or metadata
   const normalizedMessageType = message.messageType || 'text'
@@ -274,8 +321,8 @@ function MessageBubble({
             : 'bg-muted rounded-bl-sm'
         )}
       >
-        {/* Quote Reply Indicator - Only show when there's a real replyTo relation */}
-        {isQuoteReply && quoteTargetMessage && (
+        {/* Quote Reply Indicator - Show for replyTo relation or LINE quote */}
+        {(isQuoteReply || isLineQuoteReply) && (
           <div 
             className={cn(
               'mb-2 pb-2 border-b border-dashed',
@@ -288,7 +335,7 @@ function MessageBubble({
               <Reply className="h-3 w-3" />
               <span>{isOutgoing ? 'ตอบกลับ' : 'ตอบกลับข้อความ'}</span>
             </div>            
-            {quoteTargetMessage && (
+            {quoteTargetMessage ? (
               <div 
                 className={cn(
                   'text-sm line-clamp-2 opacity-90',
@@ -301,7 +348,9 @@ function MessageBubble({
                   ? quoteTargetMessage.content.slice(0, 100) + '...'
                   : quoteTargetMessage.content || '[ไม่มีข้อความ]'}
               </div>
-            )}
+            ) : isLineQuoteReply ? (
+              <LineQuoteMessage quotedMessageId={quotedMessageId} isOutgoing={isOutgoing} />
+            ) : null}
           </div>
         )}
         {shouldShowFlex && (
