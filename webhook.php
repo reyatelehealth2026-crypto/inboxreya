@@ -3372,6 +3372,8 @@ function syncMessageToNextjs($lineUserId, $user, $messageData, $lineAccountId = 
                 'timestamp' => isset($messageData['timestamp']) ? $messageData['timestamp'] : (time() * 1000), // milliseconds
                 'lineAccountId' => $lineAccountId,
                 'lineMessageId' => $messageData['lineMessageId'] ?? null, // LINE message ID for dedup
+                'quoteToken' => $messageData['quoteToken'] ?? null,
+                'quotedMessageId' => $messageData['quotedMessageId'] ?? null,
             ],
         ];
 

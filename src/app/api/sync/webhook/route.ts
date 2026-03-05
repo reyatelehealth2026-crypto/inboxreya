@@ -216,10 +216,11 @@ async function handleSyncMessage(data: any) {
   // 3. Dedup check - use lineMessageId as primary key, fallback to content+direction within 10s window
   if (resolvedLineMessageId) {
     // Primary: LINE message ID is globally unique per message
+    // Use exact JSON key match to avoid false positives (e.g. quotedMessageId containing the same value)
     const existingByLineId = await prisma.message.findFirst({
       where: {
         userId: user.id,
-        metadata: { contains: resolvedLineMessageId },
+        metadata: { contains: `"lineMessageId":"${resolvedLineMessageId}"` },
       },
       select: { id: true },
     })
