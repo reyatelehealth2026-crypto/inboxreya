@@ -3,13 +3,14 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Image from 'next/image'
-import { ShoppingBag, FileText, Receipt, Eye, AlertCircle, Clock } from 'lucide-react'
+import { ShoppingBag, FileText, Receipt, Eye, AlertCircle, Clock, FileCheck } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { OdooSlipsSection } from './OdooSlipsSection'
+import { OdooBdoSection } from './OdooBdoSection'
 import { OdooCreditCard } from './OdooCreditCard'
 import { OdooOrderTimeline } from './OdooOrderTimeline'
 import type { Customer360TimelineEvent, Customer360Credit } from '@/types/odoo'
@@ -137,7 +138,7 @@ const slipStatusMap: Record<string, { label: string; color: string }> = {
   failed: { label: 'ไม่สำเร็จ', color: 'bg-red-100 text-red-700' },
 }
 
-type DashTab = 'orders' | 'invoices' | 'slips' | 'timeline'
+type DashTab = 'orders' | 'invoices' | 'bdos' | 'slips' | 'timeline'
 
 export function OdooDashboardPanel({ partnerId, customerRef, lineUserId, userId }: OdooDashboardPanelProps) {
   const [activeTab, setActiveTab] = useState<DashTab>('orders')
@@ -198,6 +199,7 @@ export function OdooDashboardPanel({ partnerId, customerRef, lineUserId, userId 
   const tabs: { id: DashTab; label: string; count: number; icon: typeof ShoppingBag }[] = [
     { id: 'orders', label: 'ออเดอร์', count: orders.length, icon: ShoppingBag },
     { id: 'invoices', label: 'ใบแจ้งหนี้', count: data?.invoicesTotal || invoices.length, icon: FileText },
+    { id: 'bdos', label: 'BDO', count: 0, icon: FileCheck },
     { id: 'slips', label: 'สลิป', count: 0, icon: Receipt },
     { id: 'timeline', label: 'Timeline', count: timeline.length, icon: Clock },
   ]
@@ -245,7 +247,18 @@ export function OdooDashboardPanel({ partnerId, customerRef, lineUserId, userId 
       )}
 
       {/* Content */}
-      {activeTab === 'slips' ? (
+      {activeTab === 'bdos' ? (
+        <div className="flex-1 overflow-y-auto p-3">
+          {userId ? (
+            <OdooBdoSection userId={userId} memberId={customerRef} />
+          ) : (
+            <div className="text-center py-8 text-gray-400">
+              <FileCheck className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">ไม่พบข้อมูลผู้ใช้</p>
+            </div>
+          )}
+        </div>
+      ) : activeTab === 'slips' ? (
         <div className="flex-1 overflow-y-auto p-3">
           {userId ? (
             <OdooSlipsSection userId={userId} />

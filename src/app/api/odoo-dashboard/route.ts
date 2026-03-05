@@ -14,6 +14,7 @@ const ALLOWED_ACTIONS = [
   'health', 'stats', 'list', 'detail', 'order_timeline',
   'customer_lookup', 'invoice_lookup', 'customer_list', 'invoice_list', 'order_list',
   'odoo_orders', 'odoo_invoices', 'odoo_slips', 'odoo_bdos',
+  'pending_bdo_orders',
   'customer_360', 'webhook_stats_mini',
   'dlq_list', 'dlq_retry', 'dlq_stats',
   'daily_summary_preview', 'notification_log',

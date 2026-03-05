@@ -37,6 +37,7 @@ import { OdooPartnerSection } from './OdooPartnerSection'
 import { OdooOrdersSection } from './OdooOrdersSection'
 import { OdooInvoicesSection } from './OdooInvoicesSection'
 import { OdooSlipsSection } from './OdooSlipsSection'
+import { OdooBdoSection } from './OdooBdoSection'
 import { OdooCreditCard } from './OdooCreditCard'
 import { OdooOrderTimeline } from './OdooOrderTimeline'
 import { Customer360Section } from './Customer360Section'
@@ -258,6 +259,15 @@ export function CustomerDetailPage({ userId }: CustomerDetailPageProps) {
                 <h2 className="text-base font-semibold">คำสั่งซื้อ (Odoo)</h2>
               </div>
               <OdooOrdersSection userId={userId} memberId={user.memberId} />
+            </Card>
+
+            {/* BDO - Pending Payment */}
+            <Card className="p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <FileText className="h-5 w-5 text-amber-600" />
+                <h2 className="text-base font-semibold">BDO รอชำระ</h2>
+              </div>
+              <OdooBdoSection userId={userId} memberId={user.memberId} />
             </Card>
 
             {/* Odoo Invoices */}

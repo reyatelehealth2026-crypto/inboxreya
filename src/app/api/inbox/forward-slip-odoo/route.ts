@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { messageId, userId, amount, transferDate, invoiceId, orderId } = body
+    const { messageId, userId, amount, transferDate, invoiceId, orderId, bdoId } = body
 
     if (!messageId || !userId) {
       return NextResponse.json(
@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
     if (transferDate) phpPayload.transfer_date = transferDate
     if (invoiceId) phpPayload.invoice_id = Number(invoiceId)
     if (orderId) phpPayload.order_id = Number(orderId)
+    if (bdoId) phpPayload.bdo_id = Number(bdoId)
 
     const phpResult = await callPhpApi('/api/odoo-slip-upload.php', {
       method: 'POST',
