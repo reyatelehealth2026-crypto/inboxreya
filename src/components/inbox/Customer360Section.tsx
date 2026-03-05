@@ -43,7 +43,7 @@ async function fetchCustomer360(userId: string): Promise<Customer360Result> {
   }
 }
 
-export function Customer360Section({ userId, lineUserId, memberId }: Customer360SectionProps) {
+export default function Customer360Section({ userId, lineUserId, memberId }: Customer360SectionProps) {
   const { data, isLoading } = useQuery({
     queryKey: ['customer-360', userId],
     queryFn: () => fetchCustomer360(userId),

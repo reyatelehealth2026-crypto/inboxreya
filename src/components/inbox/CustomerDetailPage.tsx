@@ -36,11 +36,10 @@ import { ActivityHistorySection } from './ActivityHistorySection'
 import { OdooPartnerSection } from './OdooPartnerSection'
 import { OdooOrdersSection } from './OdooOrdersSection'
 import { OdooInvoicesSection } from './OdooInvoicesSection'
-import { OdooSlipsSection } from './OdooSlipsSection'
 import { OdooBdoSection } from './OdooBdoSection'
 import { OdooCreditCard } from './OdooCreditCard'
 import { OdooOrderTimeline } from './OdooOrderTimeline'
-import { Customer360Section } from './Customer360Section'
+import Customer360Section from './Customer360Section'
 import type { LineUser } from '@/types'
 
 interface CustomerDetailPageProps {
@@ -277,15 +276,6 @@ export function CustomerDetailPage({ userId }: CustomerDetailPageProps) {
                 <h2 className="text-base font-semibold">ใบแจ้งหนี้ (Odoo)</h2>
               </div>
               <OdooInvoicesSection userId={userId} memberId={user.memberId} />
-            </Card>
-
-            {/* Payment Slips */}
-            <Card className="p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <FileText className="h-5 w-5 text-gray-600" />
-                <h2 className="text-base font-semibold">สลิปการชำระเงิน</h2>
-              </div>
-              <OdooSlipsSection userId={userId} />
             </Card>
 
             {/* Customer 360 - Credit & Timeline */}

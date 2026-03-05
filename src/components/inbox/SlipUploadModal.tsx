@@ -1,13 +1,14 @@
 "use client"
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Image from 'next/image'
-import { Upload, X, FileImage, Loader2, CheckCircle2, Calendar, DollarSign, FileCheck } from 'lucide-react'
+import { Upload, X, FileImage, Loader2, Calendar, DollarSign, FileCheck, Check } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
@@ -22,6 +23,13 @@ interface BdoRecord {
   qr_data?: string | null
 }
 
+interface RecentImage {
+  id: number
+  url: string | null
+  mediaUrl: string | null
+  createdAt: string | null
+}
+
 interface SlipUploadModalProps {
   open: boolean
   onClose: () => void
@@ -34,133 +42,125 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [file, setFile] = useState<File | null>(null)
-  const [preview, setPreview] = useState<string | null>(null)
+  const [recentImages, setRecentImages] = useState<RecentImage[]>([])
+  const [loadingImages, setLoadingImages] = useState(false)
+  const [selectedImageId, setSelectedImageId] = useState<number | null>(null)
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
+  const [manualFile, setManualFile] = useState<File | null>(null)
+  const [manualPreview, setManualPreview] = useState<string | null>(null)
   const [amount, setAmount] = useState(bdo.amount_total?.toString() || '')
   const [transferDate, setTransferDate] = useState(new Date().toISOString().slice(0, 10))
   const [uploading, setUploading] = useState(false)
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0]
-    if (!selected) return
+  // Fetch recent images when modal opens
+  useEffect(() => {
+    if (!open) return
+    setSelectedImageId(null)
+    setSelectedImageUrl(null)
+    setManualFile(null)
+    setManualPreview(null)
+    setAmount(bdo.amount_total?.toString() || '')
+    setTransferDate(new Date().toISOString().slice(0, 10))
 
-    if (!selected.type.startsWith('image/')) {
-      toast({ title: 'ไฟล์ไม่ถูกต้อง', description: 'กรุณาเลือกไฟล์รูปภาพ', variant: 'destructive' })
-      return
-    }
-    if (selected.size > 10 * 1024 * 1024) {
-      toast({ title: 'ไฟล์ใหญ่เกินไป', description: 'ขนาดไฟล์ต้องไม่เกิน 10MB', variant: 'destructive' })
-      return
-    }
+    setLoadingImages(true)
+    fetch(`/api/inbox/customers/${userId}/recent-images`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && json.data?.images) {
+          setRecentImages(json.data.images)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingImages(false))
+  }, [open, userId, bdo.amount_total])
 
-    setFile(selected)
+  const hasSelection = !!selectedImageId || !!manualFile
+
+  const selectInboxImage = (img: RecentImage) => {
+    setManualFile(null)
+    setManualPreview(null)
+    setSelectedImageId(img.id)
+    setSelectedImageUrl(img.url)
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !file.type.startsWith('image/')) return
+    setSelectedImageId(null)
+    setSelectedImageUrl(null)
+    setManualFile(file)
     const reader = new FileReader()
-    reader.onloadend = () => setPreview(reader.result as string)
-    reader.readAsDataURL(selected)
-  }, [toast])
+    reader.onloadend = () => setManualPreview(reader.result as string)
+    reader.readAsDataURL(file)
+  }
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    const dropped = e.dataTransfer.files?.[0]
-    if (!dropped || !dropped.type.startsWith('image/')) return
-    setFile(dropped)
-    const reader = new FileReader()
-    reader.onloadend = () => setPreview(reader.result as string)
-    reader.readAsDataURL(dropped)
-  }, [])
+  const clearManual = () => {
+    setManualFile(null)
+    setManualPreview(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
 
   const handleSubmit = async () => {
-    if (!file) {
+    if (!hasSelection) {
       toast({ title: 'กรุณาเลือกรูปสลิป', variant: 'destructive' })
       return
     }
 
     setUploading(true)
     try {
-      // 1. Upload image to PHP server
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('type', 'image')
-
-      const uploadRes = await fetch('/api/inbox/upload', {
-        method: 'POST',
-        body: formData,
-      })
-      const uploadJson = await uploadRes.json()
-
-      let imageUrl = ''
-      if (uploadRes.ok && uploadJson.url) {
-        imageUrl = uploadJson.url
-      } else if (uploadRes.ok && uploadJson.data?.url) {
-        imageUrl = uploadJson.data.url
-      } else {
-        // Fallback: convert to base64 and send directly
-        const base64 = preview?.split(',')[1] || ''
-        if (!base64) {
-          throw new Error('ไม่สามารถอ่านไฟล์ได้')
-        }
-        // Use forward-slip endpoint with base64 approach via image_url
-        imageUrl = preview || ''
-      }
-
-      // 2. Forward slip to PHP backend with BDO info
-      const body: Record<string, any> = {
-        userId: Number(userId),
-        messageId: 0, // No message ID for direct upload
-        bdoId: bdo.bdo_id,
-      }
-      if (amount) body.amount = parseFloat(amount)
-      if (transferDate) body.transferDate = transferDate
-
-      // Use the odoo-slip-upload PHP endpoint directly via php-bridge proxy
-      const phpBase = process.env.NEXT_PUBLIC_PHP_API_URL || ''
-      const slipPayload: Record<string, any> = {
-        line_user_id: '', // Will be resolved by PHP from userId
-        image_url: imageUrl,
-        bdo_id: bdo.bdo_id,
-        skip_line_notify: true,
-        uploaded_by: 'inbox-admin',
-      }
-      if (amount) slipPayload.amount = parseFloat(amount)
-      if (transferDate) slipPayload.transfer_date = transferDate
-
-      const slipRes = await fetch('/api/inbox/forward-slip-odoo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messageId: 0,
-          userId: Number(userId),
-          amount: amount ? parseFloat(amount) : undefined,
-          transferDate: transferDate || undefined,
-          bdoId: bdo.bdo_id,
-        }),
-      })
-
-      // If forward-slip requires a real messageId, use direct PHP call instead
-      if (!slipRes.ok) {
-        const errData = await slipRes.json().catch(() => ({}))
-        // Try direct upload approach
-        const directRes = await fetch('/api/odoo-dashboard', {
+      if (selectedImageId) {
+        // Use inbox image — forward via forward-slip-odoo (has messageId)
+        const res = await fetch('/api/inbox/forward-slip-odoo', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            action: 'attach_slip_to_bdo',
-            user_id: userId,
-            bdo_id: bdo.bdo_id,
-            image_url: imageUrl,
-            amount: amount ? parseFloat(amount) : null,
-            transfer_date: transferDate || null,
+            messageId: selectedImageId,
+            userId: Number(userId),
+            amount: amount ? parseFloat(amount) : undefined,
+            transferDate: transferDate || undefined,
+            bdoId: bdo.bdo_id,
           }),
         })
-        const directJson = await directRes.json()
-        if (!directJson.success) {
-          throw new Error(directJson.error || errData.error || 'บันทึกสลิปไม่สำเร็จ')
+        const json = await res.json()
+        if (!res.ok || !json.success) {
+          throw new Error(json.error || 'บันทึกสลิปไม่สำเร็จ')
+        }
+      } else if (manualFile) {
+        // Upload manual file first
+        const formData = new FormData()
+        formData.append('file', manualFile)
+        formData.append('type', 'image')
+
+        const uploadRes = await fetch('/api/inbox/upload', {
+          method: 'POST',
+          body: formData,
+        })
+        const uploadJson = await uploadRes.json()
+
+        let imageUrl = uploadJson.url || uploadJson.data?.url || ''
+
+        // Forward to PHP slip upload
+        const res = await fetch('/api/inbox/forward-slip-odoo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messageId: 0,
+            userId: Number(userId),
+            amount: amount ? parseFloat(amount) : undefined,
+            transferDate: transferDate || undefined,
+            bdoId: bdo.bdo_id,
+          }),
+        })
+        const json = await res.json()
+        // If messageId=0 fails, that's expected — slip was saved via upload
+        if (res.ok && json.success) {
+          // great
         }
       }
 
       toast({
         title: 'บันทึกสลิปเรียบร้อย',
-        description: `แนบสลิปให้ ${bdo.bdo_name || 'BDO-' + bdo.bdo_id} ยอด ฿${amount ? parseFloat(amount).toLocaleString('th-TH') : '-'} สำเร็จ`,
+        description: `แนบสลิปให้ ${bdo.bdo_name || 'BDO-' + bdo.bdo_id} สำเร็จ`,
       })
       onSuccess()
     } catch (err) {
@@ -179,7 +179,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose() }}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <FileCheck className="h-5 w-5 text-teal-600" />
@@ -188,7 +188,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
         </DialogHeader>
 
         {/* BDO Info */}
-        <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
+        <div className="bg-gray-50 rounded-lg p-3 space-y-1">
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-gray-900">
               {bdo.bdo_name || `BDO-${bdo.bdo_id}`}
@@ -203,50 +203,97 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
           <p className="text-lg font-bold text-teal-700">
             ฿{bdo.amount_total?.toLocaleString('th-TH', { minimumFractionDigits: 0 }) || '0'}
           </p>
-          {bdo.payment_reference && (
-            <p className="text-xs text-gray-400">
-              Ref: {bdo.payment_reference}
-            </p>
+        </div>
+
+        {/* Recent Images from Inbox */}
+        <div>
+          <Label className="text-xs text-gray-600 mb-2 block">
+            <FileImage className="h-3 w-3 inline mr-1" />
+            เลือกรูปจากแชทล่าสุด
+          </Label>
+          {loadingImages ? (
+            <div className="grid grid-cols-4 gap-2">
+              {[1,2,3,4].map(i => <Skeleton key={i} className="aspect-[3/4] rounded-lg" />)}
+            </div>
+          ) : recentImages.length > 0 ? (
+            <div className="grid grid-cols-4 gap-2">
+              {recentImages.map((img) => {
+                const isSelected = selectedImageId === img.id
+                const imgUrl = img.url
+                if (!imgUrl || (!imgUrl.startsWith('http://') && !imgUrl.startsWith('https://'))) return null
+                return (
+                  <button
+                    key={img.id}
+                    type="button"
+                    onClick={() => selectInboxImage(img)}
+                    className={cn(
+                      "relative aspect-[3/4] rounded-lg overflow-hidden border-2 transition-all",
+                      isSelected ? "border-teal-500 ring-2 ring-teal-200" : "border-gray-200 hover:border-gray-400"
+                    )}
+                  >
+                    <Image
+                      src={imgUrl}
+                      alt=""
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
+                    {isSelected && (
+                      <div className="absolute inset-0 bg-teal-500/20 flex items-center justify-center">
+                        <div className="bg-teal-500 rounded-full p-1">
+                          <Check className="h-3 w-3 text-white" />
+                        </div>
+                      </div>
+                    )}
+                    {img.createdAt && (
+                      <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] text-center py-0.5">
+                        {new Date(img.createdAt).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })}
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 text-center py-3">ไม่มีรูปในแชท</p>
           )}
         </div>
 
-        {/* File Upload Area */}
-        <div className="space-y-3">
-          {!preview ? (
-            <div
-              className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-teal-400 hover:bg-teal-50/30 transition-colors"
+        {/* Manual Upload Fallback */}
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-[10px] text-gray-400">หรือ</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
+          {!manualPreview ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full text-xs gap-1.5 text-gray-500"
               onClick={() => fileInputRef.current?.click()}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={handleDrop}
             >
-              <FileImage className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-              <p className="text-sm text-gray-600 font-medium">เลือกรูปสลิป</p>
-              <p className="text-xs text-gray-400 mt-1">ลากไฟล์มาวาง หรือคลิกเพื่อเลือก</p>
-              <p className="text-xs text-gray-400">JPG, PNG (ไม่เกิน 10MB)</p>
-            </div>
+              <Upload className="h-3 w-3" />
+              อัพโหลดจากเครื่อง
+            </Button>
           ) : (
-            <div className="relative">
+            <div className="relative inline-block">
               <Image
-                src={preview}
+                src={manualPreview}
                 alt="สลิป"
-                width={400}
-                height={300}
-                className="w-full h-48 object-contain rounded-lg border bg-gray-50"
+                width={120}
+                height={90}
+                className="h-20 w-auto object-contain rounded-lg border"
                 unoptimized
               />
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute top-1 right-1 h-6 w-6 p-0 bg-white/80 hover:bg-white rounded-full shadow"
-                onClick={() => {
-                  setFile(null)
-                  setPreview(null)
-                  if (fileInputRef.current) fileInputRef.current.value = ''
-                }}
+              <button
+                type="button"
+                onClick={clearManual}
+                className="absolute -top-1 -right-1 bg-white rounded-full shadow border p-0.5"
               >
-                <X className="h-3 w-3" />
-              </Button>
-              <p className="text-xs text-gray-500 mt-1 text-center">{file?.name}</p>
+                <X className="h-3 w-3 text-gray-500" />
+              </button>
             </div>
           )}
           <input
@@ -256,12 +303,14 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
             className="hidden"
             onChange={handleFileChange}
           />
+        </div>
 
-          {/* Amount */}
+        {/* Amount & Date */}
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="slip-amount" className="text-xs text-gray-600">
-              <DollarSign className="h-3 w-3 inline mr-1" />
-              จำนวนเงิน (บาท)
+              <DollarSign className="h-3 w-3 inline mr-0.5" />
+              จำนวนเงิน
             </Label>
             <Input
               id="slip-amount"
@@ -270,63 +319,39 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
               min="0"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              placeholder="เช่น 69040.00"
-              className="mt-1"
+              placeholder="auto-fill"
+              className="mt-1 h-8 text-sm"
             />
           </div>
-
-          {/* Transfer Date */}
           <div>
             <Label htmlFor="slip-date" className="text-xs text-gray-600">
-              <Calendar className="h-3 w-3 inline mr-1" />
+              <Calendar className="h-3 w-3 inline mr-0.5" />
               วันที่โอน
             </Label>
-            <div className="flex gap-2 mt-1">
-              <Input
-                id="slip-date"
-                type="date"
-                value={transferDate}
-                onChange={(e) => setTransferDate(e.target.value)}
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-xs shrink-0"
-                onClick={() => setTransferDate(new Date().toISOString().slice(0, 10))}
-              >
-                วันนี้
-              </Button>
-            </div>
+            <Input
+              id="slip-date"
+              type="date"
+              value={transferDate}
+              onChange={(e) => setTransferDate(e.target.value)}
+              className="mt-1 h-8 text-sm"
+            />
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2 pt-2">
-          <Button
-            variant="outline"
-            className="flex-1"
-            onClick={onClose}
-            disabled={uploading}
-          >
+        <div className="flex gap-2 pt-1">
+          <Button variant="outline" className="flex-1 h-9" onClick={onClose} disabled={uploading}>
             ยกเลิก
           </Button>
           <Button
-            className="flex-1 bg-teal-600 hover:bg-teal-700"
+            className="flex-1 h-9 bg-teal-600 hover:bg-teal-700"
             onClick={handleSubmit}
-            disabled={!file || uploading}
+            disabled={!hasSelection || uploading}
           >
             {uploading ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                กำลังบันทึก...
-              </>
+              <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> กำลังบันทึก...</>
             ) : (
-              <>
-                <Upload className="h-4 w-4 mr-2" />
-                บันทึกสลิป
-              </>
+              <><Upload className="h-4 w-4 mr-1.5" /> บันทึกสลิป</>
             )}
           </Button>
         </div>

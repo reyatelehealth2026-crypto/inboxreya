@@ -138,7 +138,7 @@ const slipStatusMap: Record<string, { label: string; color: string }> = {
   failed: { label: 'ไม่สำเร็จ', color: 'bg-red-100 text-red-700' },
 }
 
-type DashTab = 'orders' | 'invoices' | 'bdos' | 'slips' | 'timeline'
+type DashTab = 'orders' | 'invoices' | 'bdos' | 'timeline'
 
 export function OdooDashboardPanel({ partnerId, customerRef, lineUserId, userId }: OdooDashboardPanelProps) {
   const [activeTab, setActiveTab] = useState<DashTab>('orders')
@@ -200,7 +200,6 @@ export function OdooDashboardPanel({ partnerId, customerRef, lineUserId, userId 
     { id: 'orders', label: 'ออเดอร์', count: orders.length, icon: ShoppingBag },
     { id: 'invoices', label: 'ใบแจ้งหนี้', count: data?.invoicesTotal || invoices.length, icon: FileText },
     { id: 'bdos', label: 'BDO', count: 0, icon: FileCheck },
-    { id: 'slips', label: 'สลิป', count: 0, icon: Receipt },
     { id: 'timeline', label: 'Timeline', count: timeline.length, icon: Clock },
   ]
 
@@ -225,7 +224,7 @@ export function OdooDashboardPanel({ partnerId, customerRef, lineUserId, userId 
               >
                 <Icon className="h-3 w-3" />
                 {tab.label}
-                {tab.id !== 'slips' && tab.count > 0 && (
+                {tab.count > 0 && (
                   <span className={cn(
                     'text-[10px] px-1.5 rounded-full font-bold',
                     isActive ? 'bg-gray-100 text-gray-600' : 'bg-gray-200 text-gray-500'
@@ -254,17 +253,6 @@ export function OdooDashboardPanel({ partnerId, customerRef, lineUserId, userId 
           ) : (
             <div className="text-center py-8 text-gray-400">
               <FileCheck className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">ไม่พบข้อมูลผู้ใช้</p>
-            </div>
-          )}
-        </div>
-      ) : activeTab === 'slips' ? (
-        <div className="flex-1 overflow-y-auto p-3">
-          {userId ? (
-            <OdooSlipsSection userId={userId} />
-          ) : (
-            <div className="text-center py-8 text-gray-400">
-              <Receipt className="h-8 w-8 mx-auto mb-2 opacity-50" />
               <p className="text-sm">ไม่พบข้อมูลผู้ใช้</p>
             </div>
           )}

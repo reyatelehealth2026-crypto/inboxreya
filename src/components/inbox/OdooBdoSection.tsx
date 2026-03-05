@@ -2,21 +2,29 @@
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileCheck, Calendar, AlertCircle, Paperclip, Clock, CheckCircle2, Upload } from 'lucide-react'
+import Image from 'next/image'
+import {
+  FileCheck, Calendar, AlertCircle, Paperclip, Clock, CheckCircle2,
+  Upload, XCircle, ExternalLink, ChevronDown, Eye,
+} from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { useToast } from '@/hooks/use-toast'
 import { SlipUploadModal } from './SlipUploadModal'
+
+const ODOO_BASE = 'https://erp.cnyrxapp.com'
+const PAGE_SIZE = 5
 
 interface OdooBdoSectionProps {
   userId: string
   memberId: string | null | undefined
 }
 
-interface BdoOrderRecord {
+export interface BdoOrderRecord {
   id: number
   bdo_id: number
   bdo_name: string | null
@@ -29,10 +37,15 @@ interface BdoOrderRecord {
   line_user_id: string | null
   payment_method: string | null
   payment_status: string
+  slip_upload_id: number | null
   bdo_state: string | null
   bdo_date: string | null
   qr_data: string | null
   created_at: string
+  // slip info (joined from backend)
+  slip_image_url?: string | null
+  slip_amount?: number | null
+  slip_transfer_date?: string | null
 }
 
 async function fetchPendingBdos(userId: string): Promise<{ bdo_orders: BdoOrderRecord[]; total: number }> {
@@ -46,6 +59,7 @@ async function fetchPendingBdos(userId: string): Promise<{ bdo_orders: BdoOrderR
 
 export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
   const queryClient = useQueryClient()
+  const { toast } = useToast()
   const { data, isLoading, error } = useQuery({
     queryKey: ['customer-bdos', userId],
     queryFn: () => fetchPendingBdos(userId),
@@ -53,18 +67,45 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
   })
 
   const [selectedBdo, setSelectedBdo] = useState<BdoOrderRecord | null>(null)
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [unmatchingId, setUnmatchingId] = useState<number | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
-  if (isLoading) {
-    return <BdosSkeleton />
+  const refreshAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['customer-bdos', userId] })
+    queryClient.invalidateQueries({ queryKey: ['customer-slips', userId] })
   }
+
+  const handleUnmatch = async (slipUploadId: number, bdoId: number) => {
+    if (!confirm('ยกเลิกการจับคู่สลิปกับ BDO นี้ ใช่ไหม?')) return
+    setUnmatchingId(bdoId)
+    try {
+      const res = await fetch('/api/odoo-dashboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unmatch_slip', slip_id: slipUploadId, bdo_id: bdoId }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        toast({ title: 'ยกเลิกการจับคู่เรียบร้อย' })
+        refreshAll()
+      } else {
+        toast({ title: 'เกิดข้อผิดพลาด', description: json.error || 'ไม่สามารถยกเลิกได้', variant: 'destructive' })
+      }
+    } catch {
+      toast({ title: 'Network error', variant: 'destructive' })
+    } finally {
+      setUnmatchingId(null)
+    }
+  }
+
+  if (isLoading) return <BdosSkeleton />
 
   if (error) {
     return (
       <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
-        <AlertDescription className="text-sm">
-          ไม่สามารถโหลดข้อมูล BDO ได้
-        </AlertDescription>
+        <AlertDescription className="text-sm">ไม่สามารถโหลดข้อมูล BDO ได้</AlertDescription>
       </Alert>
     )
   }
@@ -78,19 +119,35 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
     )
   }
 
+  const visible = data.bdo_orders.slice(0, visibleCount)
+  const hasMore = data.bdo_orders.length > visibleCount
+
   return (
     <>
-      <ScrollArea className="h-[350px]">
-        <div className="space-y-3 pr-4">
-          {data.bdo_orders.map((bdo) => (
-            <BdoItem
-              key={bdo.id}
-              bdo={bdo}
-              onAttachSlip={() => setSelectedBdo(bdo)}
-            />
-          ))}
-        </div>
-      </ScrollArea>
+      <div className="space-y-3">
+        {visible.map((bdo) => (
+          <BdoCard
+            key={bdo.id}
+            bdo={bdo}
+            onAttachSlip={() => setSelectedBdo(bdo)}
+            onUnmatch={handleUnmatch}
+            unmatchingId={unmatchingId}
+            onPreviewSlip={setPreviewUrl}
+          />
+        ))}
+
+        {hasMore && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-xs text-gray-500 hover:text-gray-700"
+            onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+          >
+            <ChevronDown className="h-3 w-3 mr-1" />
+            โหลดเพิ่ม ({data.bdo_orders.length - visibleCount} รายการ)
+          </Button>
+        )}
+      </div>
 
       {selectedBdo && (
         <SlipUploadModal
@@ -100,16 +157,31 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
           userId={userId}
           onSuccess={() => {
             setSelectedBdo(null)
-            queryClient.invalidateQueries({ queryKey: ['customer-bdos', userId] })
-            queryClient.invalidateQueries({ queryKey: ['customer-slips', userId] })
+            refreshAll()
           }}
         />
       )}
+
+      <Dialog open={!!previewUrl} onOpenChange={() => setPreviewUrl(null)}>
+        <DialogContent className="max-w-lg p-2">
+          {previewUrl && (
+            <Image src={previewUrl} alt="สลิป" width={800} height={1200} className="w-full h-auto rounded-lg" unoptimized />
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
 
-function BdoItem({ bdo, onAttachSlip }: { bdo: BdoOrderRecord; onAttachSlip: () => void }) {
+function BdoCard({
+  bdo, onAttachSlip, onUnmatch, unmatchingId, onPreviewSlip,
+}: {
+  bdo: BdoOrderRecord
+  onAttachSlip: () => void
+  onUnmatch: (slipUploadId: number, bdoId: number) => void
+  unmatchingId: number | null
+  onPreviewSlip: (url: string) => void
+}) {
   const statusConfig: Record<string, { color: string; label: string; icon: any }> = {
     pending: { color: 'bg-amber-100 text-amber-700', label: 'รอชำระ', icon: Clock },
     slip_uploaded: { color: 'bg-blue-100 text-blue-700', label: 'อัพสลิปแล้ว', icon: Upload },
@@ -120,6 +192,7 @@ function BdoItem({ bdo, onAttachSlip }: { bdo: BdoOrderRecord; onAttachSlip: () 
   const config = statusConfig[bdo.payment_status] || statusConfig.pending
   const StatusIcon = config.icon
   const isPending = bdo.payment_status === 'pending'
+  const isMatched = bdo.payment_status === 'matched' || bdo.payment_status === 'slip_uploaded'
 
   const bdoDate = bdo.bdo_date || bdo.created_at
   const dateStr = bdoDate ? new Date(bdoDate).toLocaleDateString('th-TH', {
@@ -127,55 +200,129 @@ function BdoItem({ bdo, onAttachSlip }: { bdo: BdoOrderRecord; onAttachSlip: () 
   }) : '-'
 
   const paymentLabel = bdo.payment_method === 'promptpay' ? 'พร้อมเพย์' :
-    bdo.payment_method === 'bank_transfer' ? 'โอนเงิน' : bdo.payment_method || '-'
+    bdo.payment_method === 'bank_transfer' ? 'โอนเงิน' : bdo.payment_method || ''
+
+  const odooUrl = `${ODOO_BASE}/web#id=${bdo.bdo_id}&model=cny.bill.invoice.before.delivery&view_type=form`
+  const soUrl = bdo.order_id ? `${ODOO_BASE}/web#id=${bdo.order_id}&model=sale.order&view_type=form` : null
 
   return (
     <div className={cn(
-      "border rounded-lg p-3 hover:bg-gray-50 transition-colors",
-      isPending && "border-amber-200 bg-amber-50/30"
+      "border rounded-xl p-3 transition-colors",
+      isPending && "border-amber-200 bg-amber-50/30",
+      isMatched && "border-green-200 bg-green-50/20",
+      !isPending && !isMatched && "bg-white",
     )}>
-      <div className="flex items-start justify-between mb-2">
+      {/* Row 1: Name + Badge + BDO ID + Odoo link */}
+      <div className="flex items-start justify-between mb-1.5">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <p className="font-semibold text-sm">{bdo.bdo_name || `BDO-${bdo.bdo_id}`}</p>
-            <Badge className={cn('text-xs h-5 gap-1', config.color)}>
-              <StatusIcon className="h-3 w-3" />
+            <Badge className={cn('text-[10px] h-[18px] gap-0.5 px-1.5', config.color)}>
+              <StatusIcon className="h-2.5 w-2.5" />
               {config.label}
             </Badge>
           </div>
-          {bdo.order_name && (
-            <p className="text-xs text-blue-600 mb-0.5">
+          <p className="text-[10px] text-gray-400 mt-0.5">ID: #{bdo.bdo_id}</p>
+        </div>
+        <a
+          href={odooUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-gray-400 hover:text-blue-600 transition-colors flex-shrink-0 ml-1"
+          title="เปิดใน Odoo"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+        </a>
+      </div>
+
+      {/* Row 2: SO + Date + Payment */}
+      <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500 mb-2">
+        {bdo.order_name && (
+          soUrl ? (
+            <a href={soUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
               {bdo.order_name}
-            </p>
+            </a>
+          ) : (
+            <span className="text-blue-600 font-medium">{bdo.order_name}</span>
+          )
+        )}
+        <span className="flex items-center gap-0.5">
+          <Calendar className="h-3 w-3" /> {dateStr}
+        </span>
+        {paymentLabel && <span>ชำระ: {paymentLabel}</span>}
+      </div>
+
+      {/* Row 3: Amount + Action */}
+      <div className="flex items-center justify-between">
+        <span className="font-bold text-base text-gray-900">
+          ฿{bdo.amount_total?.toLocaleString('th-TH', { minimumFractionDigits: 0 }) || '0'}
+        </span>
+        <div className="flex gap-1.5">
+          {isPending && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1 border-teal-300 text-teal-700 hover:bg-teal-50"
+              onClick={onAttachSlip}
+            >
+              <Paperclip className="h-3 w-3" />
+              แนบสลิป
+            </Button>
           )}
-          <p className="text-xs text-gray-500">
-            <Calendar className="h-3 w-3 inline mr-1" />
-            {dateStr}
-          </p>
-          {bdo.payment_method && (
-            <p className="text-xs text-gray-400 mt-0.5">
-              ชำระ: {paymentLabel}
-            </p>
+          {isMatched && bdo.slip_upload_id && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs gap-1 text-gray-500 hover:text-red-600"
+              disabled={unmatchingId === bdo.bdo_id}
+              onClick={() => onUnmatch(bdo.slip_upload_id!, bdo.bdo_id)}
+            >
+              <XCircle className="h-3 w-3" />
+              {unmatchingId === bdo.bdo_id ? 'กำลัง...' : 'ยกเลิก'}
+            </Button>
           )}
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
-        <span className="font-semibold text-gray-900 text-sm">
-          ฿{bdo.amount_total?.toLocaleString('th-TH', { minimumFractionDigits: 0 }) || '0'}
-        </span>
-        {isPending && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs gap-1.5 border-teal-300 text-teal-700 hover:bg-teal-50"
-            onClick={onAttachSlip}
+      {/* Row 4: Slip thumbnail (if attached) */}
+      {bdo.slip_image_url && (
+        <div className="mt-2 flex items-center gap-2 p-1.5 bg-green-50 rounded-lg border border-green-100">
+          <button
+            type="button"
+            className="flex-shrink-0 rounded overflow-hidden border border-green-200 hover:opacity-80 transition-opacity"
+            onClick={() => onPreviewSlip(bdo.slip_image_url!)}
           >
-            <Paperclip className="h-3 w-3" />
-            แนบสลิป
+            <Image
+              src={bdo.slip_image_url}
+              alt="สลิป"
+              width={36}
+              height={44}
+              className="w-9 h-11 object-cover"
+              unoptimized
+            />
+          </button>
+          <div className="flex-1 min-w-0 text-xs">
+            <span className="text-green-700 font-medium">✓ สลิปแนบแล้ว</span>
+            {bdo.slip_amount != null && (
+              <span className="text-gray-500 ml-1">฿{Number(bdo.slip_amount).toLocaleString()}</span>
+            )}
+            {bdo.slip_transfer_date && (
+              <span className="text-gray-400 ml-1">
+                {new Date(bdo.slip_transfer_date).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })}
+              </span>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0 flex-shrink-0"
+            onClick={() => onPreviewSlip(bdo.slip_image_url!)}
+            title="ดูสลิป"
+          >
+            <Eye className="h-3 w-3" />
           </Button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -184,12 +331,13 @@ function BdosSkeleton() {
   return (
     <div className="space-y-3">
       {[1, 2, 3].map((i) => (
-        <div key={i} className="border rounded-lg p-3">
-          <Skeleton className="h-4 w-32 mb-2" />
-          <Skeleton className="h-3 w-24 mb-2" />
+        <div key={i} className="border rounded-xl p-3">
+          <Skeleton className="h-4 w-36 mb-2" />
+          <Skeleton className="h-3 w-24 mb-1" />
+          <Skeleton className="h-3 w-40 mb-2" />
           <div className="flex justify-between">
-            <Skeleton className="h-3 w-16" />
-            <Skeleton className="h-7 w-20" />
+            <Skeleton className="h-5 w-20" />
+            <Skeleton className="h-7 w-24" />
           </div>
         </div>
       ))}
