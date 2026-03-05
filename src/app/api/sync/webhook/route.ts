@@ -260,7 +260,8 @@ async function handleSyncMessage(data: any) {
       createdAt,
       isRead: direction === 'outgoing' ? true : false,
       replyToId,
-    }
+    },
+    include: { replyTo: true },
   })
   
   console.log('[handleSyncMessage] Created message:', {
@@ -286,6 +287,13 @@ async function handleSyncMessage(data: any) {
         isRead: createdMessage.isRead,
         sentBy: createdMessage.sentBy,
         replyToId: createdMessage.replyToId,
+        replyTo: createdMessage.replyTo
+          ? {
+              id: createdMessage.replyTo.id.toString(),
+              content: createdMessage.replyTo.content,
+              messageType: createdMessage.replyTo.messageType,
+            }
+          : null,
         createdAt: createdMessage.createdAt.toISOString(),
         updatedAt: createdMessage.updatedAt.toISOString()
       }
@@ -304,6 +312,13 @@ async function handleSyncMessage(data: any) {
       mediaUrl: createdMessage.mediaUrl,
       metadata: createdMessage.metadata ? JSON.parse(createdMessage.metadata) : null,
       replyToId: createdMessage.replyToId ? createdMessage.replyToId.toString() : null,
+      replyTo: createdMessage.replyTo
+        ? {
+            id: createdMessage.replyTo.id.toString(),
+            content: createdMessage.replyTo.content,
+            messageType: createdMessage.replyTo.messageType,
+          }
+        : null,
       createdAt: createdMessage.createdAt.toISOString(),
       sentBy: createdMessage.sentBy?.toString() || null,
     },
