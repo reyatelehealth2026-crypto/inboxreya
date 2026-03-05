@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Image from 'next/image'
 import {
   FileCheck, Calendar, AlertCircle, Paperclip, Clock, CheckCircle2,
-  Upload, XCircle, ExternalLink, ChevronDown, Eye,
+  Upload, XCircle, ExternalLink, ChevronDown, Eye, FileText, Truck,
 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -34,6 +34,7 @@ export interface BdoOrderRecord {
   payment_reference: string | null
   partner_id: number | null
   customer_name: string | null
+  customer_ref?: string | null
   line_user_id: string | null
   payment_method: string | null
   payment_status: string
@@ -41,6 +42,8 @@ export interface BdoOrderRecord {
   bdo_state: string | null
   bdo_date: string | null
   qr_data: string | null
+  delivery_type?: string | null
+  statement_pdf_path?: string | null
   created_at: string
   // slip info (joined from backend)
   slip_image_url?: string | null
@@ -204,6 +207,15 @@ function BdoCard({
 
   const odooUrl = `${ODOO_BASE}/web#id=${bdo.bdo_id}&model=cny.bill.invoice.before.delivery&view_type=form`
   const soUrl = bdo.order_id ? `${ODOO_BASE}/web#id=${bdo.order_id}&model=sale.order&view_type=form` : null
+  const phpBase = process.env.NEXT_PUBLIC_PHP_API_URL || 'https://cny.re-ya.com'
+  const statementUrl = `${phpBase.replace(/\/$/, '')}/api/odoo-dashboard-api.php?action=statement_pdf&bdo_id=${bdo.bdo_id}`
+  const bdoRefLabel = bdo.bdo_name || `BDO-${bdo.bdo_id}`
+  const customerLabel = bdo.customer_name || bdo.customer_ref || null
+  const deliveryTypeLabel = bdo.delivery_type === 'company'
+    ? 'สายส่ง'
+    : bdo.delivery_type === 'private'
+      ? 'ขนส่งเอกชน'
+      : null
 
   return (
     <div className={cn(
@@ -215,14 +227,26 @@ function BdoCard({
       {/* Row 1: Name + Badge + BDO ID + Odoo link */}
       <div className="flex items-start justify-between mb-1.5">
         <div className="flex-1 min-w-0">
+          <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-0.5">เลข BDO</p>
           <div className="flex items-center gap-1.5 flex-wrap">
-            <p className="font-semibold text-sm">{bdo.bdo_name || `BDO-${bdo.bdo_id}`}</p>
+            <p className="font-semibold text-sm">{bdoRefLabel}</p>
             <Badge className={cn('text-[10px] h-[18px] gap-0.5 px-1.5', config.color)}>
               <StatusIcon className="h-2.5 w-2.5" />
               {config.label}
             </Badge>
+            {deliveryTypeLabel && (
+              <Badge variant="outline" className="text-[10px] h-[18px] gap-0.5 px-1.5 border-sky-200 text-sky-700 bg-sky-50">
+                <Truck className="h-2.5 w-2.5" />
+                {deliveryTypeLabel}
+              </Badge>
+            )}
           </div>
-          <p className="text-[10px] text-gray-400 mt-0.5">ID: #{bdo.bdo_id}</p>
+          <div className="mt-1 space-y-0.5">
+            <p className="text-[10px] text-gray-400">Odoo ID: #{bdo.bdo_id}</p>
+            {customerLabel && (
+              <p className="text-[11px] text-gray-500">ลูกค้า: {customerLabel}</p>
+            )}
+          </div>
         </div>
         <a
           href={odooUrl}
@@ -250,6 +274,17 @@ function BdoCard({
           <Calendar className="h-3 w-3" /> {dateStr}
         </span>
         {paymentLabel && <span>ชำระ: {paymentLabel}</span>}
+        {bdo.statement_pdf_path && (
+          <a
+            href={statementUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sky-700 hover:underline"
+          >
+            <FileText className="h-3 w-3" />
+            Statement PDF
+          </a>
+        )}
       </div>
 
       {/* Row 3: Amount + Action */}
