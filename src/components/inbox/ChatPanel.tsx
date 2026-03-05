@@ -375,6 +375,16 @@ function MessageBubble({
           </div>
         )}
 
+        {/* Fallback text display - always show content if nothing else rendered */}
+        {(!shouldShowFlex && normalizedMessageType !== 'image' && normalizedMessageType !== 'video' && normalizedMessageType !== 'audio' && normalizedMessageType !== 'file' && normalizedMessageType !== 'location' && normalizedMessageType !== 'sticker') && (
+          <div 
+            className="text-sm whitespace-pre-wrap break-words"
+            style={{ color: isOutgoing ? 'white' : 'inherit' }}
+          >
+            {message.content || '[ไม่มีข้อความ]'}
+          </div>
+        )}
+
         {normalizedMessageType === 'image' && (message.mediaUrl || message.content) && (
           <div className="relative w-full max-w-full">
             {(() => {
