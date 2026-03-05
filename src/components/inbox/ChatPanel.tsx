@@ -236,8 +236,10 @@ function MessageBubble({
   const quoteTargetMessage = message.replyTo
   
   // For LINE quote messages: check metadata for quotedMessageId
-  const quotedMessageId = (message.metadata as any)?.quotedMessageId
-  const isLineQuoteReply = !isOutgoing && quotedMessageId
+  // Works for both incoming (customer quoted our msg) and outgoing (we quoted customer msg via LINE)
+  const quotedMessageId = message.metadata?.quotedMessageId
+  // Show LINE quote block when: has quotedMessageId AND no replyTo relation already resolved
+  const isLineQuoteReply = !!quotedMessageId && !isQuoteReply
 
   // Parse flex payload - check explicit flex type, JSON content, or metadata
   const normalizedMessageType = message.messageType || 'text'
@@ -361,13 +363,21 @@ function MessageBubble({
         )}
 
         {/* LINE Quote Reply - customer quoted one of our messages via LINE app */}
-        {isLineQuoteReply && !isQuoteReply && (
-          <div className="mb-2 pb-2 border-b border-dashed border-border/50">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+        {isLineQuoteReply && (
+          <div 
+            className={cn(
+              'mb-2 pb-2 border-b border-dashed',
+              isOutgoing ? 'border-primary-foreground/30' : 'border-border/50'
+            )}
+          >
+            <div className={cn(
+              'flex items-center gap-1.5 text-xs opacity-80 mb-1',
+              isOutgoing ? 'text-primary-foreground/70' : 'text-muted-foreground'
+            )}>
               <Reply className="h-3 w-3" />
               <span>ตอบกลับข้อความ</span>
             </div>
-            <LineQuoteMessage quotedMessageId={quotedMessageId} isOutgoing={false} />
+            <LineQuoteMessage quotedMessageId={quotedMessageId} isOutgoing={isOutgoing} />
           </div>
         )}
         {shouldShowFlex && (
