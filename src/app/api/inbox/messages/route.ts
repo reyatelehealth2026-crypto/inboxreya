@@ -268,6 +268,7 @@ export async function POST(request: NextRequest) {
     // Try to send via PHP API if configured (platform-aware)
     let platformSendSuccess = false
     let returnedQuoteToken: string | null = null
+    let returnedLineMessageId: string | null = null
 
     if (process.env.PHP_API_URL) {
       try {
@@ -281,9 +282,17 @@ export async function POST(request: NextRequest) {
         })
         platformSendSuccess = sendResult.success
         
-        // Capture the quoteToken returned from LINE API (for future replies)
-        if (sendResult.success && sendResult.quoteToken) {
-          returnedQuoteToken = sendResult.quoteToken
+        // Capture quoteToken and lineMessageId returned from LINE API
+        // LINE API returns: { sentMessages: [{ id: "LINE_MSG_ID", quoteToken: "..." }] }
+        if (sendResult.success) {
+          if (sendResult.quoteToken) returnedQuoteToken = sendResult.quoteToken
+          if (sendResult.lineMessageId) returnedLineMessageId = sendResult.lineMessageId
+          // Also try sentMessages array format
+          const sentMsg = sendResult.sentMessages?.[0]
+          if (sentMsg) {
+            if (!returnedQuoteToken && sentMsg.quoteToken) returnedQuoteToken = sentMsg.quoteToken
+            if (!returnedLineMessageId && sentMsg.id) returnedLineMessageId = sentMsg.id
+          }
         }
 
         if (!sendResult.success) {
@@ -301,11 +310,14 @@ export async function POST(request: NextRequest) {
     // Add 7 hours to ensure DATETIME columns receive the Bangkok face-value time
     const bangkokNow = new Date(now.getTime() + 7 * 60 * 60 * 1000)
     
-    // Build metadata including the quoteToken from LINE
+    // Build metadata including quoteToken and lineMessageId from LINE API response
     const messageMetadata: any = metadata || {}
     if (returnedQuoteToken) {
       messageMetadata.quoteToken = returnedQuoteToken
-      messageMetadata.sentAt = new Date().toISOString()
+    }
+    if (returnedLineMessageId) {
+      // lineMessageId stored on outgoing messages enables incoming quote-reply mapping
+      messageMetadata.lineMessageId = returnedLineMessageId
     }
 
     // Save to Prisma database (PHP no longer saves to avoid duplicates)
