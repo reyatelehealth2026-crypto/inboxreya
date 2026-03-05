@@ -53,21 +53,25 @@ function normalizePictureUrl(value: unknown) {
 }
 
 async function handleSyncMessage(data: any) {
+  console.log('[handleSyncMessage] Received data:', JSON.stringify(data))
+  
   const {
     lineUserId,
     displayName,
     pictureUrl,
-    direction, // 'incoming' | 'outgoing'
-    type,      // 'text' | 'image' | ...
+    direction,
+    type,
     content,
     mediaUrl,
     timestamp,
-    lineAccountId, // optional, ID of the LINE account
+    lineAccountId,
     metadata,
     quoteToken,
     lineMessageId,
     quotedMessageId
   } = data
+  
+  console.log('[handleSyncMessage] content:', content, 'type:', type)
 
   if (!lineUserId) return
   const safePictureUrl = normalizePictureUrl(pictureUrl)
@@ -253,6 +257,12 @@ async function handleSyncMessage(data: any) {
       isRead: direction === 'outgoing' ? true : false,
       replyToId,
     }
+  })
+  
+  console.log('[handleSyncMessage] Created message:', {
+    id: createdMessage.id,
+    content: createdMessage.content,
+    messageType: createdMessage.messageType
   })
 
   // Broadcast via SSE (existing)
