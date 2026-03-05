@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -106,7 +106,7 @@ export function OdooDashboardFromPhp() {
   const [total, setTotal] = useState(0);
   const pageSize = 20;
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const result = await callPhpApi('/api/odoo-webhooks-dashboard.php', {
         method: 'POST',
@@ -119,9 +119,9 @@ export function OdooDashboardFromPhp() {
     } catch (err) {
       console.error('Failed to fetch stats:', err);
     }
-  };
+  }, []);
 
-  const fetchWebhooks = async () => {
+  const fetchWebhooks = useCallback(async () => {
     try {
       setLoading(true);
       const result = await callPhpApi('/api/odoo-webhooks-dashboard.php', {
@@ -144,12 +144,12 @@ export function OdooDashboardFromPhp() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [offset]);
 
   useEffect(() => {
     fetchStats();
     fetchWebhooks();
-  }, [offset]);
+  }, [fetchStats, fetchWebhooks]);
 
   const refreshData = () => {
     fetchStats();

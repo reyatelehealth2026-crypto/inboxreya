@@ -5,7 +5,8 @@ import prisma from "./prisma"
 
 const authSecret =
   process.env.AUTH_SECRET ||
-  process.env.NEXTAUTH_SECRET
+  process.env.NEXTAUTH_SECRET ||
+  (process.env.NEXT_PHASE === 'phase-production-build' ? 'build-secret' : undefined)
 
 if (!authSecret) {
   throw new Error("AUTH_SECRET or NEXTAUTH_SECRET is required for authentication")
