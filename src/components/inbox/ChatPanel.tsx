@@ -188,19 +188,6 @@ function MessageBubble({
   const isFlexJson = normalizedMessageType === 'text' && isFlexMessageContent(message.content)
   const flexPayload = parseFlexPayload(message)
   const shouldShowFlex = Boolean(flexPayload) || isFlexType || isFlexJson
-  
-  // DEBUG: Log render conditions
-  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-    console.log('[MessageBubble] Render check:', {
-      id: message.id,
-      normalizedMessageType,
-      isFlexType,
-      isFlexJson,
-      shouldShowFlex,
-      content: message.content?.substring(0, 30),
-      hasFlexPayload: !!flexPayload
-    })
-  }
 
   const resolveContentUrl = (content: string | null, mediaUrl?: string | null) => {
     if (mediaUrl) return mediaUrl
@@ -324,12 +311,18 @@ function MessageBubble({
         )}
 
         {normalizedMessageType === 'text' && !shouldShowFlex && (
-          <div className="text-sm whitespace-pre-wrap break-words">
-            {(() => {
-              console.log('[Render Text] message.id:', message.id, 'content:', message.content)
-              return null
-            })()}
-            <MessageTextWithLinks content={(lineDisplayText ?? message.content ?? '').toString()} isOutgoing={isOutgoing} />
+          <div 
+            className="text-sm whitespace-pre-wrap break-words min-h-[1.5em]"
+            style={{ color: isOutgoing ? 'white' : 'inherit' }}
+          >
+            {(lineDisplayText ?? message.content ?? '') ? (
+              <MessageTextWithLinks 
+                content={(lineDisplayText ?? message.content ?? '').toString()} 
+                isOutgoing={isOutgoing} 
+              />
+            ) : (
+              <span className="text-muted-foreground italic">[ไม่มีข้อความ]</span>
+            )}
           </div>
         )}
 
