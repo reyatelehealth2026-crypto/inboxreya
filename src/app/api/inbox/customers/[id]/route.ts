@@ -160,17 +160,7 @@ export async function GET(
         conversationAssignees: {
           where: { status: 'active' },
           select: {
-            admin: {
-              select: {
-                id: true,
-                username: true,
-                email: true,
-                displayName: true,
-                avatarUrl: true,
-                role: true,
-                isActive: true,
-              },
-            },
+            adminId: true,
           },
         },
       },
@@ -189,15 +179,45 @@ export async function GET(
       sortOrder: ta.tag.priority ?? 0,
     }))
 
-    const assignees = user.conversationAssignees.map((assignment) => ({
-      id: assignment.admin.id.toString(),
-      username: assignment.admin.username,
-      email: assignment.admin.email,
-      displayName: assignment.admin.displayName,
-      avatarUrl: assignment.admin.avatarUrl,
-      role: assignment.admin.role,
-      isActive: assignment.admin.isActive ?? true,
-    }))
+    const assigneeAdminIds = Array.from(
+      new Set(
+        user.conversationAssignees
+          .map((assignment) => assignment.adminId)
+          .filter((adminId): adminId is number => Number.isFinite(adminId))
+      )
+    )
+
+    const assigneeAdmins = assigneeAdminIds.length > 0
+      ? await prisma.adminUser.findMany({
+          where: {
+            id: { in: assigneeAdminIds },
+          },
+          select: {
+            id: true,
+            username: true,
+            email: true,
+            displayName: true,
+            avatarUrl: true,
+            role: true,
+            isActive: true,
+          },
+        })
+      : []
+
+    const assigneeAdminMap = new Map(assigneeAdmins.map((admin) => [admin.id, admin]))
+
+    const assignees = assigneeAdminIds
+      .map((adminId) => assigneeAdminMap.get(adminId))
+      .filter((admin): admin is NonNullable<typeof admin> => admin !== undefined)
+      .map((admin) => ({
+        id: admin.id.toString(),
+        username: admin.username,
+        email: admin.email,
+        displayName: admin.displayName,
+        avatarUrl: admin.avatarUrl,
+        role: admin.role,
+        isActive: admin.isActive ?? true,
+      }))
 
     // Fetch additional fields from raw query
     const additionalFields = await getAdditionalFields(parsedUserId)
