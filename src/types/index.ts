@@ -37,6 +37,9 @@ export interface LineUser {
   postalCode?: string | null
   memberId?: string | null
   note?: string | null
+  odooPartnerId?: number | null
+  odooPartnerName?: string | null
+  odooCustomerCode?: string | null
   membershipLevel: string
   tier: string
   points: number

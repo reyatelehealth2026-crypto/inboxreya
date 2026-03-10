@@ -50,6 +50,39 @@ async function getAdditionalFields(userId: number): Promise<{
   }
 }
 
+async function getOdooLinkData(lineUserId: string): Promise<{
+  partnerId: number | null
+  partnerName: string | null
+  customerCode: string | null
+}> {
+  try {
+    const result = await prisma.$queryRaw<{
+      odoo_partner_id: number | null
+      odoo_partner_name: string | null
+      odoo_customer_code: string | null
+    }[]>`
+      SELECT odoo_partner_id, odoo_partner_name, odoo_customer_code
+      FROM odoo_line_users
+      WHERE line_user_id = ${lineUserId}
+      ORDER BY id DESC
+      LIMIT 1
+    `
+
+    if (result[0]) {
+      return {
+        partnerId: result[0].odoo_partner_id,
+        partnerName: result[0].odoo_partner_name,
+        customerCode: result[0].odoo_customer_code,
+      }
+    }
+
+    return { partnerId: null, partnerName: null, customerCode: null }
+  } catch (error) {
+    console.warn('Could not fetch Odoo link data:', error)
+    return { partnerId: null, partnerName: null, customerCode: null }
+  }
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -168,22 +201,29 @@ export async function GET(
 
     // Fetch additional fields from raw query
     const additionalFields = await getAdditionalFields(parsedUserId)
+    const odooLinkData = await getOdooLinkData(user.lineUserId)
 
     // Calculate points from transactions (Mirroring PHP LoyaltyPoints::getUserPoints)
-    const pointsSummary = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT
-        COALESCE(SUM(CASE WHEN points > 0 THEN points ELSE 0 END), 0) as total_points,
-        COALESCE(SUM(points), 0) as available_points,
-        COALESCE(SUM(CASE WHEN points < 0 THEN ABS(points) ELSE 0 END), 0) as used_points
-       FROM points_transactions
-       WHERE user_id = ?`,
-      parsedUserId
-    )
+    let pointsSummary: any[] = []
+    try {
+      pointsSummary = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT
+          COALESCE(SUM(CASE WHEN points > 0 THEN points ELSE 0 END), 0) as total_points,
+          COALESCE(SUM(points), 0) as available_points,
+          COALESCE(SUM(CASE WHEN points < 0 THEN ABS(points) ELSE 0 END), 0) as used_points
+         FROM points_transactions
+         WHERE user_id = ?`,
+        parsedUserId
+      )
+    } catch (error) {
+      console.warn('Could not fetch points summary:', error)
+    }
 
     const summary = pointsSummary[0]
     let currentBalance = 0
     let totalPoints = 0
     let usedPoints = 0
+    const preferredDisplayName = odooLinkData.partnerName || user.displayName
 
     // Only use transaction data if we have transactions (non-zero balance check logic)
     // Matches PHP logic for source of truth
@@ -204,7 +244,7 @@ export async function GET(
         user: {
           id: user.id.toString(),
           lineUserId: user.lineUserId,
-          displayName: user.displayName,
+          displayName: preferredDisplayName,
           pictureUrl: user.pictureUrl,
           statusMessage: user.statusMessage,
           firstName: user.firstName,
@@ -221,7 +261,7 @@ export async function GET(
           district: user.district,
           province: user.province,
           postalCode: user.postalCode,
-          memberId: user.memberId,
+          memberId: user.memberId || odooLinkData.customerCode,
           note: additionalFields.note,
           membershipLevel: user.membershipLevel,
           tier: user.tier,
@@ -239,6 +279,9 @@ export async function GET(
           createdAt: user.createdAt.toISOString(),
           updatedAt: user.updatedAt.toISOString(),
           orderDays: await getOrderDays(parsedUserId),
+          odooPartnerId: odooLinkData.partnerId,
+          odooPartnerName: odooLinkData.partnerName,
+          odooCustomerCode: odooLinkData.customerCode,
         },
         tags,
         assignees,
