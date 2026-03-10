@@ -4,6 +4,48 @@ import prisma from '@/lib/prisma'
 import { createAutoTagManager } from '@/lib/services/auto-tag-manager'
 import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
 
+ async function resolveReplyToId(userId: number, quotedMessageId: string) {
+   const exactMatch = await prisma.message.findFirst({
+     where: {
+       userId,
+       metadata: {
+         contains: `"lineMessageId":"${quotedMessageId}"`,
+       },
+     },
+     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+     select: { id: true },
+   })
+
+   if (exactMatch) {
+     return exactMatch.id
+   }
+
+   const fallbackMessages = await prisma.message.findMany({
+     where: {
+       userId,
+       metadata: { not: null },
+     },
+     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+     take: 2000,
+     select: {
+       id: true,
+       metadata: true,
+     },
+   })
+
+   for (const msg of fallbackMessages) {
+     try {
+       const parsed = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata
+       if (parsed?.lineMessageId === quotedMessageId) {
+         return msg.id
+       }
+     } catch {
+     }
+   }
+
+   return null
+ }
+
 // Verify LINE signature
 function verifySignature(body: string, signature: string): boolean {
   const channelSecret = process.env.LINE_CHANNEL_SECRET
@@ -193,26 +235,7 @@ async function handleMessage(
 
   let replyToId: number | null = null
   if (message.quotedMessageId) {
-    const recentMessages = await prisma.message.findMany({
-      where: {
-        userId: user.id,
-        metadata: { not: null },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    })
-
-    for (const msg of recentMessages) {
-      try {
-        const parsed = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata
-        if (parsed?.lineMessageId === message.quotedMessageId) {
-          replyToId = msg.id
-          break
-        }
-      } catch {
-        // ignore parse errors
-      }
-    }
+    replyToId = await resolveReplyToId(user.id, message.quotedMessageId)
   }
 
   const createdMessage = await prisma.message.create({

@@ -130,7 +130,7 @@ function getLineMessageDisplayText(content: string): string | null {
 
 
 // Component to fetch and display LINE quoted message
-function LineQuoteMessage({ quotedMessageId, isOutgoing }: { quotedMessageId: string, isOutgoing: boolean }) {
+function LineQuoteMessage({ quotedMessageId, isOutgoing, userId }: { quotedMessageId: string, isOutgoing: boolean, userId: string }) {
   const [quotedContent, setQuotedContent] = useState<string | null>(null)
   const [quotedType, setQuotedType] = useState<string>('text')
   const [isLoading, setIsLoading] = useState(true)
@@ -140,7 +140,8 @@ function LineQuoteMessage({ quotedMessageId, isOutgoing }: { quotedMessageId: st
     
     const fetchQuotedMessage = async () => {
       try {
-        const response = await fetch(`/api/inbox/messages/quoted?quotedMessageId=${encodeURIComponent(quotedMessageId)}`)
+        const params = new URLSearchParams({ quotedMessageId, userId })
+        const response = await fetch(`/api/inbox/messages/quoted?${params.toString()}`)
         if (response.ok) {
           const data = await response.json()
           setQuotedContent(data.content || null)
@@ -156,19 +157,19 @@ function LineQuoteMessage({ quotedMessageId, isOutgoing }: { quotedMessageId: st
     }
     
     fetchQuotedMessage()
-  }, [quotedMessageId])
+  }, [quotedMessageId, userId])
 
   if (isLoading) {
     return <div className="text-xs opacity-50 italic">กำลังโหลด...</div>
   }
 
   const displayText = (() => {
-    if (!quotedContent) return '[ไม่พบข้อความ]'
     if (quotedType === 'image') return '[รูปภาพ]'
     if (quotedType === 'sticker') return '[สติกเกอร์]'
     if (quotedType === 'video') return '[วิดีโอ]'
     if (quotedType === 'audio') return '[เสียง]'
     if (quotedType === 'file') return '[ไฟล์]'
+    if (!quotedContent) return '[ไม่พบข้อความ]'
     return quotedContent.length > 100 ? quotedContent.slice(0, 100) + '...' : quotedContent
   })()
 
@@ -377,7 +378,7 @@ function MessageBubble({
               <Reply className="h-3 w-3" />
               <span>ตอบกลับข้อความ</span>
             </div>
-            <LineQuoteMessage quotedMessageId={quotedMessageId} isOutgoing={isOutgoing} />
+            <LineQuoteMessage quotedMessageId={quotedMessageId} isOutgoing={isOutgoing} userId={message.userId} />
           </div>
         )}
         {shouldShowFlex && (
