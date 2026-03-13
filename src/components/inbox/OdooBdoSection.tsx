@@ -86,7 +86,11 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
       const res = await fetch('/api/odoo-dashboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'unmatch_slip', slip_id: slipUploadId, bdo_id: bdoId }),
+        body: JSON.stringify({
+          action: 'odoo_slip_unmatch_api',
+          local_slip_id: slipUploadId,
+          bdo_id: bdoId,
+        }),
       })
       const json = await res.json()
       if (json.success) {
