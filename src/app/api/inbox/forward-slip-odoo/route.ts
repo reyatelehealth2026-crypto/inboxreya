@@ -59,8 +59,8 @@ export async function POST(request: NextRequest) {
 
     let message: {
       id: number
-      userId: number
-      messageType: string
+      userId: number | null
+      messageType: string | null
       content: string | null
       mediaUrl: string | null
     } | null = null
