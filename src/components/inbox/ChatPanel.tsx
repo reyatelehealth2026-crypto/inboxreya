@@ -231,6 +231,8 @@ function MessageBubble({
   const [showSlipModal, setShowSlipModal] = useState(false)
   const [slipAmount, setSlipAmount] = useState('')
   const [slipDate, setSlipDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [slipVerifying, setSlipVerifying] = useState(false)
+  const [slipVerifyResult, setSlipVerifyResult] = useState<any>(null)
 
   // Check if this message is a quote reply (has replyTo relation)
   const isQuoteReply = !!message.replyTo
@@ -441,100 +443,41 @@ function MessageBubble({
               )
             })()}
             {!isOutgoing && (
-              <div className="mt-1.5 space-y-1.5">
-                <div className="flex gap-1.5">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={slipForwardState === 'loading' || slipForwardState === 'sent'}
-                    className={cn(
-                      'h-7 text-xs gap-1.5 transition-all flex-1',
-                      slipForwardState === 'sent' && 'bg-green-50 text-green-700 border-green-200',
-                      slipForwardState === 'error' && 'bg-red-50 text-red-700 border-red-200'
-                    )}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (slipForwardState === 'loading' || slipForwardState === 'sent') return
-                      setSlipDate(new Date().toISOString().slice(0, 10))
-                      setSlipAmount('')
-                      setShowSlipModal(true)
-                    }}
-                  >
-                    {slipForwardState === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
-                    {slipForwardState === 'sent' && <span>✓</span>}
-                    {slipForwardState === 'idle' && <Upload className="h-3 w-3" />}
-                    {slipForwardState === 'error' && <span>✕</span>}
-                    {slipForwardState === 'loading' ? 'กำลังบันทึก...' : slipForwardState === 'sent' ? 'บันทึกแล้ว' : slipForwardState === 'error' ? 'ลองใหม่' : 'บันทึกสลิป'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-50"
-                    onClick={async (e) => {
-                      e.stopPropagation()
-                      const imgUrl = resolveContentUrl(message.content, message.mediaUrl)
-                      if (!imgUrl) {
-                        toast({ title: 'ไม่พบ URL รูปภาพ', variant: 'destructive' })
-                        return
-                      }
-                      
-                      try {
-                        const res = await fetch('/api/inbox/verify-slip', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ imageUrl: imgUrl }),
-                        })
-                        const result = await res.json()
-                        
-                        if (result.verified && result.data) {
-                          toast({
-                            title: '✓ สลิปแท้',
-                            description: `฿${result.data.amount?.toLocaleString('th-TH')} - ${result.data.transRef}`,
-                          })
-                        } else {
-                          toast({
-                            title: '✕ ตรวจสอบไม่ผ่าน',
-                            description: result.error || 'กรุณาตรวจสอบสลิปอีกครั้ง',
-                            variant: 'destructive',
-                          })
-                        }
-                      } catch (error) {
-                        toast({
-                          title: 'เกิดข้อผิดพลาด',
-                          description: 'ไม่สามารถตรวจสอบสลิปได้',
-                          variant: 'destructive',
-                        })
-                      }
-                    }}
-                  >
-                    <Search className="h-3 w-3" />
-                    ตรวจสอบ
-                  </Button>
-                </div>
+              <div className="mt-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={slipForwardState === 'loading' || slipForwardState === 'sent'}
+                  className={cn(
+                    'h-7 text-xs gap-1.5 transition-all',
+                    slipForwardState === 'sent' && 'bg-green-50 text-green-700 border-green-200',
+                    slipForwardState === 'error' && 'bg-red-50 text-red-700 border-red-200'
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (slipForwardState === 'loading' || slipForwardState === 'sent') return
+                    setSlipDate(new Date().toISOString().slice(0, 10))
+                    setSlipAmount('')
+                    setSlipVerifyResult(null)
+                    setShowSlipModal(true)
+                  }}
+                >
+                  {slipForwardState === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {slipForwardState === 'sent' && <span>✓</span>}
+                  {slipForwardState === 'idle' && <Upload className="h-3 w-3" />}
+                  {slipForwardState === 'error' && <span>✕</span>}
+                  {slipForwardState === 'loading' ? 'กำลังบันทึก...' : slipForwardState === 'sent' ? 'บันทึกแล้ว' : slipForwardState === 'error' ? 'ลองใหม่' : 'บันทึกสลิป'}
+                </Button>
 
                 {showSlipModal && (
                   <div
                     className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
                     onClick={(e) => { if (e.target === e.currentTarget) setShowSlipModal(false) }}
                   >
-                    <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
-                      <h3 className="text-base font-semibold text-gray-800 mb-4">บันทึกสลิปการชำระเงิน</h3>
+                    <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md mx-4 max-h-[85vh] overflow-y-auto">
+                      <h3 className="text-base font-semibold text-gray-800 mb-4">ตรวจสอบ & บันทึกสลิป</h3>
 
                       <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-600 mb-1">ยอดเงิน (บาท)</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="เช่น 1500.00"
-                            value={slipAmount}
-                            onChange={(e) => setSlipAmount(e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                            autoFocus
-                          />
-                        </div>
-
                         <div>
                           <label className="block text-sm font-medium text-gray-600 mb-1">วันที่โอน</label>
                           <input
@@ -543,44 +486,134 @@ function MessageBubble({
                             onChange={(e) => setSlipDate(e.target.value)}
                             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                           />
-                          <div className="flex gap-2 mt-1.5">
-                            <button
-                              type="button"
-                              className="text-xs text-teal-600 hover:underline"
-                              onClick={() => setSlipDate(new Date().toISOString().slice(0, 10))}
-                            >วันนี้</button>
-                            <button
-                              type="button"
-                              className="text-xs text-teal-600 hover:underline"
-                              onClick={() => {
-                                const d = new Date()
-                                d.setDate(d.getDate() - 1)
-                                setSlipDate(d.toISOString().slice(0, 10))
-                              }}
-                            >เมื่อวาน</button>
-                            <button
-                              type="button"
-                              className="text-xs text-teal-600 hover:underline"
-                              onClick={() => {
-                                const d = new Date()
-                                d.setDate(d.getDate() - 2)
-                                setSlipDate(d.toISOString().slice(0, 10))
-                              }}
-                            >2 วันก่อน</button>
-                          </div>
                         </div>
+
+                        {/* Verification Result Panel */}
+                        {slipVerifyResult && slipVerifyResult.verified && slipVerifyResult.data && (
+                          <div className="border border-green-200 rounded-xl bg-green-50/50 p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                              <ShieldCheck className="h-5 w-5 text-green-600" />
+                              <span className="text-sm font-semibold text-green-700">สลิปแท้ ตรวจสอบผ่าน</span>
+                            </div>
+
+                            <div className="space-y-2 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">จำนวนเงิน:</span>
+                                <span className="font-bold text-green-700">฿{slipVerifyResult.data.amount?.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">เลขที่อ้างอิง:</span>
+                                <span className="font-mono text-xs text-gray-700">{slipVerifyResult.data.transRef}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">วันเวลา:</span>
+                                <span className="text-gray-700">{slipVerifyResult.data.transDateTime || `${slipVerifyResult.data.transDate} ${slipVerifyResult.data.transTime || ''}`}</span>
+                              </div>
+
+                              {/* Sender */}
+                              <div className="border-t border-green-200 pt-2 mt-2">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <div className="w-2 h-2 rounded-full bg-red-400" />
+                                  <span className="text-gray-500 text-xs">จาก: <strong className="text-gray-700">{slipVerifyResult.data.sendingBankName}</strong></span>
+                                </div>
+                                <div className="pl-3.5 text-xs text-gray-600">
+                                  {slipVerifyResult.data.sender?.displayName || slipVerifyResult.data.sender?.name}
+                                  {slipVerifyResult.data.sender?.account?.value && (
+                                    <div className="font-mono text-gray-500">{slipVerifyResult.data.sender.account.value}</div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Receiver */}
+                              <div className="border-t border-green-200 pt-2">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                                  <span className="text-gray-500 text-xs">ถึง: <strong className="text-gray-700">{slipVerifyResult.data.receivingBankName}</strong></span>
+                                </div>
+                                <div className="pl-3.5 text-xs text-gray-600">
+                                  {slipVerifyResult.data.receiver?.displayName || slipVerifyResult.data.receiver?.name}
+                                  {slipVerifyResult.data.receiver?.account?.value && (
+                                    <div className="font-mono text-gray-500">{slipVerifyResult.data.receiver.account.value}</div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Fee */}
+                              {slipVerifyResult.data.transFeeAmount > 0 && (
+                                <div className="flex justify-between border-t border-green-200 pt-2">
+                                  <span className="text-gray-500">ค่าธรรมเนียม:</span>
+                                  <span className="text-gray-600">฿{slipVerifyResult.data.transFeeAmount?.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Verification Failed */}
+                        {slipVerifyResult && !slipVerifyResult.verified && (
+                          <div className="border border-red-200 rounded-xl bg-red-50/50 p-4">
+                            <div className="flex items-center gap-2">
+                              <ShieldAlert className="h-5 w-5 text-red-500" />
+                              <span className="text-sm font-semibold text-red-600">ตรวจสอบสลิปไม่ผ่าน</span>
+                            </div>
+                            <p className="text-xs text-red-500 mt-1">{slipVerifyResult.error || 'กรุณาตรวจสอบสลิปอีกครั้ง'}</p>
+                          </div>
+                        )}
                       </div>
 
+                      {/* 3 Buttons: Cancel | Verify | Save */}
                       <div className="flex gap-2 mt-6">
                         <button
                           type="button"
-                          className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50"
-                          onClick={() => setShowSlipModal(false)}
+                          className="border border-gray-200 rounded-lg py-2.5 px-4 text-sm text-gray-600 hover:bg-gray-50"
+                          onClick={() => {
+                            setShowSlipModal(false)
+                            setSlipVerifyResult(null)
+                          }}
                         >ยกเลิก</button>
+
+                        <button
+                          type="button"
+                          disabled={slipVerifying}
+                          className="flex-1 border border-gray-300 rounded-lg py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          onClick={async () => {
+                            const imgUrl = resolveContentUrl(message.content, message.mediaUrl)
+                            if (!imgUrl) {
+                              toast({ title: 'ไม่พบ URL รูปภาพ', variant: 'destructive' })
+                              return
+                            }
+                            setSlipVerifying(true)
+                            setSlipVerifyResult(null)
+                            try {
+                              const res = await fetch('/api/inbox/verify-slip', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ imageUrl: imgUrl }),
+                              })
+                              const result = await res.json()
+                              setSlipVerifyResult(result)
+                              if (result.verified && result.data) {
+                                if (result.data.amount) setSlipAmount(String(result.data.amount))
+                                if (result.data.transDate) {
+                                  const d = result.data.transDate.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')
+                                  if (d.match(/^\d{4}-\d{2}-\d{2}$/)) setSlipDate(d)
+                                }
+                              }
+                            } catch {
+                              setSlipVerifyResult({ verified: false, error: 'ไม่สามารถเชื่อมต่อระบบตรวจสอบได้' })
+                            } finally {
+                              setSlipVerifying(false)
+                            }
+                          }}
+                        >
+                          {slipVerifying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                          {slipVerifying ? 'กำลังตรวจ...' : 'ตรวจสอบสลิป'}
+                        </button>
+
                         <button
                           type="button"
                           disabled={slipForwardState === 'loading'}
-                          className="flex-1 bg-teal-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-teal-700 disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          className="flex-1 bg-teal-600 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-teal-700 disabled:opacity-50 flex items-center justify-center gap-1.5"
                           onClick={async () => {
                             setShowSlipModal(false)
                             setSlipForwardState('loading')
@@ -591,6 +624,12 @@ function MessageBubble({
                               }
                               if (slipAmount) body.amount = parseFloat(slipAmount)
                               if (slipDate) body.transferDate = slipDate
+                              if (slipVerifyResult?.verified && slipVerifyResult?.data) {
+                                body.slip_verified = true
+                                body.slip_verify_ref = slipVerifyResult.data.transRef
+                                body.slip_verify_amount = slipVerifyResult.data.amount
+                                body.slip_verify_data = slipVerifyResult.data
+                              }
                               const res = await fetch('/api/inbox/forward-slip-odoo', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -620,11 +659,14 @@ function MessageBubble({
                                 variant: 'destructive',
                               })
                               setTimeout(() => setSlipForwardState('idle'), 3000)
+                            } finally {
+                              setSlipVerifyResult(null)
                             }
                           }}
                         >
-                          {slipForwardState === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
-                          บันทึก
+                          {slipForwardState === 'loading' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                          {slipForwardState !== 'loading' && <Upload className="h-3.5 w-3.5" />}
+                          บันทึกสลิป
                         </button>
                       </div>
                     </div>
