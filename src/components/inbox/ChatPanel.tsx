@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import Image from 'next/image'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Send, Paperclip, Smile, MoreVertical, Phone, Video, Image as ImageIcon, Sparkles, X, ArrowLeft, Reply, Upload, Loader2 } from 'lucide-react'
+import { Send, Paperclip, Smile, MoreVertical, Phone, Video, Image as ImageIcon, Sparkles, X, ArrowLeft, Reply, Upload, Loader2, Search, ShieldCheck, ShieldAlert, Clock3, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMessages, useSendMessage } from '@/hooks/use-messages'
@@ -34,6 +34,35 @@ import { Badge } from '@/components/ui/badge'
 import type { LineUser, Message, UserTag, AdminUser } from '@/types'
 import { LinkPreview } from '@/components/inbox/LinkPreview'
 import { extractUrls } from '@/lib/url-utils'
+
+type SlipVerificationUiState = 'idle' | 'loading' | 'done-valid' | 'done-suspicious' | 'done-review' | 'error'
+
+type SlipVerificationResult = {
+  verificationId: number
+  status: 'pending' | 'valid' | 'suspicious' | 'review' | 'error'
+  score: number
+  summary: string
+  flags: string[]
+  checks: Record<string, boolean | null | number | string>
+  parsed: {
+    bankName?: string | null
+    amount?: number | null
+    transferDate?: string | null
+    transferTime?: string | null
+    referenceNo?: string | null
+    senderName?: string | null
+    receiverName?: string | null
+  }
+  ocr: {
+    provider: string | null
+    confidence: number | null
+  }
+  image: {
+    width: number | null
+    height: number | null
+    sizeBytes: number
+  }
+}
 
 function parseFlexPayload(message: Message) {
   const metadata = message.metadata as any
@@ -230,6 +259,81 @@ function MessageBubble({
   const [showSlipModal, setShowSlipModal] = useState(false)
   const [slipAmount, setSlipAmount] = useState('')
   const [slipDate, setSlipDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [slipVerifyState, setSlipVerifyState] = useState<SlipVerificationUiState>('idle')
+  const [showVerifyModal, setShowVerifyModal] = useState(false)
+  const [verifyExpectedAmount, setVerifyExpectedAmount] = useState('')
+  const [verifyExpectedDate, setVerifyExpectedDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [verifyNote, setVerifyNote] = useState('')
+  const [verifyResult, setVerifyResult] = useState<SlipVerificationResult | null>(null)
+
+  const applyVerificationState = useCallback((status: SlipVerificationResult['status'] | null | undefined) => {
+    if (!status) {
+      setSlipVerifyState('idle')
+      return
+    }
+    if (status === 'valid') {
+      setSlipVerifyState('done-valid')
+    } else if (status === 'suspicious') {
+      setSlipVerifyState('done-suspicious')
+    } else if (status === 'review' || status === 'pending') {
+      setSlipVerifyState('done-review')
+    } else {
+      setSlipVerifyState('error')
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (isOutgoing || message.messageType !== 'image') return
+
+    const loadExistingVerification = async () => {
+      try {
+        const res = await fetch(`/api/inbox/verify-slip/${message.id}`, { cache: 'no-store' })
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled && data?.success && data?.data) {
+          setVerifyResult(data.data)
+          applyVerificationState(data.data.status)
+        }
+      } catch {
+        // ignore hydration errors; feature remains on-demand
+      }
+    }
+
+    loadExistingVerification()
+
+    return () => {
+      cancelled = true
+    }
+  }, [applyVerificationState, isOutgoing, message.id, message.messageType])
+
+  const verificationAppearance = useMemo(() => {
+    const status = verifyResult?.status
+    if (status === 'valid') {
+      return {
+        badgeClass: 'bg-green-50 text-green-700 border-green-200',
+        panelClass: 'border-green-200 bg-green-50/70',
+        label: 'ผ่านเบื้องต้น',
+        Icon: ShieldCheck,
+      }
+    }
+    if (status === 'suspicious') {
+      return {
+        badgeClass: 'bg-red-50 text-red-700 border-red-200',
+        panelClass: 'border-red-200 bg-red-50/70',
+        label: 'น่าสงสัย',
+        Icon: ShieldAlert,
+      }
+    }
+    return {
+      badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+      panelClass: 'border-amber-200 bg-amber-50/70',
+      label: verifyResult ? 'ควรตรวจเพิ่ม' : 'ยังไม่ตรวจ',
+      Icon: Clock3,
+    }
+  }, [verifyResult])
+  const VerificationStatusIcon = verificationAppearance.Icon
 
   // Check if this message is a quote reply (has replyTo relation)
   const isQuoteReply = !!message.replyTo
@@ -440,30 +544,98 @@ function MessageBubble({
               )
             })()}
             {!isOutgoing && (
-              <div className="mt-1.5">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={slipForwardState === 'loading' || slipForwardState === 'sent'}
-                  className={cn(
-                    'h-7 text-xs gap-1.5 transition-all',
-                    slipForwardState === 'sent' && 'bg-green-50 text-green-700 border-green-200',
-                    slipForwardState === 'error' && 'bg-red-50 text-red-700 border-red-200'
+              <div className="mt-1.5 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={slipForwardState === 'loading' || slipForwardState === 'sent'}
+                    className={cn(
+                      'h-7 text-xs gap-1.5 transition-all',
+                      slipForwardState === 'sent' && 'bg-green-50 text-green-700 border-green-200',
+                      slipForwardState === 'error' && 'bg-red-50 text-red-700 border-red-200'
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (slipForwardState === 'loading' || slipForwardState === 'sent') return
+                      setSlipDate(new Date().toISOString().slice(0, 10))
+                      setSlipAmount('')
+                      setShowSlipModal(true)
+                    }}
+                  >
+                    {slipForwardState === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {slipForwardState === 'sent' && <span>✓</span>}
+                    {slipForwardState === 'idle' && <Upload className="h-3 w-3" />}
+                    {slipForwardState === 'error' && <span>✕</span>}
+                    {slipForwardState === 'loading' ? 'กำลังบันทึก...' : slipForwardState === 'sent' ? 'บันทึกแล้ว' : slipForwardState === 'error' ? 'ลองใหม่' : 'บันทึกสลิป'}
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={slipVerifyState === 'loading'}
+                    className={cn(
+                      'h-7 text-xs gap-1.5 transition-all',
+                      slipVerifyState === 'done-valid' && 'bg-green-50 text-green-700 border-green-200',
+                      slipVerifyState === 'done-suspicious' && 'bg-red-50 text-red-700 border-red-200',
+                      slipVerifyState === 'done-review' && 'bg-amber-50 text-amber-700 border-amber-200',
+                      slipVerifyState === 'error' && 'bg-red-50 text-red-700 border-red-200'
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (slipVerifyState === 'loading') return
+                      setVerifyExpectedAmount(verifyResult?.parsed?.amount ? String(verifyResult.parsed.amount) : '')
+                      setVerifyExpectedDate(verifyResult?.parsed?.transferDate || new Date().toISOString().slice(0, 10))
+                      setVerifyNote('')
+                      setShowVerifyModal(true)
+                    }}
+                  >
+                    {slipVerifyState === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {slipVerifyState === 'done-valid' && <ShieldCheck className="h-3 w-3" />}
+                    {slipVerifyState === 'done-suspicious' && <ShieldAlert className="h-3 w-3" />}
+                    {slipVerifyState === 'done-review' && <Clock3 className="h-3 w-3" />}
+                    {slipVerifyState === 'idle' && <Search className="h-3 w-3" />}
+                    {slipVerifyState === 'error' && <RefreshCw className="h-3 w-3" />}
+                    {slipVerifyState === 'loading'
+                      ? 'กำลังตรวจ...'
+                      : slipVerifyState === 'done-valid'
+                        ? 'ผ่านเบื้องต้น'
+                        : slipVerifyState === 'done-suspicious'
+                          ? 'น่าสงสัย'
+                          : slipVerifyState === 'done-review'
+                            ? 'ควรตรวจเพิ่ม'
+                            : slipVerifyState === 'error'
+                              ? 'ลองตรวจใหม่'
+                              : 'เช็คสลิป'}
+                  </Button>
+
+                  {verifyResult && (
+                    <Badge variant="outline" className={cn('text-[11px]', verificationAppearance.badgeClass)}>
+                      {verificationAppearance.label}
+                    </Badge>
                   )}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    if (slipForwardState === 'loading' || slipForwardState === 'sent') return
-                    setSlipDate(new Date().toISOString().slice(0, 10))
-                    setSlipAmount('')
-                    setShowSlipModal(true)
-                  }}
-                >
-                  {slipForwardState === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
-                  {slipForwardState === 'sent' && <span>✓</span>}
-                  {slipForwardState === 'idle' && <Upload className="h-3 w-3" />}
-                  {slipForwardState === 'error' && <span>✕</span>}
-                  {slipForwardState === 'loading' ? 'กำลังบันทึก...' : slipForwardState === 'sent' ? 'บันทึกแล้ว' : slipForwardState === 'error' ? 'ลองใหม่' : 'บันทึกสลิป'}
-                </Button>
+                </div>
+
+                {verifyResult && (
+                  <div className={cn('rounded-xl border px-3 py-2 text-xs space-y-1.5', verificationAppearance.panelClass)}>
+                    <div className="flex items-center gap-1.5 font-medium text-foreground">
+                      <VerificationStatusIcon className="h-3.5 w-3.5" />
+                      <span>ผลการตรวจสลิปเบื้องต้น · {verifyResult.score}/100</span>
+                    </div>
+                    <p className="text-muted-foreground leading-relaxed">{verifyResult.summary}</p>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                      <span>ธนาคาร: {verifyResult.parsed?.bankName || '-'}</span>
+                      <span>ยอดเงิน: {typeof verifyResult.parsed?.amount === 'number' ? `฿${verifyResult.parsed.amount.toLocaleString('th-TH')}` : '-'}</span>
+                      <span>วันที่: {verifyResult.parsed?.transferDate || '-'}</span>
+                      <span>เวลา: {verifyResult.parsed?.transferTime || '-'}</span>
+                    </div>
+                    {verifyResult.flags?.length > 0 && (
+                      <div className="text-[11px] text-muted-foreground">
+                        Flags: {verifyResult.flags.slice(0, 3).join(', ')}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {showSlipModal && (
                   <div
@@ -578,6 +750,113 @@ function MessageBubble({
                         >
                           {slipForwardState === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
                           บันทึก
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {showVerifyModal && (
+                  <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+                    onClick={(e) => { if (e.target === e.currentTarget) setShowVerifyModal(false) }}
+                  >
+                    <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+                      <h3 className="text-base font-semibold text-gray-800 mb-1">ตรวจสอบสลิปเบื้องต้น</h3>
+                      <p className="text-sm text-gray-500 mb-4">ระบบจะตรวจความชัดเจน รูปซ้ำ และพยายามอ่านข้อมูลจากภาพอัตโนมัติ</p>
+
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-600 mb-1">ยอดที่คาดไว้ (ถ้ามี)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="เช่น 1500.00"
+                            value={verifyExpectedAmount}
+                            onChange={(e) => setVerifyExpectedAmount(e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            autoFocus
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-600 mb-1">วันที่โอนที่คาดไว้ (ถ้ามี)</label>
+                          <input
+                            type="date"
+                            value={verifyExpectedDate}
+                            onChange={(e) => setVerifyExpectedDate(e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-600 mb-1">หมายเหตุ</label>
+                          <textarea
+                            value={verifyNote}
+                            onChange={(e) => setVerifyNote(e.target.value)}
+                            rows={3}
+                            placeholder="เช่น ลูกค้าแจ้งว่าโอนเมื่อเช้า"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 mt-6">
+                        <button
+                          type="button"
+                          className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50"
+                          onClick={() => setShowVerifyModal(false)}
+                        >ยกเลิก</button>
+                        <button
+                          type="button"
+                          disabled={slipVerifyState === 'loading'}
+                          className="flex-1 bg-teal-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-teal-700 disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          onClick={async () => {
+                            setShowVerifyModal(false)
+                            setSlipVerifyState('loading')
+                            try {
+                              const res = await fetch('/api/inbox/verify-slip', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  messageId: message.id,
+                                  userId: message.userId,
+                                  expectedAmount: verifyExpectedAmount ? parseFloat(verifyExpectedAmount) : undefined,
+                                  expectedDate: verifyExpectedDate || undefined,
+                                  note: verifyNote || undefined,
+                                }),
+                              })
+                              const data = await res.json()
+                              if (res.ok && data.success) {
+                                setVerifyResult(data.data)
+                                applyVerificationState(data.data?.status)
+                                toast({
+                                  title: 'ตรวจสลิปเสร็จแล้ว',
+                                  description: data.data?.summary || 'ระบบสรุปผลตรวจเบื้องต้นเรียบร้อยแล้ว',
+                                })
+                              } else {
+                                setSlipVerifyState('error')
+                                toast({
+                                  title: 'ตรวจสลิปไม่สำเร็จ',
+                                  description: data.error || 'กรุณาลองใหม่อีกครั้ง',
+                                  variant: 'destructive',
+                                })
+                                setTimeout(() => setSlipVerifyState('idle'), 3000)
+                              }
+                            } catch {
+                              setSlipVerifyState('error')
+                              toast({
+                                title: 'เกิดข้อผิดพลาด',
+                                description: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์เพื่อตรวจสลิปได้',
+                                variant: 'destructive',
+                              })
+                              setTimeout(() => setSlipVerifyState('idle'), 3000)
+                            }
+                          }}
+                        >
+                          {slipVerifyState === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
+                          เริ่มตรวจ
                         </button>
                       </div>
                     </div>

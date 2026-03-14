@@ -1657,6 +1657,7 @@ model LineUser {
   conversationAssignees   ConversationAssignee[]
   tagAssignments          UserTagAssignment[]
   notes                   CustomerNote[]
+  slipVerifications       SlipVerification[]
 
   @@unique([lineAccountId, lineUserId])
   @@index([chatStatus])
@@ -1686,9 +1687,10 @@ model Message {
   platform    String?  @default("line") @db.VarChar(20)
 
   lineAccount LineAccount? @relation(fields: [lineAccountId], references: [id])
-  user        LineUser?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  replyTo     Message?     @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  replies     Message[]    @relation("MessageReplies")
+  user             LineUser?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replyTo          Message?          @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  replies          Message[]         @relation("MessageReplies")
+  slipVerification SlipVerification?
 
   @@index([createdAt])
   @@index([direction, isRead])
@@ -1697,6 +1699,43 @@ model Message {
   @@index([lineAccountId, direction, createdAt])
   @@index([platform])
   @@map("messages")
+}
+
+model SlipVerification {
+  id             Int                      @id @default(autoincrement())
+  messageId      Int                      @unique @map("message_id")
+  userId         Int?                     @map("user_id")
+  imageUrl       String                   @map("image_url") @db.Text
+  expectedAmount Decimal?                 @map("expected_amount") @db.Decimal(10, 2)
+  expectedDate   DateTime?                @map("expected_date") @db.Date
+  adminNote      String?                  @map("admin_note") @db.Text
+  status         slip_verification_status @default(pending)
+  score          Int?                     @default(0)
+  summary        String?                  @db.Text
+  flags          Json?
+  checks         Json?
+  parsed         Json?
+  ocrProvider    String?                  @map("ocr_provider") @db.VarChar(50)
+  ocrConfidence  Float?                   @map("ocr_confidence")
+  ocrRawText     String?                  @map("ocr_raw_text") @db.LongText
+  sha256         String?                  @db.VarChar(64)
+  imageHash      String?                  @map("image_hash") @db.VarChar(64)
+  width          Int?
+  height         Int?
+  fileSize       Int?                     @map("file_size")
+  verifiedBy     String?                  @map("verified_by") @db.VarChar(255)
+  verifiedAt     DateTime?                @map("verified_at")
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  updatedAt      DateTime                 @updatedAt @map("updated_at")
+
+  message Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    LineUser? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@index([sha256])
+  @@index([imageHash])
+  @@map("slip_verifications")
 }
 
 model UserTagAssignment {
@@ -4820,6 +4859,14 @@ enum triage_sessions_triage_level {
   yellow
   orange
   red
+}
+
+enum slip_verification_status {
+  pending
+  valid
+  suspicious
+  review
+  error
 }
 
 enum payment_slips_status {
