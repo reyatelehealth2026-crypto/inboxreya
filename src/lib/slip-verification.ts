@@ -208,7 +208,8 @@ async function extractSlipDataWithGemini(imageUrl: string) {
     // TRY EASYSLIP API FIRST IF KEY IS PROVIDED
     if (process.env.EASYSLIP_API_KEY) {
       try {
-        const easySlipRes = await fetch('https://developer.easyslip.com/api/v1/verify', {
+        console.log('[slip-verification] Attempting EasySlip URL verification...')
+        let easySlipRes = await fetch('https://developer.easyslip.com/api/v1/verify', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -217,34 +218,49 @@ async function extractSlipDataWithGemini(imageUrl: string) {
           body: JSON.stringify({ url: imageUrl })
         })
         
-        if (easySlipRes.ok) {
-          const esData = await easySlipRes.json()
-          if (esData.status === 200 && esData.data) {
-            const data = esData.data
-            // Map EasySlip response to ParsedSlipData
-            const parsedEs: ParsedSlipData = {
-              bankName: data.sender?.bank?.name || data.sender?.bank?.short || null,
-              amount: data.amount?.amount || null,
-              transferDate: data.date ? data.date.split('T')[0] : null,
-              transferTime: data.date ? data.date.split('T')[1]?.substring(0, 5) : null,
-              referenceNo: data.transRef || null,
-              senderName: data.sender?.account?.name?.th || data.sender?.account?.name?.en || null,
-              receiverName: data.receiver?.account?.name?.th || data.receiver?.account?.name?.en || null,
-            }
-            
-            return {
-              provider: 'easyslip',
-              confidence: 1.0, // Bank API is 100% confident
-              parsed: parsedEs,
-              rawText: JSON.stringify(esData, null, 2),
-              flags: ['bank_verified'],
-            }
+        let esData = await easySlipRes.json()
+        
+        // IF URL VERIFICATION FAILS (e.g. 400 invalid_url), FALLBACK TO BASE64
+        if (!easySlipRes.ok || esData.status !== 200) {
+          console.warn('[slip-verification] URL verification failed, falling back to Base64...', esData)
+          
+          const base64Image = inline.data // We already have base64 from fetchImageAsInlineData
+          easySlipRes = await fetch('https://developer.easyslip.com/api/v1/verify', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.EASYSLIP_API_KEY}`
+            },
+            body: JSON.stringify({ image: base64Image })
+          })
+          esData = await easySlipRes.json()
+        }
+        
+        if (easySlipRes.ok && esData.status === 200 && esData.data) {
+          const data = esData.data
+          // Map EasySlip response to ParsedSlipData
+          const parsedEs: ParsedSlipData = {
+            bankName: data.sender?.bank?.name || data.sender?.bank?.short || null,
+            amount: data.amount?.amount || null,
+            transferDate: data.date ? data.date.split('T')[0] : null,
+            transferTime: data.date ? data.date.split('T')[1]?.substring(0, 5) : null,
+            referenceNo: data.transRef || null,
+            senderName: data.sender?.account?.name?.th || data.sender?.account?.name?.en || null,
+            receiverName: data.receiver?.account?.name?.th || data.receiver?.account?.name?.en || null,
+          }
+          
+          return {
+            provider: 'easyslip',
+            confidence: 1.0, // Bank API is 100% confident
+            parsed: parsedEs,
+            rawText: JSON.stringify(esData, null, 2),
+            flags: ['bank_verified'],
           }
         } else {
-           console.error('[slip-verification] EasySlip API failed:', await easySlipRes.text())
+           console.error('[slip-verification] EasySlip API failed (both URL and Base64):', esData)
         }
       } catch (err) {
-         console.error('[slip-verification] EasySlip fetch error:', err)
+         console.error('[slip-verification] EasySlip error:', err)
       }
     }
 

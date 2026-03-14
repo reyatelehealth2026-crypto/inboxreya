@@ -625,11 +625,11 @@ function MessageBubble({
                     {slipVerifyState === 'loading'
                       ? 'กำลังตรวจ...'
                       : slipVerifyState === 'done-valid'
-                        ? 'ผ่านเบื้องต้น'
+                        ? 'สลิปแท้ (EasySlip)'
                         : slipVerifyState === 'done-suspicious'
                           ? 'น่าสงสัย'
                           : slipVerifyState === 'done-review'
-                            ? 'ควรตรวจเพิ่ม'
+                            ? 'รอตรวจสอบ'
                             : slipVerifyState === 'error'
                               ? 'ลองตรวจใหม่'
                               : 'เช็คสลิป'}
