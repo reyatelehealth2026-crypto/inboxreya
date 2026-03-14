@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import Image from 'next/image'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Send, Paperclip, Smile, MoreVertical, Phone, Video, Image as ImageIcon, Sparkles, X, ArrowLeft, Reply, Upload, Loader2 } from 'lucide-react'
+import { Send, Paperclip, Smile, MoreVertical, Phone, Video, Image as ImageIcon, Sparkles, X, ArrowLeft, Reply, Upload, Loader2, Search, ShieldCheck, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMessages, useSendMessage } from '@/hooks/use-messages'
@@ -441,30 +441,76 @@ function MessageBubble({
               )
             })()}
             {!isOutgoing && (
-              <div className="mt-1.5">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={slipForwardState === 'loading' || slipForwardState === 'sent'}
-                  className={cn(
-                    'h-7 text-xs gap-1.5 transition-all',
-                    slipForwardState === 'sent' && 'bg-green-50 text-green-700 border-green-200',
-                    slipForwardState === 'error' && 'bg-red-50 text-red-700 border-red-200'
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    if (slipForwardState === 'loading' || slipForwardState === 'sent') return
-                    setSlipDate(new Date().toISOString().slice(0, 10))
-                    setSlipAmount('')
-                    setShowSlipModal(true)
-                  }}
-                >
-                  {slipForwardState === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
-                  {slipForwardState === 'sent' && <span>✓</span>}
-                  {slipForwardState === 'idle' && <Upload className="h-3 w-3" />}
-                  {slipForwardState === 'error' && <span>✕</span>}
-                  {slipForwardState === 'loading' ? 'กำลังบันทึก...' : slipForwardState === 'sent' ? 'บันทึกแล้ว' : slipForwardState === 'error' ? 'ลองใหม่' : 'บันทึกสลิป'}
-                </Button>
+              <div className="mt-1.5 space-y-1.5">
+                <div className="flex gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={slipForwardState === 'loading' || slipForwardState === 'sent'}
+                    className={cn(
+                      'h-7 text-xs gap-1.5 transition-all flex-1',
+                      slipForwardState === 'sent' && 'bg-green-50 text-green-700 border-green-200',
+                      slipForwardState === 'error' && 'bg-red-50 text-red-700 border-red-200'
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (slipForwardState === 'loading' || slipForwardState === 'sent') return
+                      setSlipDate(new Date().toISOString().slice(0, 10))
+                      setSlipAmount('')
+                      setShowSlipModal(true)
+                    }}
+                  >
+                    {slipForwardState === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {slipForwardState === 'sent' && <span>✓</span>}
+                    {slipForwardState === 'idle' && <Upload className="h-3 w-3" />}
+                    {slipForwardState === 'error' && <span>✕</span>}
+                    {slipForwardState === 'loading' ? 'กำลังบันทึก...' : slipForwardState === 'sent' ? 'บันทึกแล้ว' : slipForwardState === 'error' ? 'ลองใหม่' : 'บันทึกสลิป'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-50"
+                    onClick={async (e) => {
+                      e.stopPropagation()
+                      const imgUrl = resolveContentUrl(message.content, message.mediaUrl)
+                      if (!imgUrl) {
+                        toast({ title: 'ไม่พบ URL รูปภาพ', variant: 'destructive' })
+                        return
+                      }
+                      
+                      try {
+                        const res = await fetch('/api/inbox/verify-slip', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ imageUrl: imgUrl }),
+                        })
+                        const result = await res.json()
+                        
+                        if (result.verified && result.data) {
+                          toast({
+                            title: '✓ สลิปแท้',
+                            description: `฿${result.data.amount?.toLocaleString('th-TH')} - ${result.data.transRef}`,
+                          })
+                        } else {
+                          toast({
+                            title: '✕ ตรวจสอบไม่ผ่าน',
+                            description: result.error || 'กรุณาตรวจสอบสลิปอีกครั้ง',
+                            variant: 'destructive',
+                          })
+                        }
+                      } catch (error) {
+                        toast({
+                          title: 'เกิดข้อผิดพลาด',
+                          description: 'ไม่สามารถตรวจสอบสลิปได้',
+                          variant: 'destructive',
+                        })
+                      }
+                    }}
+                  >
+                    <Search className="h-3 w-3" />
+                    ตรวจสอบ
+                  </Button>
+                </div>
 
                 {showSlipModal && (
                   <div
