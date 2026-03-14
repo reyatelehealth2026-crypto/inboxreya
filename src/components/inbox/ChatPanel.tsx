@@ -310,12 +310,24 @@ function MessageBubble({
 
   const verificationAppearance = useMemo(() => {
     const status = verifyResult?.status
+    const isBankVerified = verifyResult?.flags?.includes('bank_verified')
+    
+    if (isBankVerified && status === 'valid') {
+      return {
+        badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+        panelClass: 'border-emerald-200 bg-emerald-50/70',
+        label: '✓ ของแท้จากธนาคาร',
+        Icon: ShieldCheck,
+        title: 'ผลการตรวจสอบกับธนาคารโดยตรง (EasySlip)'
+      }
+    }
     if (status === 'valid') {
       return {
         badgeClass: 'bg-green-50 text-green-700 border-green-200',
         panelClass: 'border-green-200 bg-green-50/70',
         label: 'ผ่านเบื้องต้น',
         Icon: ShieldCheck,
+        title: 'ผลการตรวจสลิปเบื้องต้น'
       }
     }
     if (status === 'suspicious') {
@@ -324,6 +336,7 @@ function MessageBubble({
         panelClass: 'border-red-200 bg-red-50/70',
         label: 'น่าสงสัย',
         Icon: ShieldAlert,
+        title: 'ผลการตรวจสลิปเบื้องต้น'
       }
     }
     return {
@@ -331,6 +344,7 @@ function MessageBubble({
       panelClass: 'border-amber-200 bg-amber-50/70',
       label: verifyResult ? 'ควรตรวจเพิ่ม' : 'ยังไม่ตรวจ',
       Icon: Clock3,
+      title: 'ผลการตรวจสลิปเบื้องต้น'
     }
   }, [verifyResult])
   const VerificationStatusIcon = verificationAppearance.Icon
@@ -632,7 +646,7 @@ function MessageBubble({
                   <div className={cn('rounded-xl border px-3 py-2 text-xs space-y-1.5', verificationAppearance.panelClass)}>
                     <div className="flex items-center gap-1.5 font-medium text-foreground">
                       <verificationAppearance.Icon className="h-3.5 w-3.5" />
-                      <span>ผลการตรวจสลิปเบื้องต้น · {verifyResult.score}/100</span>
+                      <span>{verificationAppearance.title} {verifyResult.score < 100 ? `· ${verifyResult.score}/100` : ''}</span>
                     </div>
                     <p className="text-muted-foreground leading-relaxed">{verifyResult.summary}</p>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
@@ -651,12 +665,16 @@ function MessageBubble({
                         {verifyResult.checks?.imageReadable ? <span className="text-green-500">✓ ภาพชัดเจน</span> : <span className="text-amber-500">⚠ ภาพเล็ก/เบลอ</span>}
                       </span>
                       <span>Ref: {verifyResult.parsed?.referenceNo || '-'}</span>
-                      <span>OCR: {verifyResult.ocr?.confidence ? `${(verifyResult.ocr.confidence * 100).toFixed(0)}%` : '-'}</span>
+                      {verifyResult.flags?.includes('bank_verified') ? (
+                        <span className="text-emerald-600 font-medium">✓ EasySlip API</span>
+                      ) : (
+                        <span>OCR: {verifyResult.ocr?.confidence ? `${(verifyResult.ocr.confidence * 100).toFixed(0)}%` : '-'}</span>
+                      )}
                     </div>
 
-                    {verifyResult.flags?.length > 0 && (
+                    {verifyResult.flags?.length > 0 && verifyResult.flags[0] !== 'bank_verified' && (
                       <div className="text-[10px] text-amber-600 bg-amber-50/50 rounded px-1.5 py-0.5 mt-1 break-words">
-                        <strong>Flags:</strong> {verifyResult.flags.join(', ')}
+                        <strong>Flags:</strong> {verifyResult.flags.filter(f => f !== 'bank_verified').join(', ')}
                       </div>
                     )}
                   </div>

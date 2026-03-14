@@ -204,6 +204,50 @@ async function extractSlipDataWithGemini(imageUrl: string) {
 
   try {
     const inline = await fetchImageAsInlineData(imageUrl)
+    
+    // TRY EASYSLIP API FIRST IF KEY IS PROVIDED
+    if (process.env.EASYSLIP_API_KEY) {
+      try {
+        const easySlipRes = await fetch('https://developer.easyslip.com/api/v1/verify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.EASYSLIP_API_KEY}`
+          },
+          body: JSON.stringify({ url: imageUrl })
+        })
+        
+        if (easySlipRes.ok) {
+          const esData = await easySlipRes.json()
+          if (esData.status === 200 && esData.data) {
+            const data = esData.data
+            // Map EasySlip response to ParsedSlipData
+            const parsedEs: ParsedSlipData = {
+              bankName: data.sender?.bank?.name || data.sender?.bank?.short || null,
+              amount: data.amount?.amount || null,
+              transferDate: data.date ? data.date.split('T')[0] : null,
+              transferTime: data.date ? data.date.split('T')[1]?.substring(0, 5) : null,
+              referenceNo: data.transRef || null,
+              senderName: data.sender?.account?.name?.th || data.sender?.account?.name?.en || null,
+              receiverName: data.receiver?.account?.name?.th || data.receiver?.account?.name?.en || null,
+            }
+            
+            return {
+              provider: 'easyslip',
+              confidence: 1.0, // Bank API is 100% confident
+              parsed: parsedEs,
+              rawText: JSON.stringify(esData, null, 2),
+              flags: ['bank_verified'],
+            }
+          }
+        } else {
+           console.error('[slip-verification] EasySlip API failed:', await easySlipRes.text())
+        }
+      } catch (err) {
+         console.error('[slip-verification] EasySlip fetch error:', err)
+      }
+    }
+
     const prompt = `
 อ่านข้อความจากภาพสลิปการโอนเงินภาษาไทย/อังกฤษ และตอบเป็น JSON เท่านั้น ห้ามมี markdown
 รูปแบบ:
@@ -270,6 +314,7 @@ async function extractSlipDataWithGemini(imageUrl: string) {
 }
 
 function buildResultSummary(status: VerificationStatus, flags: string[]) {
+  if (flags.includes('bank_verified')) return '✅ ตรวจสอบแล้ว: สลิปนี้มาจากธนาคารจริงและถูกต้อง (EasySlip)'
   if (status === 'valid') return 'ผ่านการตรวจเบื้องต้น สามารถใช้เป็นข้อมูลประกอบการบันทึกสลิปได้'
   if (status === 'suspicious') return `พบความน่าสงสัย ${flags.length ? flags.join(', ') : 'ควรตรวจเพิ่ม'}`
   if (status === 'review') return 'อ่านข้อมูลได้บางส่วน แต่ยังควรตรวจสอบเพิ่มเติมก่อนยืนยัน'
@@ -291,23 +336,29 @@ function scoreVerification(params: {
   const flags = new Set<string>(ocrFlags)
   let score = 50
 
-  if ((inspection.width ?? 0) < 640 || (inspection.height ?? 0) < 640) {
-    flags.add('low_resolution')
-    score -= 15
+  const isBankVerified = flags.has('bank_verified')
+
+  if (isBankVerified) {
+    score = 100
   } else {
-    score += 10
-  }
+    if ((inspection.width ?? 0) < 640 || (inspection.height ?? 0) < 640) {
+      flags.add('low_resolution')
+      score -= 15
+    } else {
+      score += 10
+    }
 
-  if ((inspection.sizeBytes ?? 0) < 80_000) {
-    flags.add('small_file_size')
-    score -= 5
-  }
+    if ((inspection.sizeBytes ?? 0) < 80_000) {
+      flags.add('small_file_size')
+      score -= 5
+    }
 
-  if ((inspection.width ?? 0) > 0 && (inspection.height ?? 0) > 0) {
-    const ratio = Math.max(inspection.width || 0, inspection.height || 0) / Math.max(1, Math.min(inspection.width || 1, inspection.height || 1))
-    if (ratio > 3) {
-      flags.add('extreme_aspect_ratio')
-      score -= 10
+    if ((inspection.width ?? 0) > 0 && (inspection.height ?? 0) > 0) {
+      const ratio = Math.max(inspection.width || 0, inspection.height || 0) / Math.max(1, Math.min(inspection.width || 1, inspection.height || 1))
+      if (ratio > 3) {
+        flags.add('extreme_aspect_ratio')
+        score -= 10
+      }
     }
   }
 
@@ -321,19 +372,23 @@ function scoreVerification(params: {
     score -= 15
   }
 
-  if (parsed.bankName) score += 10
-  else flags.add('bank_not_detected')
+  if (parsed.bankName) {
+    if (!isBankVerified) score += 10
+  } else flags.add('bank_not_detected')
 
-  if (typeof parsed.amount === 'number') score += 10
-  else flags.add('amount_not_detected')
+  if (typeof parsed.amount === 'number') {
+     if (!isBankVerified) score += 10
+  } else flags.add('amount_not_detected')
 
-  if (parsed.transferDate) score += 8
-  else flags.add('date_not_detected')
+  if (parsed.transferDate) {
+    if (!isBankVerified) score += 8
+  } else flags.add('date_not_detected')
 
-  if (parsed.referenceNo) score += 7
-  else flags.add('reference_not_detected')
+  if (parsed.referenceNo) {
+     if (!isBankVerified) score += 7
+  } else flags.add('reference_not_detected')
 
-  if (normalizedOcrConfidence !== null) {
+  if (normalizedOcrConfidence !== null && !isBankVerified) {
     if (normalizedOcrConfidence >= 0.8) score += 8
     else if (normalizedOcrConfidence >= 0.6) score += 4
     else {
