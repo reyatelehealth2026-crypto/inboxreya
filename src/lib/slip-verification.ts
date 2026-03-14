@@ -191,7 +191,7 @@ async function inspectImage(buffer: Buffer): Promise<ImageInspection> {
   }
 }
 
-async function extractSlipDataWithGemini(imageUrl: string) {
+async function extractSlipDataWithGemini(imageUrl: string, buffer?: Buffer, mimeType?: string) {
   if (!process.env.GEMINI_API_KEY) {
     return {
       provider: null,
@@ -222,18 +222,21 @@ async function extractSlipDataWithGemini(imageUrl: string) {
 
         let esData = await easySlipRes.json()
 
-        // IF URL VERIFICATION FAILS (e.g. 404 slip_not_found), FALLBACK TO BASE64
-        if (!easySlipRes.ok || esData.status !== 200) {
-          console.warn('[slip-verification] URL verification failed or slip not found, falling back to Base64...', esData)
+        // IF URL VERIFICATION FAILS, FALLBACK TO FILE UPLOAD (MULTIPART/FORM-DATA)
+        if ((!easySlipRes.ok || esData.status !== 200) && buffer && mimeType) {
+          console.warn('[slip-verification] URL verification failed or slip not found, falling back to File Upload...', esData)
+          
+          const formData = new FormData()
+          // Convert Node.js Buffer to Uint8Array for standard Blob compatibility
+          const blob = new Blob([new Uint8Array(buffer)], { type: mimeType })
+          formData.append('file', blob, 'slip.jpg')
 
-          const base64Image = inline.data
           easySlipRes = await fetch('https://developer.easyslip.com/api/v1/verify', {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json',
               'Authorization': `Bearer ${process.env.EASYSLIP_API_KEY}`,
             },
-            body: JSON.stringify({ image: base64Image }),
+            body: formData,
           })
           esData = await easySlipRes.json()
         }
@@ -503,7 +506,7 @@ export async function verifySlipMessage({
     throw new Error('ไม่พบ URL ของรูปภาพสลิป')
   }
 
-  const { buffer } = await fetchImageBuffer(imageUrl)
+  const { buffer, mimeType } = await fetchImageBuffer(imageUrl)
   const inspection = await inspectImage(buffer)
 
   const existingDuplicate = await prisma.slipVerification.findFirst({
@@ -519,7 +522,7 @@ export async function verifySlipMessage({
     duplicateNearImage: Boolean(existingDuplicate && existingDuplicate.imageHash === inspection.imageHash),
   }
 
-  const ocr = await extractSlipDataWithGemini(imageUrl)
+  const ocr = await extractSlipDataWithGemini(imageUrl, buffer, mimeType)
   const evaluation = scoreVerification({
     inspection,
     duplicates,
