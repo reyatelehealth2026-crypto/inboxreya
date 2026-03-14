@@ -25,7 +25,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { messageId, userId, amount, transferDate, invoiceId, orderId, bdoId } = body
+    const { messageId, userId, amount, transferDate, invoiceId, orderId, bdoId,
+      slip_verified, slip_verify_ref, slip_verify_amount, slip_verify_data } = body
 
     if (!messageId || !userId) {
       return NextResponse.json(
@@ -112,6 +113,12 @@ export async function POST(request: NextRequest) {
     if (invoiceId) phpPayload.invoice_id = Number(invoiceId)
     if (orderId) phpPayload.order_id = Number(orderId)
     if (bdoId) phpPayload.bdo_id = Number(bdoId)
+
+    // SlipMate verification data (pass-through to PHP)
+    if (slip_verified !== undefined) phpPayload.slip_verified = slip_verified
+    if (slip_verify_ref) phpPayload.slip_verify_ref = slip_verify_ref
+    if (slip_verify_amount !== undefined) phpPayload.slip_verify_amount = slip_verify_amount
+    if (slip_verify_data) phpPayload.slip_verify_data = slip_verify_data
 
     const phpResult = await callPhpApi('/api/odoo-slip-upload.php', {
       method: 'POST',

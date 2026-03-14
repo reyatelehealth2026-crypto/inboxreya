@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Image from 'next/image'
-import { Upload, X, FileImage, Loader2, Calendar, DollarSign, FileCheck, Check } from 'lucide-react'
+import { Upload, X, FileImage, Loader2, Calendar, DollarSign, FileCheck, Check, Search, ShieldCheck, ShieldAlert, Building2, ArrowRight } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +11,30 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
+
+interface SlipVerifyResult {
+  success: boolean
+  verified: boolean
+  error?: string
+  data?: {
+    transRef: string
+    sendingBank: string
+    sendingBankName: string
+    receivingBank: string
+    receivingBankName: string
+    transDate: string
+    transTime: string
+    transDateTime: string
+    sender: { displayName: string; name: string; proxy?: { type: string; value: string }; account?: { type: string; value: string } }
+    receiver: { displayName: string; name: string; proxy?: { type: string; typeName?: string; value: string }; account?: { type: string; value: string } }
+    amount: number
+    paidLocalAmount: number
+    paidLocalCurrency: string
+    ref1?: string
+    ref2?: string
+    ref3?: string
+  }
+}
 
 interface BdoRecord {
   bdo_id: number
@@ -51,6 +75,8 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
   const [amount, setAmount] = useState(bdo.amount_total?.toString() || '')
   const [transferDate, setTransferDate] = useState(new Date().toISOString().slice(0, 10))
   const [uploading, setUploading] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [verifyResult, setVerifyResult] = useState<SlipVerifyResult | null>(null)
 
   // Fetch recent images when modal opens
   useEffect(() => {
@@ -61,6 +87,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
     setManualPreview(null)
     setAmount(bdo.amount_total?.toString() || '')
     setTransferDate(new Date().toISOString().slice(0, 10))
+    setVerifyResult(null)
 
     setLoadingImages(true)
     fetch(`/api/inbox/customers/${userId}/recent-images`)
@@ -97,7 +124,73 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
   const clearManual = () => {
     setManualFile(null)
     setManualPreview(null)
+    setVerifyResult(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleVerifySlip = async () => {
+    // Determine the image URL to verify
+    let imageUrlToVerify = selectedImageUrl
+    if (!imageUrlToVerify && manualPreview) {
+      // For manual uploads, we need to upload first to get a URL
+      toast({ title: 'กรุณาเลือกรูปจากแชทเพื่อตรวจสอบ หรืออัพโหลดก่อน', variant: 'destructive' })
+      return
+    }
+    if (!imageUrlToVerify) {
+      toast({ title: 'กรุณาเลือกรูปสลิปก่อน', variant: 'destructive' })
+      return
+    }
+
+    setVerifying(true)
+    setVerifyResult(null)
+    try {
+      const res = await fetch('/api/inbox/verify-slip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl: imageUrlToVerify }),
+      })
+      const json: SlipVerifyResult = await res.json()
+      setVerifyResult(json)
+
+      if (json.success && json.verified && json.data) {
+        // Auto-fill amount from SlipMate if available
+        if (json.data.amount) {
+          setAmount(json.data.amount.toString())
+        }
+        // Auto-fill transfer date
+        if (json.data.transDate) {
+          // transDate format from SlipMate could be various — try to parse
+          const parsed = new Date(json.data.transDate)
+          if (!isNaN(parsed.getTime())) {
+            setTransferDate(parsed.toISOString().slice(0, 10))
+          }
+        }
+        toast({ title: 'สลิปแท้ ตรวจสอบผ่าน', description: `Ref: ${json.data.transRef}` })
+      } else {
+        toast({
+          title: 'ตรวจสอบสลิปไม่ผ่าน',
+          description: json.error || 'สลิปอาจไม่ถูกต้อง หรือไม่สามารถอ่านข้อมูลได้',
+          variant: 'destructive',
+        })
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'เกิดข้อผิดพลาด'
+      setVerifyResult({ success: false, verified: false, error: errorMsg })
+      toast({ title: 'ตรวจสอบสลิปล้มเหลว', description: errorMsg, variant: 'destructive' })
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  // Build verification payload to pass along with save
+  const buildVerifyPayload = () => {
+    if (!verifyResult?.success || !verifyResult?.verified || !verifyResult?.data) return undefined
+    return {
+      slip_verified: true,
+      slip_verify_ref: verifyResult.data.transRef,
+      slip_verify_amount: verifyResult.data.amount,
+      slip_verify_data: verifyResult.data,
+    }
   }
 
   const handleSubmit = async () => {
@@ -105,6 +198,8 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
       toast({ title: 'กรุณาเลือกรูปสลิป', variant: 'destructive' })
       return
     }
+
+    const verifyPayload = buildVerifyPayload()
 
     setUploading(true)
     try {
@@ -119,6 +214,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
             amount: amount ? parseFloat(amount) : undefined,
             transferDate: transferDate || undefined,
             bdoId: bdo.bdo_id,
+            ...verifyPayload,
           }),
         })
         const json = await res.json()
@@ -149,6 +245,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
             amount: amount ? parseFloat(amount) : undefined,
             transferDate: transferDate || undefined,
             bdoId: bdo.bdo_id,
+            ...verifyPayload,
           }),
         })
         const json = await res.json()
@@ -338,15 +435,78 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
           </div>
         </div>
 
+        {/* Verify Result Panel */}
+        {verifyResult && (
+          <div className={cn(
+            "rounded-lg p-3 text-sm border",
+            verifyResult.verified
+              ? "bg-green-50 border-green-200"
+              : "bg-red-50 border-red-200"
+          )}>
+            <div className="flex items-center gap-2 mb-2">
+              {verifyResult.verified ? (
+                <>
+                  <ShieldCheck className="h-4 w-4 text-green-600" />
+                  <span className="font-semibold text-green-700">สลิปแท้ ตรวจสอบผ่าน</span>
+                </>
+              ) : (
+                <>
+                  <ShieldAlert className="h-4 w-4 text-red-600" />
+                  <span className="font-semibold text-red-700">สลิปไม่ผ่านการตรวจสอบ</span>
+                </>
+              )}
+            </div>
+            {verifyResult.verified && verifyResult.data && (
+              <div className="space-y-1.5 text-xs text-gray-600">
+                <div className="flex items-center gap-1.5">
+                  <DollarSign className="h-3 w-3 text-green-600" />
+                  <span className="font-medium">฿{verifyResult.data.amount?.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Building2 className="h-3 w-3" />
+                  <span>{verifyResult.data.sendingBankName || verifyResult.data.sendingBank}</span>
+                  <ArrowRight className="h-3 w-3 text-gray-400" />
+                  <span>{verifyResult.data.receivingBankName || verifyResult.data.receivingBank}</span>
+                </div>
+                {verifyResult.data.sender?.name && (
+                  <div className="text-gray-500">ผู้โอน: {verifyResult.data.sender.displayName || verifyResult.data.sender.name}</div>
+                )}
+                {verifyResult.data.receiver?.name && (
+                  <div className="text-gray-500">ผู้รับ: {verifyResult.data.receiver.displayName || verifyResult.data.receiver.name}</div>
+                )}
+                <div className="text-gray-400">Ref: {verifyResult.data.transRef}</div>
+                {verifyResult.data.transDate && (
+                  <div className="text-gray-400">{verifyResult.data.transDate} {verifyResult.data.transTime || ''}</div>
+                )}
+              </div>
+            )}
+            {!verifyResult.verified && verifyResult.error && (
+              <p className="text-xs text-red-600 mt-1">{verifyResult.error}</p>
+            )}
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex gap-2 pt-1">
-          <Button variant="outline" className="flex-1 h-9" onClick={onClose} disabled={uploading}>
+          <Button variant="outline" className="h-9" onClick={onClose} disabled={uploading || verifying}>
             ยกเลิก
+          </Button>
+          <Button
+            variant="outline"
+            className="h-9 gap-1 border-blue-300 text-blue-700 hover:bg-blue-50"
+            onClick={handleVerifySlip}
+            disabled={!hasSelection || verifying || uploading}
+          >
+            {verifying ? (
+              <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> กำลังตรวจ...</>
+            ) : (
+              <><Search className="h-4 w-4 mr-1" /> ตรวจสอบสลิป</>
+            )}
           </Button>
           <Button
             className="flex-1 h-9 bg-teal-600 hover:bg-teal-700"
             onClick={handleSubmit}
-            disabled={!hasSelection || uploading}
+            disabled={!hasSelection || uploading || verifying}
           >
             {uploading ? (
               <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> กำลังบันทึก...</>
