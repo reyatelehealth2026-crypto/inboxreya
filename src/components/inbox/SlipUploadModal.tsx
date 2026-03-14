@@ -233,15 +233,18 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
         })
         const uploadJson = await uploadRes.json()
 
-        let imageUrl = uploadJson.url || uploadJson.data?.url || ''
+        const imageUrl = uploadJson.url || uploadJson.data?.url || ''
+        if (!imageUrl) {
+          throw new Error('อัปโหลดรูปสำเร็จแต่ไม่พบ URL ของไฟล์')
+        }
 
-        // Forward to PHP slip upload
+        // Forward uploaded image to PHP slip upload + explicit BDO match
         const res = await fetch('/api/inbox/forward-slip-odoo', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            messageId: 0,
             userId: Number(userId),
+            imageUrl,
             amount: amount ? parseFloat(amount) : undefined,
             transferDate: transferDate || undefined,
             bdoId: bdo.bdo_id,
@@ -249,9 +252,8 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
           }),
         })
         const json = await res.json()
-        // If messageId=0 fails, that's expected — slip was saved via upload
-        if (res.ok && json.success) {
-          // great
+        if (!res.ok || !json.success) {
+          throw new Error(json.error || 'บันทึกสลิปไม่สำเร็จ')
         }
       }
 
