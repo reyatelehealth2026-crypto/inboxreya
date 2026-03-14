@@ -202,9 +202,11 @@ async function extractSlipDataWithGemini(imageUrl: string) {
     }
   }
 
+  const ocrFlags: string[] = []
+
   try {
     const inline = await fetchImageAsInlineData(imageUrl)
-    
+
     // TRY EASYSLIP API FIRST IF KEY IS PROVIDED
     if (process.env.EASYSLIP_API_KEY) {
       try {
@@ -213,32 +215,31 @@ async function extractSlipDataWithGemini(imageUrl: string) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.EASYSLIP_API_KEY}`
+            'Authorization': `Bearer ${process.env.EASYSLIP_API_KEY}`,
           },
-          body: JSON.stringify({ url: imageUrl })
+          body: JSON.stringify({ url: imageUrl }),
         })
-        
+
         let esData = await easySlipRes.json()
-        
-        // IF URL VERIFICATION FAILS (e.g. 400 invalid_url), FALLBACK TO BASE64
+
+        // IF URL VERIFICATION FAILS (e.g. 404 slip_not_found), FALLBACK TO BASE64
         if (!easySlipRes.ok || esData.status !== 200) {
-          console.warn('[slip-verification] URL verification failed, falling back to Base64...', esData)
-          
-          const base64Image = inline.data // We already have base64 from fetchImageAsInlineData
+          console.warn('[slip-verification] URL verification failed or slip not found, falling back to Base64...', esData)
+
+          const base64Image = inline.data
           easySlipRes = await fetch('https://developer.easyslip.com/api/v1/verify', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${process.env.EASYSLIP_API_KEY}`
+              'Authorization': `Bearer ${process.env.EASYSLIP_API_KEY}`,
             },
-            body: JSON.stringify({ image: base64Image })
+            body: JSON.stringify({ image: base64Image }),
           })
           esData = await easySlipRes.json()
         }
-        
+
         if (easySlipRes.ok && esData.status === 200 && esData.data) {
           const data = esData.data
-          // Map EasySlip response to ParsedSlipData
           const parsedEs: ParsedSlipData = {
             bankName: data.sender?.bank?.name || data.sender?.bank?.short || null,
             amount: data.amount?.amount || null,
@@ -248,19 +249,21 @@ async function extractSlipDataWithGemini(imageUrl: string) {
             senderName: data.sender?.account?.name?.th || data.sender?.account?.name?.en || null,
             receiverName: data.receiver?.account?.name?.th || data.receiver?.account?.name?.en || null,
           }
-          
+
           return {
             provider: 'easyslip',
-            confidence: 1.0, // Bank API is 100% confident
+            confidence: 1.0,
             parsed: parsedEs,
             rawText: JSON.stringify(esData, null, 2),
             flags: ['bank_verified'],
           }
         } else {
-           console.error('[slip-verification] EasySlip API failed (both URL and Base64):', esData)
+          console.error('[slip-verification] EasySlip API failed (both URL and Base64):', esData)
+          ocrFlags.push('bank_verification_not_found')
         }
       } catch (err) {
-         console.error('[slip-verification] EasySlip error:', err)
+        console.error('[slip-verification] EasySlip error:', err)
+        ocrFlags.push('bank_api_error')
       }
     }
 
@@ -315,7 +318,7 @@ async function extractSlipDataWithGemini(imageUrl: string) {
         receiverName: parsedJson?.receiverName ?? null,
       } satisfies ParsedSlipData,
       rawText: parsedJson?.rawText ?? text,
-      flags: [] as string[],
+      flags: ocrFlags,
     }
   } catch (error) {
     console.error('[slip-verification] Gemini OCR failed:', error)
@@ -324,13 +327,14 @@ async function extractSlipDataWithGemini(imageUrl: string) {
       confidence: null,
       parsed: DEFAULT_PARSED_DATA,
       rawText: null as string | null,
-      flags: ['ocr_failed'],
+      flags: [...ocrFlags, 'ocr_failed'],
     }
   }
 }
 
 function buildResultSummary(status: VerificationStatus, flags: string[]) {
   if (flags.includes('bank_verified')) return '✅ ตรวจสอบแล้ว: สลิปนี้มาจากธนาคารจริงและถูกต้อง (EasySlip)'
+  if (flags.includes('bank_verification_not_found')) return '❌ ธนาคารไม่พบรายการโอนนี้: สลิปอาจจะยังไม่เข้าระบบหรือมีความผิดปกติ (EasySlip 404)'
   if (status === 'valid') return 'ผ่านการตรวจเบื้องต้น สามารถใช้เป็นข้อมูลประกอบการบันทึกสลิปได้'
   if (status === 'suspicious') return `พบความน่าสงสัย ${flags.length ? flags.join(', ') : 'ควรตรวจเพิ่ม'}`
   if (status === 'review') return 'อ่านข้อมูลได้บางส่วน แต่ยังควรตรวจสอบเพิ่มเติมก่อนยืนยัน'
@@ -393,7 +397,7 @@ function scoreVerification(params: {
   } else flags.add('bank_not_detected')
 
   if (typeof parsed.amount === 'number') {
-     if (!isBankVerified) score += 10
+    if (!isBankVerified) score += 10
   } else flags.add('amount_not_detected')
 
   if (parsed.transferDate) {
@@ -401,7 +405,7 @@ function scoreVerification(params: {
   } else flags.add('date_not_detected')
 
   if (parsed.referenceNo) {
-     if (!isBankVerified) score += 7
+    if (!isBankVerified) score += 7
   } else flags.add('reference_not_detected')
 
   if (normalizedOcrConfidence !== null && !isBankVerified) {
@@ -441,7 +445,7 @@ function scoreVerification(params: {
   score = Math.max(0, Math.min(100, score))
 
   let status: VerificationStatus = 'review'
-  if (duplicates.duplicateExactImage || flags.has('amount_mismatch')) {
+  if (duplicates.duplicateExactImage || flags.has('amount_mismatch') || flags.has('bank_verification_not_found')) {
     status = 'suspicious'
   } else if (score >= 80) {
     status = 'valid'
