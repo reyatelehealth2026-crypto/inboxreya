@@ -459,26 +459,75 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
               )}
             </div>
             {verifyResult.verified && verifyResult.data && (
-              <div className="space-y-1.5 text-xs text-gray-600">
-                <div className="flex items-center gap-1.5">
-                  <DollarSign className="h-3 w-3 text-green-600" />
-                  <span className="font-medium">฿{verifyResult.data.amount?.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+              <div className="space-y-2 text-xs">
+                {/* Amount */}
+                <div className="flex items-center justify-between py-1 border-b border-gray-200">
+                  <span className="text-gray-500">จำนวนเงิน:</span>
+                  <span className="font-semibold text-green-700 text-sm">
+                    ฿{verifyResult.data.amount?.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                  </span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <Building2 className="h-3 w-3" />
-                  <span>{verifyResult.data.sendingBankName || verifyResult.data.sendingBank}</span>
-                  <ArrowRight className="h-3 w-3 text-gray-400" />
-                  <span>{verifyResult.data.receivingBankName || verifyResult.data.receivingBank}</span>
+
+                {/* Transaction Reference */}
+                <div className="flex items-start justify-between py-1">
+                  <span className="text-gray-500">เลขที่อ้างอิง:</span>
+                  <span className="font-mono text-gray-700 text-right">{verifyResult.data.transRef}</span>
                 </div>
-                {verifyResult.data.sender?.name && (
-                  <div className="text-gray-500">ผู้โอน: {verifyResult.data.sender.displayName || verifyResult.data.sender.name}</div>
-                )}
-                {verifyResult.data.receiver?.name && (
-                  <div className="text-gray-500">ผู้รับ: {verifyResult.data.receiver.displayName || verifyResult.data.receiver.name}</div>
-                )}
-                <div className="text-gray-400">Ref: {verifyResult.data.transRef}</div>
+
+                {/* Date & Time */}
                 {verifyResult.data.transDate && (
-                  <div className="text-gray-400">{verifyResult.data.transDate} {verifyResult.data.transTime || ''}</div>
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-gray-500">วันเวลา:</span>
+                    <span className="text-gray-700">{verifyResult.data.transDate} {verifyResult.data.transTime || ''}</span>
+                  </div>
+                )}
+
+                {/* Sender Bank & Account */}
+                <div className="pt-2 border-t border-gray-200">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Building2 className="h-3 w-3 text-red-500" />
+                    <span className="text-gray-500">จาก:</span>
+                    <span className="font-medium text-gray-700">{verifyResult.data.sendingBankName || verifyResult.data.sendingBank}</span>
+                  </div>
+                  {verifyResult.data.sender?.name && (
+                    <div className="ml-5 text-gray-600">
+                      {verifyResult.data.sender.displayName || verifyResult.data.sender.name}
+                    </div>
+                  )}
+                  {verifyResult.data.sender?.account?.value && (
+                    <div className="ml-5 font-mono text-gray-500">
+                      {verifyResult.data.sender.account.value}
+                    </div>
+                  )}
+                </div>
+
+                {/* Receiver Bank & Account */}
+                <div className="pb-1">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Building2 className="h-3 w-3 text-green-500" />
+                    <span className="text-gray-500">ถึง:</span>
+                    <span className="font-medium text-gray-700">{verifyResult.data.receivingBankName || verifyResult.data.receivingBank}</span>
+                  </div>
+                  {verifyResult.data.receiver?.name && (
+                    <div className="ml-5 text-gray-600">
+                      {verifyResult.data.receiver.displayName || verifyResult.data.receiver.name}
+                    </div>
+                  )}
+                  {verifyResult.data.receiver?.account?.value && (
+                    <div className="ml-5 font-mono text-gray-500">
+                      {verifyResult.data.receiver.account.value}
+                    </div>
+                  )}
+                </div>
+
+                {/* Transaction Fee (if available) */}
+                {verifyResult.data.transFeeAmount !== undefined && verifyResult.data.transFeeAmount > 0 && (
+                  <div className="flex items-center justify-between py-1 border-t border-gray-200">
+                    <span className="text-gray-500">ค่าธรรมเนียม:</span>
+                    <span className="text-gray-600">
+                      ฿{verifyResult.data.transFeeAmount?.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
                 )}
               </div>
             )}
