@@ -558,8 +558,20 @@ function MessageBubble({
                     onClick={(e) => {
                       e.stopPropagation()
                       if (slipForwardState === 'loading' || slipForwardState === 'sent') return
-                      setSlipDate(new Date().toISOString().slice(0, 10))
-                      setSlipAmount('')
+                      
+                      // Auto-fill from verification result if available
+                      if (verifyResult?.parsed?.amount) {
+                        setSlipAmount(String(verifyResult.parsed.amount))
+                      } else {
+                        setSlipAmount('')
+                      }
+                      
+                      if (verifyResult?.parsed?.transferDate) {
+                        setSlipDate(verifyResult.parsed.transferDate)
+                      } else {
+                        setSlipDate(new Date().toISOString().slice(0, 10))
+                      }
+                      
                       setShowSlipModal(true)
                     }}
                   >
@@ -619,7 +631,7 @@ function MessageBubble({
                 {verifyResult && (
                   <div className={cn('rounded-xl border px-3 py-2 text-xs space-y-1.5', verificationAppearance.panelClass)}>
                     <div className="flex items-center gap-1.5 font-medium text-foreground">
-                      <VerificationStatusIcon className="h-3.5 w-3.5" />
+                      <verificationAppearance.Icon className="h-3.5 w-3.5" />
                       <span>ผลการตรวจสลิปเบื้องต้น · {verifyResult.score}/100</span>
                     </div>
                     <p className="text-muted-foreground leading-relaxed">{verifyResult.summary}</p>
@@ -629,9 +641,22 @@ function MessageBubble({
                       <span>วันที่: {verifyResult.parsed?.transferDate || '-'}</span>
                       <span>เวลา: {verifyResult.parsed?.transferTime || '-'}</span>
                     </div>
+                    
+                    {/* Phase 2 Details */}
+                    <div className="border-t border-border/50 pt-1.5 mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        {verifyResult.checks?.duplicateExactImage ? <span className="text-red-500">❌ ภาพซ้ำ</span> : <span className="text-green-500">✓ ภาพไม่ซ้ำ</span>}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        {verifyResult.checks?.imageReadable ? <span className="text-green-500">✓ ภาพชัดเจน</span> : <span className="text-amber-500">⚠ ภาพเล็ก/เบลอ</span>}
+                      </span>
+                      <span>Ref: {verifyResult.parsed?.referenceNo || '-'}</span>
+                      <span>OCR: {verifyResult.ocr?.confidence ? `${(verifyResult.ocr.confidence * 100).toFixed(0)}%` : '-'}</span>
+                    </div>
+
                     {verifyResult.flags?.length > 0 && (
-                      <div className="text-[11px] text-muted-foreground">
-                        Flags: {verifyResult.flags.slice(0, 3).join(', ')}
+                      <div className="text-[10px] text-amber-600 bg-amber-50/50 rounded px-1.5 py-0.5 mt-1 break-words">
+                        <strong>Flags:</strong> {verifyResult.flags.join(', ')}
                       </div>
                     )}
                   </div>
