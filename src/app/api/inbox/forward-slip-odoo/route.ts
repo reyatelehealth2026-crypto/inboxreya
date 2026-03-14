@@ -26,12 +26,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-<<<<<<< HEAD
-    const { messageId, userId, amount, transferDate, invoiceId, orderId, bdoId,
+    const { messageId, imageUrl: providedImageUrl, userId, amount, transferDate, invoiceId, orderId, bdoId,
       slip_verified, slip_verify_ref, slip_verify_amount, slip_verify_data } = body
-=======
-    const { messageId, imageUrl: providedImageUrl, userId, amount, transferDate, invoiceId, orderId, bdoId } = body
->>>>>>> c15290d388ce453cc4c3269482a1eebac36fdb9b
 
     if (!userId || (!messageId && !providedImageUrl)) {
       return NextResponse.json(
