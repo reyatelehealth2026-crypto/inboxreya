@@ -30,6 +30,7 @@ interface SlipVerifyResult {
     amount: number
     paidLocalAmount: number
     paidLocalCurrency: string
+    transFeeAmount?: number
     ref1?: string
     ref2?: string
     ref3?: string
