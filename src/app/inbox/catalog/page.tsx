@@ -302,7 +302,7 @@ export default function ProductCatalogPage() {
   }, []);
 
   const loadSampleData = () => {
-    setProducts(SAMPLE_DATA.product as Product[]);
+    setProducts(SAMPLE_DATA.product as unknown as Product[]);
     setJsonInput(JSON.stringify(SAMPLE_DATA, null, 2));
     setError(null);
     setShowInput(false);
