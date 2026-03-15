@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { fetchCsvProducts } from '@/lib/csv-product';
+import fs from 'fs';
+import path from 'path';
+import { parseCsvProducts } from '@/lib/csv-product';
 import { csvProductToProduct } from '@/lib/csv-to-product';
 
 /**
@@ -8,7 +10,9 @@ import { csvProductToProduct } from '@/lib/csv-to-product';
  */
 export async function GET() {
   try {
-    const csvProducts = await fetchCsvProducts();
+    const csvPath = path.join(process.cwd(), 'public', 'data', 'cnypharmacyz.csv');
+    const text = fs.readFileSync(csvPath, 'utf-8');
+    const csvProducts = parseCsvProducts(text);
     const products = csvProducts.map((csv, i) => csvProductToProduct(csv, i));
     return NextResponse.json({ products });
   } catch (error) {

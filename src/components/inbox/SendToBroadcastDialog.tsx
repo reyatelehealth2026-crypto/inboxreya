@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -71,6 +71,16 @@ export function SendToBroadcastDialog({
   const createBroadcast = useCreateBroadcast();
   const tags = Array.isArray(tagsData) ? tagsData : [];
 
+  useEffect(() => {
+    if (open) {
+      setStep(1);
+      setProductsPerCarousel(6);
+      setTemplate('promotion');
+      setSelectedTagIds(new Set());
+      setSendAll(true);
+    }
+  }, [open]);
+
   const carousels = useMemo(
     () =>
       generateFlexCarouselsChunked(selectedProducts, template, {
@@ -92,17 +102,18 @@ export function SendToBroadcastDialog({
   };
 
   const handleSend = async () => {
-    let targetCustomerIds: number[] | undefined;
-    if (!sendAll && selectedTagIds.size > 0) {
-      const tagIds = Array.from(selectedTagIds).join(',');
-      const res = await fetch(`/api/inbox/customers/by-tags?tagIds=${tagIds}`);
-      if (res.ok) {
+    try {
+      let targetCustomerIds: number[] | undefined;
+      if (!sendAll && selectedTagIds.size > 0) {
+        const tagIds = Array.from(selectedTagIds).join(',');
+        const res = await fetch(`/api/inbox/customers/by-tags?tagIds=${tagIds}`);
+        if (!res.ok) {
+          throw new Error('Failed to fetch customers by tags');
+        }
         const { userIds } = await res.json();
         targetCustomerIds = userIds;
       }
-    }
 
-    try {
       for (let i = 0; i < carousels.length; i++) {
         const flexContent = {
           type: 'flex' as const,

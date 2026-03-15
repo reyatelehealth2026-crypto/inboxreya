@@ -189,7 +189,13 @@ export function generateFlexCarouselsChunked(
     selectedProductToPreviewProduct(p.product, p.quantity, p.selectedUnit)
   );
   const theme: 'rose' | 'violet' | 'emerald' | 'amber' | 'sky' =
-    template === 'promotion' ? 'rose' : template === 'flash_sale' ? 'amber' : 'emerald';
+    template === 'promotion'
+      ? 'rose'
+      : template === 'flash_sale'
+        ? 'amber'
+        : template === 'new_arrival'
+          ? 'violet'
+          : 'emerald';
   const config = {
     template,
     title: options.title || '',
