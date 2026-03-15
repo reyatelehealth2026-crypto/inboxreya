@@ -1,23 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-middleware';
 import prisma from '@/lib/prisma';
-import { sendFlexMessage } from '@/lib/line-api';
-import { buildFlexPayload } from '@/lib/flex-builder';
+import { pushLineMessage } from '@/lib/line-api';
+import { buildPromoMessages } from '@/lib/flex-builder';
 import type { ExportPreviewProduct, ExportGlobalConfig } from '@/lib/flex-builder';
 
 /**
  * POST /api/inbox/catalog/send
  *
- * Send flex messages (split into multiple carousels) to all LINE users
+ * Build promo grid messages (cover + 6-product grid bubbles, giga size,
+ * up to 3 carousels + optional closing text) and send them to all LINE users
  * that are assigned to the given tag IDs.
+ *
+ * All message objects are sent in a **single** pushLineMessage API call per
+ * user (up to the LINE limit of 5 payloads per call).
  *
  * Request body:
  * {
  *   products: ExportPreviewProduct[],
  *   config: ExportGlobalConfig,
- *   productsPerCarousel: number,   // max products per carousel bubble
- *   tagIds: number[],              // send to users with these tags
- *   altText?: string,
+ *   productsPerBubble?: number,   // 1–6; default 6
+ *   closingText?: string,         // optional text payload appended at end
+ *   tagIds: number[],
  * }
  */
 export async function POST(request: NextRequest) {
@@ -31,15 +35,15 @@ export async function POST(request: NextRequest) {
     const {
       products,
       config,
-      productsPerCarousel = 6,
+      productsPerBubble = 6,
+      closingText,
       tagIds,
-      altText = 'สินค้าแนะนำ',
     } = body as {
       products: ExportPreviewProduct[];
       config: ExportGlobalConfig;
-      productsPerCarousel: number;
+      productsPerBubble?: number;
+      closingText?: string;
       tagIds: number[];
-      altText?: string;
     };
 
     if (!products || !Array.isArray(products) || products.length === 0) {
@@ -56,9 +60,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const perCarousel = Math.min(Math.max(1, productsPerCarousel), 12);
+    // Build all message objects once (reused for every recipient)
+    const messages = buildPromoMessages(products, config, {
+      productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
+      closingText: closingText?.trim() || undefined,
+      maxCarousels: 3,
+    });
 
-    // Fetch LINE users that have any of the given tags
+    if (messages.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'ไม่สามารถสร้าง Flex Message ได้' },
+        { status: 400 }
+      );
+    }
+
+    // Fetch LINE users that have any of the requested tags
     const assignments = await prisma.userTagAssignment.findMany({
       where: {
         tagId: { in: tagIds },
@@ -73,8 +89,9 @@ export async function POST(request: NextRequest) {
 
     const targetUsers = assignments
       .map((a) => a.user)
-      .filter((u): u is { lineUserId: string; lineAccountId: number | null } =>
-        Boolean(u?.lineUserId)
+      .filter(
+        (u): u is { lineUserId: string; lineAccountId: number | null } =>
+          Boolean(u?.lineUserId)
       );
 
     if (targetUsers.length === 0) {
@@ -84,42 +101,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Split products into chunks
-    const chunks: ExportPreviewProduct[][] = [];
-    for (let i = 0; i < products.length; i += perCarousel) {
-      chunks.push(products.slice(i, i + perCarousel));
-    }
-
-    // Build carousel payloads (one per chunk)
-    // Only the first chunk gets the intro bubble (if configured)
-    const carousels = chunks.map((chunk, idx) => {
-      const chunkConfig: ExportGlobalConfig = {
-        ...config,
-        includeIntroBubble: idx === 0 && config.includeIntroBubble !== false,
-      };
-      return buildFlexPayload(chunk, chunkConfig);
-    });
-
-    // Send to every target user
+    // Send all message objects in a single API call per user
     let successCount = 0;
     let failCount = 0;
     const errors: string[] = [];
 
     for (const targetUser of targetUsers) {
-      for (const carousel of carousels) {
-        const result = await sendFlexMessage(
-          targetUser.lineUserId,
-          altText,
-          carousel,
-          targetUser.lineAccountId ?? user.lineAccountId
-        );
-        if (result.success) {
-          successCount++;
-        } else {
-          failCount++;
-          if (result.error && !errors.includes(result.error)) {
-            errors.push(result.error);
-          }
+      const result = await pushLineMessage(
+        targetUser.lineUserId,
+        messages as Parameters<typeof pushLineMessage>[1],
+        targetUser.lineAccountId ?? user.lineAccountId
+      );
+
+      if (result.success) {
+        successCount++;
+      } else {
+        failCount++;
+        if (result.error && !errors.includes(result.error)) {
+          errors.push(result.error);
         }
       }
     }
@@ -128,7 +127,7 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         totalUsers: targetUsers.length,
-        totalCarousels: carousels.length,
+        totalMessages: messages.length,
         successCount,
         failCount,
         errors: errors.length > 0 ? errors : undefined,
@@ -149,8 +148,8 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/inbox/catalog/send
- *
- * Return all tags with their user counts for the current LINE account.
+ * Return all tags with user counts for the current LINE account (used by
+ * the SendCatalogDialog tag-selection step).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -162,9 +161,7 @@ export async function GET(request: NextRequest) {
     const tags = await prisma.userTag.findMany({
       where: user.lineAccountId ? { lineAccountId: user.lineAccountId } : {},
       orderBy: [{ priority: 'asc' }, { name: 'asc' }],
-      include: {
-        _count: { select: { assignments: true } },
-      },
+      include: { _count: { select: { assignments: true } } },
     });
 
     return NextResponse.json({

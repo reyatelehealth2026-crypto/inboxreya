@@ -34,10 +34,11 @@ import {
   Users,
   Package,
   LayoutTemplate,
+  MessageSquareText,
 } from 'lucide-react';
 import { FlexPreview } from './FlexPreview';
 import {
-  buildFlexPayload,
+  buildPromoCarouselContents,
   getTemplateDefaults,
   type ExportPreviewProduct,
   type ExportGlobalConfig,
@@ -88,6 +89,40 @@ interface SendCatalogDialogProps {
   defaultConfig?: Partial<ExportGlobalConfig>;
 }
 
+// ─── Carousel split helper ────────────────────────────────────────────────────
+
+interface CarouselSplit {
+  products: ExportPreviewProduct[];
+  isFirst: boolean;
+  startBubbleNum: number;
+}
+
+function computeCarouselSplits(
+  products: ExportPreviewProduct[],
+  productsPerBubble: number,
+  hasClosingText: boolean
+): CarouselSplit[] {
+  const perBubble = Math.min(Math.max(1, productsPerBubble), 6);
+  const maxCarousels = hasClosingText ? 4 : 5;
+  const splits: CarouselSplit[] = [];
+  let productIndex = 0;
+  let carouselIdx = 0;
+  let bubbleNum = 1;
+
+  while (carouselIdx < maxCarousels && productIndex < products.length) {
+    const isFirst = carouselIdx === 0;
+    const maxGridSlots = 12 - (isFirst ? 1 : 0);
+    const maxProductsThisCarousel = maxGridSlots * perBubble;
+    const chunk = products.slice(productIndex, productIndex + maxProductsThisCarousel);
+    splits.push({ products: chunk, isFirst, startBubbleNum: bubbleNum });
+    bubbleNum += Math.ceil(chunk.length / perBubble);
+    productIndex += chunk.length;
+    carouselIdx++;
+  }
+
+  return splits;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function SendCatalogDialog({
@@ -104,7 +139,7 @@ export function SendCatalogDialog({
   const [sendResult, setSendResult] = useState<{
     success: boolean;
     totalUsers?: number;
-    totalCarousels?: number;
+    totalMessages?: number;
     successCount?: number;
     failCount?: number;
     errors?: string[];
@@ -125,7 +160,11 @@ export function SendCatalogDialog({
     includeIntroBubble: true,
     ...defaultConfig,
   });
-  const [productsPerCarousel, setProductsPerCarousel] = useState(6);
+  const [productsPerBubble, setProductsPerBubble] = useState(6);
+  const [closingText, setClosingText] = useState(
+    'ด่วน! โปรโมชั่นนี้มีจำนวนจำกัด ทักแชทสั่งซื้อได้เลยค่ะ 👇'
+  );
+  const [includeClosingText, setIncludeClosingText] = useState(true);
 
   // Reset state when dialog opens
   useEffect(() => {
@@ -136,7 +175,7 @@ export function SendCatalogDialog({
     }
   }, [open]);
 
-  // Fetch tags when reaching select-tags step
+  // Fetch tags on reaching select-tags step
   useEffect(() => {
     if (step === 'select-tags' && tags.length === 0) {
       setLoadingTags(true);
@@ -150,31 +189,34 @@ export function SendCatalogDialog({
     }
   }, [step, tags.length]);
 
-  // Split products into carousels
-  const carousels = useMemo(() => {
-    const perCarousel = Math.min(Math.max(1, productsPerCarousel), 12);
-    const chunks: ExportPreviewProduct[][] = [];
-    for (let i = 0; i < products.length; i += perCarousel) {
-      chunks.push(products.slice(i, i + perCarousel));
-    }
-    return chunks;
-  }, [products, productsPerCarousel]);
+  // Carousel splits (for both preview + payload count)
+  const carouselSplits = useMemo(
+    () => computeCarouselSplits(products, productsPerBubble, includeClosingText && !!closingText.trim()),
+    [products, productsPerBubble, includeClosingText, closingText]
+  );
 
-  // Build flex payloads for preview
+  // Build carousel payload objects for preview
   const carouselPayloads = useMemo(() => {
-    return carousels.map((chunk, idx) =>
-      buildFlexPayload(chunk, {
-        ...config,
-        includeIntroBubble: idx === 0 && config.includeIntroBubble !== false,
+    return carouselSplits.map((split) =>
+      buildPromoCarouselContents(split.products, config, {
+        includeCover: split.isFirst,
+        productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
+        startBubbleNum: split.startBubbleNum,
+        totalProducts: products.length,
       })
     );
-  }, [carousels, config]);
+  }, [carouselSplits, config, productsPerBubble, products.length]);
 
-  const totalTargetUsers = useMemo(() => {
-    return tags
-      .filter((t) => selectedTagIds.has(t.id))
-      .reduce((sum, t) => sum + t.userCount, 0);
-  }, [tags, selectedTagIds]);
+  const totalPayloads =
+    carouselSplits.length + (includeClosingText && closingText.trim() ? 1 : 0);
+
+  const totalTargetUsers = useMemo(
+    () =>
+      tags
+        .filter((t) => selectedTagIds.has(t.id))
+        .reduce((sum, t) => sum + t.userCount, 0),
+    [tags, selectedTagIds]
+  );
 
   const handleTemplateChange = useCallback((template: FlexMessageTemplate) => {
     const defaults = getTemplateDefaults(template);
@@ -186,7 +228,6 @@ export function SendCatalogDialog({
       footerText: defaults.footerText,
       ctaLabel: defaults.ctaLabel,
       theme: defaults.theme,
-      includeIntroBubble: template !== 'product_catalog',
     }));
   }, []);
 
@@ -209,13 +250,17 @@ export function SendCatalogDialog({
         body: JSON.stringify({
           products,
           config,
-          productsPerCarousel,
+          productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
+          closingText: includeClosingText && closingText.trim() ? closingText.trim() : undefined,
           tagIds: Array.from(selectedTagIds),
-          altText: config.title,
         }),
       });
       const data = await resp.json();
-      setSendResult(data.success ? { success: true, ...data.data } : { success: false, error: data.error });
+      setSendResult(
+        data.success
+          ? { success: true, ...data.data }
+          : { success: false, error: data.error }
+      );
       if (data.success) setStep('confirm');
     } catch (err) {
       setSendResult({ success: false, error: (err as Error).message });
@@ -225,19 +270,19 @@ export function SendCatalogDialog({
   };
 
   const stepIndex = STEPS.findIndex((s) => s.key === step);
-
-  const canGoNext = () => {
-    if (step === 'flex-settings') return products.length > 0;
-    if (step === 'preview') return true;
-    if (step === 'select-tags') return selectedTagIds.size > 0;
-    return false;
-  };
+  const canGoNext =
+    step === 'flex-settings'
+      ? products.length > 0
+      : step === 'preview'
+      ? true
+      : step === 'select-tags'
+      ? selectedTagIds.size > 0
+      : false;
 
   const goNext = () => {
     const next = STEPS[stepIndex + 1];
     if (next) setStep(next.key);
   };
-
   const goPrev = () => {
     const prev = STEPS[stepIndex - 1];
     if (prev) setStep(prev.key);
@@ -301,12 +346,13 @@ export function SendCatalogDialog({
         {/* Step Content */}
         <ScrollArea className="flex-1 min-h-0">
           <div className="px-6 py-4">
+
             {/* ── Step 1: Flex Settings ── */}
             {step === 'flex-settings' && (
               <div className="space-y-4">
                 <h3 className="font-semibold text-gray-800 flex items-center gap-2">
                   <LayoutTemplate className="w-4 h-4" />
-                  ตั้งค่า Flex Message
+                  ตั้งค่า Flex Message (Grid Layout)
                 </h3>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -330,36 +376,52 @@ export function SendCatalogDialog({
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs">สินค้าต่อ Carousel</Label>
+                    <Label className="text-xs">สินค้าต่อ Bubble (สูงสุด 6)</Label>
                     <div className="flex items-center gap-2">
                       <Input
                         type="number"
                         min={1}
-                        max={12}
-                        value={productsPerCarousel}
+                        max={6}
+                        value={productsPerBubble}
                         onChange={(e) =>
-                          setProductsPerCarousel(Math.min(12, Math.max(1, parseInt(e.target.value) || 1)))
+                          setProductsPerBubble(
+                            Math.min(6, Math.max(1, parseInt(e.target.value) || 1))
+                          )
                         }
                         className="h-9 text-sm w-20"
                       />
-                      <span className="text-xs text-gray-500">
-                        → {carousels.length} carousel
-                        {carousels.length > 1 ? 's' : ''}
+                      <span className="text-xs text-gray-500 leading-tight">
+                        → {carouselSplits.length} carousel
+                        {carouselSplits.length > 1 ? 's' : ''}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Carousel count summary */}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700 flex items-start gap-2">
-                  <Package className="w-4 h-4 mt-0.5 shrink-0" />
-                  <div>
-                    <strong>{products.length}</strong> สินค้า จะถูกแบ่งเป็น{' '}
-                    <strong>{carousels.length}</strong> carousel message
-                    {carousels.length > 1
-                      ? ` (${productsPerCarousel} สินค้า/carousel, carousel สุดท้ายมี ${((products.length - 1) % productsPerCarousel) + 1} สินค้า)`
-                      : ''}
+                {/* Payload summary banner */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-1">
+                  <div className="flex items-start gap-2 text-sm text-blue-800">
+                    <Package className="w-4 h-4 mt-0.5 shrink-0" />
+                    <div>
+                      <strong>{products.length}</strong> สินค้า ·{' '}
+                      <strong>{carouselSplits.length}</strong> Flex Carousel ·{' '}
+                      {includeClosingText && closingText.trim() ? (
+                        <>
+                          <strong>1</strong> ข้อความปิดท้าย ={' '}
+                        </>
+                      ) : null}
+                      <strong
+                        className={totalPayloads >= 5 ? 'text-red-600' : 'text-blue-800'}
+                      >
+                        {totalPayloads} payload
+                        {totalPayloads !== 1 ? 's' : ''}
+                      </strong>
+                      <span className="text-blue-600"> / 5 (LINE limit)</span>
+                    </div>
                   </div>
+                  <p className="text-xs text-blue-600 pl-6">
+                    Layout: 2 คอลัมน์ × 3 แถว = 6 สินค้า/Bubble · Bubble size: giga (LINE spec)
+                  </p>
                 </div>
 
                 <div className="space-y-1.5">
@@ -372,20 +434,20 @@ export function SendCatalogDialog({
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs">คำอธิบาย</Label>
+                  <Label className="text-xs">คำอธิบาย (ใต้หัวข้อ Cover)</Label>
                   <Textarea
                     value={config.intro}
                     onChange={(e) => setConfig({ ...config, intro: e.target.value })}
-                    className="text-sm min-h-[64px]"
+                    className="text-sm min-h-[60px]"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs">ข้อความท้ายการ์ด</Label>
+                  <Label className="text-xs">ข้อความท้าย Cover Bubble</Label>
                   <Textarea
                     value={config.footerText}
                     onChange={(e) => setConfig({ ...config, footerText: e.target.value })}
-                    className="text-sm min-h-[56px]"
+                    className="text-sm min-h-[52px]"
                   />
                 </div>
 
@@ -418,6 +480,42 @@ export function SendCatalogDialog({
                     ))}
                   </div>
                 </div>
+
+                {/* Closing text toggle + field */}
+                <div className="rounded-lg border p-3 space-y-3 bg-slate-50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <MessageSquareText className="w-4 h-4 text-slate-500" />
+                      <Label className="text-sm font-medium cursor-pointer">
+                        ข้อความปิดท้าย (Text Payload)
+                      </Label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIncludeClosingText(!includeClosingText)}
+                      disabled={totalPayloads >= 5 && !includeClosingText}
+                      className={cn(
+                        'relative h-5 w-9 rounded-full transition-colors',
+                        includeClosingText ? 'bg-green-500' : 'bg-slate-300'
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform',
+                          includeClosingText ? 'translate-x-4' : 'translate-x-0.5'
+                        )}
+                      />
+                    </button>
+                  </div>
+                  {includeClosingText && (
+                    <Textarea
+                      value={closingText}
+                      onChange={(e) => setClosingText(e.target.value)}
+                      placeholder="เช่น ด่วน! โปรโมชั่นนี้มีจำนวนจำกัด ทักแชทสั่งซื้อได้เลยค่ะ 👇"
+                      className="text-sm min-h-[60px]"
+                    />
+                  )}
+                </div>
               </div>
             )}
 
@@ -426,24 +524,39 @@ export function SendCatalogDialog({
               <div className="space-y-4">
                 <h3 className="font-semibold text-gray-800 flex items-center gap-2">
                   <Eye className="w-4 h-4" />
-                  Preview Flex Message ({carousels.length} carousel
-                  {carousels.length > 1 ? 's' : ''})
+                  Preview ({carouselSplits.length} Flex Carousel
+                  {carouselSplits.length > 1 ? 's' : ''} + {totalPayloads} payload
+                  {totalPayloads !== 1 ? 's' : ''} total)
                 </h3>
 
-                {carouselPayloads.map((payload, idx) => (
-                  <div key={idx} className="rounded-lg border bg-slate-50 p-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        Carousel {idx + 1} / {carousels.length}
-                      </Badge>
-                      <span className="text-xs text-gray-500">
-                        {carousels[idx].length} สินค้า
-                        {idx === 0 && config.includeIntroBubble !== false ? ' + Intro bubble' : ''}
-                      </span>
+                {carouselPayloads.map((payload, idx) => {
+                  const split = carouselSplits[idx];
+                  return (
+                    <div key={idx} className="rounded-lg border bg-slate-50 p-3 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-xs font-medium">
+                          Payload {idx + 1} — Flex Carousel
+                        </Badge>
+                        <span className="text-xs text-gray-500">
+                          {split.products.length} สินค้า
+                          {split.isFirst ? ' + Cover bubble' : ''}
+                        </span>
+                      </div>
+                      <FlexPreview flex={payload} />
                     </div>
-                    <FlexPreview flex={payload} />
+                  );
+                })}
+
+                {includeClosingText && closingText.trim() && (
+                  <div className="rounded-lg border bg-slate-50 p-3 space-y-2">
+                    <Badge variant="outline" className="text-xs font-medium">
+                      Payload {carouselSplits.length + 1} — Text
+                    </Badge>
+                    <div className="bg-white rounded-lg border p-3 text-sm text-gray-800 whitespace-pre-wrap">
+                      {closingText}
+                    </div>
                   </div>
-                ))}
+                )}
               </div>
             )}
 
@@ -488,13 +601,17 @@ export function SendCatalogDialog({
                                 : { borderColor: tag.color }
                             }
                           >
-                            {selected && <span className="text-white text-[10px] font-bold">✓</span>}
+                            {selected && (
+                              <span className="text-white text-[10px] font-bold">✓</span>
+                            )}
                           </div>
                           <div
                             className="w-3 h-3 rounded-full shrink-0"
                             style={{ backgroundColor: tag.color }}
                           />
-                          <span className="flex-1 text-sm font-medium text-gray-800">{tag.name}</span>
+                          <span className="flex-1 text-sm font-medium text-gray-800">
+                            {tag.name}
+                          </span>
                           <span className="flex items-center gap-1 text-xs text-gray-500">
                             <Users className="w-3 h-3" />
                             {tag.userCount.toLocaleString()} คน
@@ -508,8 +625,8 @@ export function SendCatalogDialog({
                 {selectedTagIds.size > 0 && (
                   <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700 flex items-center gap-2">
                     <Users className="w-4 h-4 shrink-0" />
-                    เลือก <strong>{selectedTagIds.size}</strong> tag • ประมาณ{' '}
-                    <strong>{totalTargetUsers.toLocaleString()}</strong> ผู้ใช้
+                    เลือก <strong className="mx-1">{selectedTagIds.size}</strong> tag · ประมาณ{' '}
+                    <strong className="mx-1">{totalTargetUsers.toLocaleString()}</strong> ผู้ใช้
                   </div>
                 )}
               </div>
@@ -523,7 +640,7 @@ export function SendCatalogDialog({
                   ยืนยันการส่ง
                 </h3>
 
-                {/* Result after sending */}
+                {/* Result after send */}
                 {sendResult && (
                   <div
                     className={cn(
@@ -540,11 +657,13 @@ export function SendCatalogDialog({
                           ส่งสำเร็จ!
                         </div>
                         <div className="text-sm text-green-700 space-y-1">
-                          <p>ส่งให้ <strong>{sendResult.totalUsers}</strong> ผู้ใช้</p>
                           <p>
-                            <strong>{sendResult.totalCarousels}</strong> carousel × {sendResult.totalUsers} ผู้ใช้
-                            = <strong>{sendResult.successCount}</strong> ข้อความสำเร็จ
-                            {sendResult.failCount ? ` | ${sendResult.failCount} ล้มเหลว` : ''}
+                            ส่งให้ <strong>{sendResult.totalUsers}</strong> ผู้ใช้ ×{' '}
+                            <strong>{totalPayloads}</strong> payloads
+                          </p>
+                          <p>
+                            สำเร็จ <strong>{sendResult.successCount}</strong> ·{' '}
+                            {sendResult.failCount ? `ล้มเหลว ${sendResult.failCount}` : 'ไม่มีความผิดพลาด'}
                           </p>
                         </div>
                       </>
@@ -560,7 +679,7 @@ export function SendCatalogDialog({
                   </div>
                 )}
 
-                {/* Summary (before sending) */}
+                {/* Pre-send summary */}
                 {!sendResult && (
                   <div className="space-y-3">
                     <div className="rounded-lg border bg-gray-50 p-4 space-y-2.5 text-sm">
@@ -575,8 +694,31 @@ export function SendCatalogDialog({
                         <span className="font-medium">{products.length} รายการ</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-600">จำนวน Carousel messages</span>
-                        <span className="font-medium">{carousels.length} ข้อความ</span>
+                        <span className="text-gray-600">สินค้าต่อ Bubble</span>
+                        <span className="font-medium">
+                          {productsPerBubble} สินค้า (2 col × 3 row grid)
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Flex Carousels</span>
+                        <span className="font-medium">{carouselSplits.length}</span>
+                      </div>
+                      {includeClosingText && closingText.trim() && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">ข้อความปิดท้าย</span>
+                          <span className="font-medium text-green-600">มี</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Payloads ต่อ API call</span>
+                        <span
+                          className={cn(
+                            'font-bold',
+                            totalPayloads <= 5 ? 'text-green-700' : 'text-red-600'
+                          )}
+                        >
+                          {totalPayloads} / 5 ✓
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Tags ที่เลือก</span>
@@ -593,19 +735,14 @@ export function SendCatalogDialog({
                           ~{totalTargetUsers.toLocaleString()} คน
                         </span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">ข้อความทั้งหมด</span>
-                        <span className="font-bold text-green-700">
-                          ~{(totalTargetUsers * carousels.length).toLocaleString()} ข้อความ
-                        </span>
-                      </div>
                     </div>
 
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 flex items-start gap-2">
                       <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                       <span>
-                        ข้อความจะถูกส่งทันที คิดค่าใช้จ่ายตาม LINE Messaging API quota
-                        ของบัญชี
+                        ระบบจะส่ง <strong>{totalPayloads} payloads</strong> ในการเรียก LINE API{' '}
+                        <strong>1 ครั้ง</strong> ต่อผู้ใช้ (ประหยัด quota)
+                        · คิดค่าใช้จ่ายตาม LINE Messaging API quota
                       </span>
                     </div>
                   </div>
@@ -630,7 +767,7 @@ export function SendCatalogDialog({
             {step !== 'confirm' && (
               <Button
                 onClick={goNext}
-                disabled={!canGoNext()}
+                disabled={!canGoNext}
                 className="bg-green-600 hover:bg-green-700"
               >
                 ถัดไป
@@ -652,7 +789,7 @@ export function SendCatalogDialog({
                 ) : (
                   <>
                     <Send className="w-4 h-4 mr-2" />
-                    ยืนยันส่ง ({totalTargetUsers.toLocaleString()} คน)
+                    ยืนยันส่ง ({totalTargetUsers.toLocaleString()} คน · {totalPayloads} payloads)
                   </>
                 )}
               </Button>
@@ -669,10 +806,7 @@ export function SendCatalogDialog({
             )}
 
             {sendResult && !sendResult.success && (
-              <Button
-                variant="outline"
-                onClick={() => setSendResult(null)}
-              >
+              <Button variant="outline" onClick={() => setSendResult(null)}>
                 ลองใหม่
               </Button>
             )}
