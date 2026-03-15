@@ -1,4 +1,7 @@
+import { vi } from 'vitest';
 import { GET } from '@/app/api/analytics/route';
+
+vi.mock('@/lib/db');
 
 describe('Analytics API', () => {
   test('GET should return analytics data', async () => {
@@ -6,7 +9,7 @@ describe('Analytics API', () => {
     const request = new Request('http://localhost:3000/api/analytics');
     const response = await GET(request);
     expect(response.status).toBe(200);
-    
+
     const data = await response.json();
     expect(data).toHaveProperty('segments');
     expect(data).toHaveProperty('topCustomers');
@@ -21,7 +24,7 @@ describe('Analytics API', () => {
     const request = new Request('http://localhost:3000/api/analytics?days=7');
     const response = await GET(request);
     expect(response.status).toBe(200);
-    
+
     const data = await response.json();
     expect(data).toHaveProperty('stats');
     expect(data).toHaveProperty('salesTrend');
