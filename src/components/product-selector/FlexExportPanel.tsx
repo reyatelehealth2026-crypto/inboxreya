@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Copy, Download, Zap } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Copy, Download, Zap, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -15,12 +15,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { FlexPreview } from '@/components/inbox/FlexPreview';
+import { SendCatalogDialog } from '@/components/inbox/SendCatalogDialog';
 import type {
   ExportGlobalConfig,
   ExportThemeKey,
   FlexMessageTemplate,
 } from '@/lib/flex-builder';
-import { getTemplateDefaults } from '@/lib/flex-builder';
+import { getTemplateDefaults, csvProductToPreviewProduct } from '@/lib/flex-builder';
 import { useFlexExport } from './hooks/useFlexExport';
 import type { CsvProduct } from '@/lib/csv-product';
 
@@ -64,6 +65,12 @@ export function FlexExportPanel({ selectedProducts }: FlexExportPanelProps) {
   });
   const [minify, setMinify] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showSendDialog, setShowSendDialog] = useState(false);
+
+  const previewProducts = useMemo(
+    () => selectedProducts.map(csvProductToPreviewProduct),
+    [selectedProducts]
+  );
 
   const { flexPayload, flexJsonPretty, flexJsonMinified, sizePretty, sizeMinified } = useFlexExport(
     selectedProducts,
@@ -230,7 +237,22 @@ export function FlexExportPanel({ selectedProducts }: FlexExportPanelProps) {
             Download
           </Button>
         </div>
+
+        <Button
+          className="w-full bg-green-600 hover:bg-green-700 text-white"
+          onClick={() => setShowSendDialog(true)}
+        >
+          <Send className="mr-2 h-4 w-4" />
+          ส่งไปยัง LINE
+        </Button>
       </div>
+
+      <SendCatalogDialog
+        open={showSendDialog}
+        onOpenChange={setShowSendDialog}
+        products={previewProducts}
+        defaultConfig={config}
+      />
     </div>
   );
 }

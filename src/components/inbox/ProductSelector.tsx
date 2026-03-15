@@ -3,8 +3,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { 
   Search, 
-  Filter, 
-  ShoppingCart, 
   Share2, 
   Package,
   Check,
@@ -12,31 +10,27 @@ import {
   Tag,
   Sparkles,
   TrendingUp,
-  ChevronLeft,
-  ChevronRight,
   X,
-  Plus,
-  Minus,
   Copy,
   Download,
-  FileJson
+  Send,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
   generateFlexCarousel,
   generateFlexMessageByTemplate,
+  selectedProductToPreviewProduct,
   type Product,
   type ProductUnit,
   type SelectedProduct,
   type FlexMessageTemplate,
 } from '@/types/product-catalog';
+import { SendCatalogDialog } from './SendCatalogDialog';
 
 interface ProductSelectorProps {
   products: Product[];
@@ -60,6 +54,7 @@ export function ProductSelector({ products, className }: ProductSelectorProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [selectedItems, setSelectedItems] = useState<Map<number, SelectedProduct>>(new Map());
   const [showFlexDialog, setShowFlexDialog] = useState(false);
+  const [showSendDialog, setShowSendDialog] = useState(false);
   const [copied, setCopied] = useState(false);
 
   // Filter products
@@ -218,6 +213,13 @@ export function ProductSelector({ products, className }: ProductSelectorProps) {
   const selectedCount = selectedItems.size;
   const isSelected = (productId: number) => selectedItems.has(productId);
 
+  // Convert selected items to ExportPreviewProduct[] for the send dialog
+  const selectedPreviewProducts = useMemo(() => {
+    return Array.from(selectedItems.values()).map((item) =>
+      selectedProductToPreviewProduct(item.product, item.quantity, item.selectedUnit)
+    );
+  }, [selectedItems]);
+
   // Calculate sold percentage for progress bar
   const getSoldPercent = (stock: string) => {
     const num = parseFloat(stock);
@@ -229,7 +231,7 @@ export function ProductSelector({ products, className }: ProductSelectorProps) {
   };
 
   return (
-    <div className={cn("min-h-screen bg-gray-50", className)}>
+    <div className={cn("bg-gray-50", className)}>
       {/* Sticky Header */}
       <div className="sticky top-0 z-40 bg-white border-b shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3">
@@ -465,14 +467,41 @@ export function ProductSelector({ products, className }: ProductSelectorProps) {
           {/* Generate Flex Button */}
           <Button
             size="lg"
-            className="bg-green-600 hover:bg-green-700 text-white shadow-lg rounded-full px-6"
+            variant="outline"
+            className="shadow-lg rounded-full px-6 bg-white"
             onClick={() => setShowFlexDialog(true)}
           >
             <Share2 className="w-5 h-5 mr-2" />
-            สร้าง Flex Message
+            ดู JSON
+          </Button>
+
+          {/* Send to LINE Button */}
+          <Button
+            size="lg"
+            className="bg-green-600 hover:bg-green-700 text-white shadow-lg rounded-full px-6"
+            onClick={() => setShowSendDialog(true)}
+          >
+            <Send className="w-5 h-5 mr-2" />
+            ส่งไปยัง LINE
           </Button>
         </div>
       )}
+
+      {/* Send to LINE Dialog */}
+      <SendCatalogDialog
+        open={showSendDialog}
+        onOpenChange={setShowSendDialog}
+        products={selectedPreviewProducts}
+        defaultConfig={{
+          template: activeFilter === 'all'
+            ? 'product_catalog'
+            : activeFilter === 'flashsale'
+            ? 'flash_sale'
+            : activeFilter === 'new'
+            ? 'new_arrival'
+            : (activeFilter as FlexMessageTemplate),
+        }}
+      />
 
       {/* Flex Message Dialog */}
       <Dialog open={showFlexDialog} onOpenChange={setShowFlexDialog}>

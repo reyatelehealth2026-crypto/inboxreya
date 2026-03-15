@@ -113,7 +113,7 @@ function getRibbonText(product: Product): string {
   return '';
 }
 
-function selectedProductToPreviewProduct(
+export function selectedProductToPreviewProduct(
   product: Product,
   quantity: number = 1,
   unit?: ProductUnit | null
