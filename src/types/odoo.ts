@@ -226,3 +226,174 @@ export interface CreateOrderResponse {
     };
     error?: string;
 }
+
+// Customer 360 Types
+export interface Customer360Credit {
+    credit_limit: number | null;
+    credit_used: number | null;
+    credit_remaining: number | null;
+    total_due: number | null;
+    overdue_amount: number | null;
+}
+
+export interface Customer360OrderItem {
+    id?: number | null;
+    order_id?: number | null;
+    name?: string | null;
+    order_name?: string | null;
+    state?: string | null;
+    state_display?: string | null;
+    amount_total?: number | null;
+    date_order?: string | null;
+    order_lines?: unknown[];
+}
+
+export interface Customer360TimelineEvent {
+    id: number;
+    event_type: string | null;
+    status: string | null;
+    processed_at: string | null;
+    order_name: string | null;
+    state_display: string | null;
+    amount_total: number | null;
+    error_message: string | null;
+    error_code: string | null;
+}
+
+export interface Customer360WebhookSummary {
+    total: number;
+    success: number;
+    failed: number;
+    retry: number;
+    dead_letter: number;
+    duplicate: number;
+    last_event_at: string | null;
+}
+
+export interface Customer360InvoiceItem {
+    id?: number;
+    invoice_number?: string | null;
+    name?: string | null;
+    state?: string | null;
+    amount_total?: number | null;
+    amount_residual?: number | null;
+    invoice_date?: string | null;
+    due_date?: string | null;
+    is_overdue?: boolean;
+    is_paid?: boolean;
+}
+
+export interface Customer360Data {
+    line_user_id: string | null;
+    generated_at: string;
+    linked: boolean;
+    link: Record<string, unknown> | null;
+    profile: Record<string, unknown> | null;
+    credit: Customer360Credit;
+    latest_order: Customer360OrderItem | null;
+    orders: {
+        total: number;
+        recent: Customer360OrderItem[];
+    };
+    invoices: {
+        total: number;
+        recent: Customer360InvoiceItem[];
+    };
+    timeline: Customer360TimelineEvent[];
+    frequent_products: unknown[];
+    webhook_summary: Customer360WebhookSummary;
+    warnings: string[];
+}
+
+export interface Customer360Response {
+    success: boolean;
+    data?: Customer360Data;
+    error?: string;
+}
+
+// Webhook Stats Mini
+export interface WebhookStatsMini {
+    total: number;
+    success: number;
+    failed: number;
+    retry: number;
+    last_event_at: string | null;
+}
+
+export interface WebhookStatsMiniResponse {
+    success: boolean;
+    data?: WebhookStatsMini;
+    error?: string;
+}
+
+// DLQ Types
+export interface DlqItem {
+    id: number;
+    webhook_log_id: number | null;
+    error_message: string | null;
+    retry_count: number;
+    last_retry_at: string | null;
+    created_at: string;
+    resolved_at: string | null;
+    status: 'pending' | 'retrying' | 'resolved' | 'abandoned';
+    event_type: string | null;
+    delivery_id: string | null;
+    order_name: string | null;
+    customer_name: string | null;
+}
+
+export interface DlqListResponse {
+    success: boolean;
+    data?: {
+        items: DlqItem[];
+        total: number;
+        limit: number;
+        offset: number;
+    };
+    error?: string;
+}
+
+export interface DlqStats {
+    available: boolean;
+    total: number;
+    pending: number;
+    retrying: number;
+    resolved: number;
+    abandoned: number;
+    recent_24h?: number;
+    top_errors?: Array<{ error_message: string; count: number }>;
+}
+
+export interface DlqStatsResponse {
+    success: boolean;
+    data?: DlqStats;
+    error?: string;
+}
+
+// Dashboard Stats (from PHP stats action)
+export interface WebhookDashboardStats {
+    total: number;
+    today: number;
+    success: number;
+    failed: number;
+    received: number;
+    processing: number;
+    retry: number;
+    dead_letter: number;
+    duplicate: number;
+    avg_latency_ms: number | null;
+    retried_total: number;
+    dlq_total: number;
+    unique_orders_today: number;
+    notified_today: number;
+    last_webhook: string | null;
+    events_by_type: Array<{ event_type: string; count: number }>;
+    top_failed_events: Array<{ event_type: string; count: number }>;
+    hourly_distribution: Array<{ hour: number; count: number }>;
+}
+
+export interface WebhookDashboardStatsResponse {
+    success: boolean;
+    data?: WebhookDashboardStats;
+    error?: string;
+}

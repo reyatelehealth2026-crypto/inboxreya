@@ -1,11 +1,10 @@
 "use client"
 
 import { useQuery } from '@tanstack/react-query'
-import { FileText, Calendar, DollarSign, AlertCircle, ChevronRight } from 'lucide-react'
+import { FileText, Calendar, AlertCircle } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 
@@ -14,11 +13,20 @@ interface OdooInvoicesSectionProps {
   memberId: string | null | undefined
 }
 
-// Mock function - replace with actual API call
 async function fetchCustomerInvoices(memberId: string) {
-  // For now, return empty array. You'll need to implement an API endpoint
-  // that fetches invoices from Odoo by partner_code
-  return []
+  const res = await fetch('/api/odoo-dashboard', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'odoo_invoices',
+      customer_ref: memberId,
+      limit: 20,
+      offset: 0,
+    }),
+  })
+  const json = await res.json()
+  if (!json.success) return []
+  return json.data?.invoices || []
 }
 
 export function OdooInvoicesSection({ userId, memberId }: OdooInvoicesSectionProps) {
@@ -76,46 +84,60 @@ export function OdooInvoicesSection({ userId, memberId }: OdooInvoicesSectionPro
 }
 
 function InvoiceItem({ invoice }: { invoice: any }) {
-  const stateColors: Record<string, string> = {
-    draft: 'bg-gray-100 text-gray-700',
-    open: 'bg-orange-100 text-orange-700',
-    paid: 'bg-green-100 text-green-700',
-    cancel: 'bg-red-100 text-red-700',
-  }
+  const stateVal = String(invoice.invoice_state || invoice.state || '').toLowerCase()
+  // Multi-signal paid detection (matches PHP backend logic)
+  const isPaid = stateVal === 'paid'
+    || invoice.is_paid
+    || String(invoice.latest_event || '') === 'invoice.paid'
+    || String(invoice.payment_state || '').toLowerCase() === 'paid'
+    || (parseFloat(invoice.amount_residual) === 0 && parseFloat(invoice.amount_total || 0) > 0)
 
-  const stateLabels: Record<string, string> = {
-    draft: 'ร่าง',
-    open: 'รอชำระ',
-    paid: 'ชำระแล้ว',
-    cancel: 'ยกเลิก',
-  }
+  const dueDate = invoice.due_date || invoice.invoice_date_due
+  const isOverdue = !isPaid && dueDate && new Date(dueDate) < new Date()
+  const effectiveState = isPaid ? 'paid' : (isOverdue ? 'overdue' : stateVal)
 
-  const isPaid = invoice.state === 'paid'
-  const hasBalance = invoice.residual > 0
+  const stateConfig: Record<string, { color: string; label: string }> = {
+    draft: { color: 'bg-gray-100 text-gray-700', label: 'ร่าง' },
+    open: { color: 'bg-orange-100 text-orange-700', label: 'รอชำระ' },
+    posted: { color: 'bg-orange-100 text-orange-700', label: 'รอชำระ' },
+    paid: { color: 'bg-green-100 text-green-700', label: 'ชำระแล้ว' },
+    overdue: { color: 'bg-red-100 text-red-700', label: 'เกินกำหนด' },
+    cancel: { color: 'bg-gray-100 text-gray-500', label: 'ยกเลิก' },
+  }
+  const { color: badgeColor, label: badgeLabel } = stateConfig[effectiveState] || stateConfig.draft
+
+  const residual = isPaid ? 0 : (invoice.amount_residual ?? invoice.amount_total ?? 0)
+  const hasBalance = !isPaid && parseFloat(residual) > 0
+
+  const invoiceDate = invoice.invoice_date || invoice.due_date || invoice.updated_at || invoice.synced_at
+  const dateStr = invoiceDate ? new Date(invoiceDate).toLocaleDateString('th-TH') : '-'
 
   return (
-    <div className="border rounded-lg p-3 hover:bg-gray-50 transition-colors">
+    <div className={cn("border rounded-lg p-3 hover:bg-gray-50 transition-colors", isPaid && "bg-green-50/50")}>
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <p className="font-semibold text-sm">{invoice.invoice_number || invoice.number}</p>
-            <Badge className={cn('text-xs h-5', stateColors[invoice.state] || stateColors.draft)}>
-              {stateLabels[invoice.state] || invoice.state}
+            <p className="font-semibold text-sm">{invoice.invoice_number || invoice.name || '-'}</p>
+            <Badge className={cn('text-xs h-5', badgeColor)}>
+              {badgeLabel}
             </Badge>
           </div>
           <p className="text-xs text-gray-500">
             <Calendar className="h-3 w-3 inline mr-1" />
-            {new Date(invoice.date_invoice).toLocaleDateString('th-TH')}
+            {dateStr}
           </p>
-          {invoice.date_due && !isPaid && (
-            <p className="text-xs text-orange-600 mt-0.5">
-              ครบกำหนด: {new Date(invoice.date_due).toLocaleDateString('th-TH')}
+          {invoice.order_name && (
+            <p className="text-xs text-blue-600 mt-0.5">
+              {invoice.order_name}
+            </p>
+          )}
+          {dueDate && !isPaid && (
+            <p className={cn("text-xs mt-0.5", isOverdue ? "text-red-600 font-medium" : "text-orange-600")}>
+              ครบกำหนด: {new Date(dueDate).toLocaleDateString('th-TH')}
+              {isOverdue && ' ⚠'}
             </p>
           )}
         </div>
-        <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-          <ChevronRight className="h-4 w-4" />
-        </Button>
       </div>
       <div className="space-y-1">
         <div className="flex items-center justify-between text-sm">
@@ -126,10 +148,16 @@ function InvoiceItem({ invoice }: { invoice: any }) {
         </div>
         {hasBalance && (
           <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600">คงเหลือ</span>
-            <span className="font-semibold text-orange-600">
-              ฿{invoice.residual?.toLocaleString() || '0'}
+            <span className="text-gray-600">ค้างชำระ</span>
+            <span className="font-semibold text-red-600">
+              ฿{parseFloat(residual).toLocaleString()}
             </span>
+          </div>
+        )}
+        {isPaid && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600">ค้างชำระ</span>
+            <span className="text-gray-400">฿0</span>
           </div>
         )}
       </div>

@@ -3,6 +3,48 @@ import prisma from '@/lib/prisma'
 import { broadcastRealtimeEvent } from '@/lib/realtime'
 import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
 
+ async function resolveReplyToId(userId: number, quotedMessageId: string) {
+   const exactMatch = await prisma.message.findFirst({
+     where: {
+       userId,
+       metadata: {
+         contains: `"lineMessageId":"${quotedMessageId}"`,
+       },
+     },
+     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+     select: { id: true },
+   })
+
+   if (exactMatch) {
+     return exactMatch.id
+   }
+
+   const fallbackMessages = await prisma.message.findMany({
+     where: {
+       userId,
+       metadata: { not: null },
+     },
+     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+     take: 2000,
+     select: {
+       id: true,
+       metadata: true,
+     },
+   })
+
+   for (const msg of fallbackMessages) {
+     try {
+       const parsed = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata
+       if (parsed?.lineMessageId === quotedMessageId) {
+         return msg.id
+       }
+     } catch {
+     }
+   }
+
+   return null
+ }
+
 // This endpoint allows the old system (v1) to sync messages/events to the new system
 // Protected by INTERNAL_API_SECRET
 
@@ -249,26 +291,7 @@ async function handleSyncMessage(data: any) {
 
   let replyToId: number | null = null
   if (resolvedQuotedMessageId) {
-    const recentMessages = await prisma.message.findMany({
-      where: {
-        userId: user.id,
-        metadata: { not: null },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    })
-
-    for (const msg of recentMessages) {
-      try {
-        const parsed = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata
-        if (parsed?.lineMessageId === resolvedQuotedMessageId) {
-          replyToId = msg.id
-          break
-        }
-      } catch {
-        // ignore parse errors
-      }
-    }
+    replyToId = await resolveReplyToId(user.id, resolvedQuotedMessageId)
   }
 
   const createdMessage = await prisma.message.create({

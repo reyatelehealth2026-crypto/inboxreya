@@ -1,12 +1,10 @@
 "use client"
 
-import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Package, Calendar, DollarSign, AlertCircle, ChevronRight, ExternalLink } from 'lucide-react'
+import { Package, Calendar, AlertCircle } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 
@@ -15,11 +13,29 @@ interface OdooOrdersSectionProps {
   memberId: string | null | undefined
 }
 
-// Mock function - replace with actual API call
 async function fetchCustomerOrders(memberId: string) {
-  // For now, return empty array. You'll need to implement an API endpoint
-  // that fetches orders from Odoo by partner_code
-  return []
+  // Fetch orders from PHP backend via NextJS proxy
+  // memberId is the Odoo partner_code / customer_ref
+  const res = await fetch('/api/odoo-dashboard', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'odoo_orders',
+      customer_ref: memberId,
+      limit: 20,
+      offset: 0,
+    }),
+  })
+  const json = await res.json()
+  if (!json.success) return []
+  const orders = json.data?.orders || []
+  // Filter to last 7 days only
+  const sevenDaysAgo = new Date()
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+  return orders.filter((o: any) => {
+    const d = new Date(o.date_order || o.updated_at || o.synced_at || 0)
+    return !isNaN(d.getTime()) ? d >= sevenDaysAgo : true
+  })
 }
 
 export function OdooOrdersSection({ userId, memberId }: OdooOrdersSectionProps) {
@@ -77,44 +93,50 @@ export function OdooOrdersSection({ userId, memberId }: OdooOrdersSectionProps) 
 }
 
 function OrderItem({ order }: { order: any }) {
-  const stateColors: Record<string, string> = {
-    draft: 'bg-gray-100 text-gray-700',
-    sent: 'bg-blue-100 text-blue-700',
-    sale: 'bg-green-100 text-green-700',
-    done: 'bg-purple-100 text-purple-700',
-    cancel: 'bg-red-100 text-red-700',
+  const isPaid = order.is_paid || order.payment_status === 'paid'
+  const isDelivered = order.is_delivered || order.delivery_status === 'delivered'
+  const state = String(order.state || '').toLowerCase()
+
+  let badgeClass = 'bg-gray-100 text-gray-700'
+  let badgeLabel = order.state_display || order.state || '-'
+
+  if (isPaid) {
+    badgeClass = 'bg-green-100 text-green-700'
+    badgeLabel = 'ชำระแล้ว'
+  } else if (isDelivered) {
+    badgeClass = 'bg-blue-100 text-blue-700'
+    badgeLabel = 'จัดส่งแล้ว'
+  } else if (state === 'cancel' || state === 'cancelled') {
+    badgeClass = 'bg-red-100 text-red-700'
+    badgeLabel = 'ยกเลิก'
+  } else if (state === 'draft') {
+    badgeClass = 'bg-gray-100 text-gray-700'
+  } else if (badgeLabel && badgeLabel !== '-') {
+    badgeClass = 'bg-amber-100 text-amber-700'
   }
 
-  const stateLabels: Record<string, string> = {
-    draft: 'ร่าง',
-    sent: 'ส่งแล้ว',
-    sale: 'ขาย',
-    done: 'เสร็จสิ้น',
-    cancel: 'ยกเลิก',
-  }
+  const orderDate = order.date_order || order.updated_at || order.synced_at
+  const dateStr = orderDate ? new Date(orderDate).toLocaleDateString('th-TH') : '-'
 
   return (
-    <div className="border rounded-lg p-3 hover:bg-gray-50 transition-colors">
+    <div className={cn("border rounded-lg p-3 hover:bg-gray-50 transition-colors", isPaid && "bg-green-50/50")}>
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <p className="font-semibold text-sm">{order.name}</p>
-            <Badge className={cn('text-xs h-5', stateColors[order.state] || stateColors.draft)}>
-              {stateLabels[order.state] || order.state}
+            <p className="font-semibold text-sm">{order.order_name || order.name || '-'}</p>
+            <Badge className={cn('text-xs h-5', badgeClass)}>
+              {badgeLabel}
             </Badge>
           </div>
           <p className="text-xs text-gray-500">
             <Calendar className="h-3 w-3 inline mr-1" />
-            {new Date(order.date_order).toLocaleDateString('th-TH')}
+            {dateStr}
           </p>
         </div>
-        <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-          <ChevronRight className="h-4 w-4" />
-        </Button>
       </div>
       <div className="flex items-center justify-between text-sm">
         <span className="text-gray-600">
-          {order.order_line?.length || 0} รายการ
+          {order.items_count || 0} รายการ
         </span>
         <span className="font-semibold text-gray-900">
           ฿{order.amount_total?.toLocaleString() || '0'}
