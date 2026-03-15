@@ -11,7 +11,6 @@ async function fetchMessages(params: {
   cursor?: string
   startDate?: string
   endDate?: string
-  markRead?: boolean
 }): Promise<PaginatedResponse<Message>> {
   const searchParams = new URLSearchParams()
 
@@ -21,7 +20,6 @@ async function fetchMessages(params: {
   if (params.cursor) searchParams.set('cursor', params.cursor)
   if (params.startDate) searchParams.set('startDate', params.startDate)
   if (params.endDate) searchParams.set('endDate', params.endDate)
-  if (params.markRead === false) searchParams.set('markRead', 'false')
 
   const response = await fetch(`/api/inbox/messages?${searchParams}`)
 
@@ -34,13 +32,12 @@ async function fetchMessages(params: {
 
 export function useMessages(
   userId: string | null,
-  options?: { limit?: number; startDate?: string; endDate?: string; markRead?: boolean }
+  options?: { limit?: number; startDate?: string; endDate?: string }
 ) {
   const optionsKey = {
     limit: options?.limit ?? 100,
     startDate: options?.startDate,
     endDate: options?.endDate,
-    markRead: options?.markRead,
   }
   return useQuery({
     queryKey: queryKeys.messages(userId, optionsKey),
@@ -50,7 +47,6 @@ export function useMessages(
         limit: options?.limit ?? 100,
         startDate: options?.startDate,
         endDate: options?.endDate,
-        markRead: options?.markRead,
       }),
     enabled: !!userId,
     staleTime: 5 * 1000, // 5 seconds
@@ -62,12 +58,11 @@ export function useMessages(
 
 export function useInfiniteMessages(
   userId: string | null,
-  options?: { startDate?: string; endDate?: string; markRead?: boolean }
+  options?: { startDate?: string; endDate?: string }
 ) {
   const optionsKey = {
     startDate: options?.startDate,
     endDate: options?.endDate,
-    markRead: options?.markRead,
   }
   return useInfiniteQuery({
     queryKey: queryKeys.messagesInfinite(userId, optionsKey),
@@ -77,7 +72,6 @@ export function useInfiniteMessages(
       limit: 50,
       startDate: options?.startDate,
       endDate: options?.endDate,
-      markRead: options?.markRead,
     }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.pagination.cursor || undefined,

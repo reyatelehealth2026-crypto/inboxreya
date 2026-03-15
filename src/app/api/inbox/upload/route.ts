@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { uploadMediaOnly } from '@/lib/php-bridge'
 import { sendFlexMessage, sendImageMessage, sendTextMessage } from '@/lib/line-api'
+import { toBangkokDatabaseTime } from '@/lib/utils'
 
 // Upload API endpoint for sending files/images to LINE
 // Note: Vercel has a 4.5MB body size limit for serverless functions
@@ -292,9 +293,7 @@ export async function POST(request: NextRequest) {
           })
 
           if (user) {
-            // Manual Time override for Bangkok Time (same as messages route)
-            const now = new Date()
-            const bangkokNow = new Date(now.getTime() + 7 * 60 * 60 * 1000)
+            const bangkokNow = toBangkokDatabaseTime(new Date())
 
             savedMessage = await prisma.message.create({
               data: {
@@ -314,7 +313,7 @@ export async function POST(request: NextRequest) {
             // Update last interaction
             await prisma.lineUser.updateMany({
               where: { id: parsedUserId },
-              data: { lastInteraction: new Date() }
+              data: { lastInteraction: bangkokNow }
             })
           }
         } catch (dbError) {

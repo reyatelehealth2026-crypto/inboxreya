@@ -7,7 +7,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { Send, Paperclip, Smile, MoreVertical, Phone, Video, Image as ImageIcon, Sparkles, X, ArrowLeft, Reply, Upload, Loader2, Search, ShieldCheck, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryClient } from '@tanstack/react-query'
-import { useMessages, useSendMessage } from '@/hooks/use-messages'
+import { useMarkMessagesRead, useMessages, useSendMessage } from '@/hooks/use-messages'
 import { queryKeys } from '@/lib/query-keys'
 import { useConversation } from '@/hooks/use-conversations'
 import { useTypingIndicator } from '@/hooks/use-realtime'
@@ -1461,9 +1461,27 @@ export function ChatPanel() {
 
   const { data: conversation } = useConversation(selectedConversationId)
   const { data: messagesData, isLoading } = useMessages(selectedConversationId)
+  const { mutate: markMessagesRead, isPending: isMarkingMessagesRead } = useMarkMessagesRead()
 
   const messages = useMemo(() => messagesData?.data || [], [messagesData])
   useNewMessageAnnouncement(messages)
+
+  const unreadIncomingSignature = useMemo(
+    () =>
+      messages
+        .filter((message) => message.direction === 'incoming' && !message.isRead)
+        .map((message) => message.id)
+        .join(','),
+    [messages]
+  )
+
+  useEffect(() => {
+    if (!selectedConversationId || !unreadIncomingSignature || isMarkingMessagesRead) {
+      return
+    }
+
+    markMessagesRead(selectedConversationId)
+  }, [selectedConversationId, unreadIncomingSignature, isMarkingMessagesRead, markMessagesRead])
 
   // Mark performance end when messages are loaded
   useEffect(() => {

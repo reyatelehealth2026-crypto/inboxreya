@@ -11,11 +11,11 @@ export const queryKeys = {
   messagesForUser: (userId: string | null) => ['messages', userId] as const,
   messages: (
     userId: string | null,
-    options?: { limit?: number; startDate?: string; endDate?: string; markRead?: boolean }
+    options?: { limit?: number; startDate?: string; endDate?: string }
   ) => ['messages', userId, options ?? {}] as const,
   messagesInfinite: (
     userId: string | null,
-    options?: { startDate?: string; endDate?: string; markRead?: boolean }
+    options?: { startDate?: string; endDate?: string }
   ) => ['messages', 'infinite', userId, options ?? {}] as const,
   admins: () => ['admins'] as const,
   assignees: (userId: string) => ['assignees', userId] as const,

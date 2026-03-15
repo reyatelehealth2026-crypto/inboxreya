@@ -1,7 +1,10 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
-import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns"
+import { formatDistanceToNow, format } from "date-fns"
 import { th } from "date-fns/locale"
+
+export const BANGKOK_TIME_ZONE = 'Asia/Bangkok'
+export const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -12,6 +15,39 @@ export function cn(...inputs: ClassValue[]) {
  * So dates from database are already in Bangkok time, not UTC
  * We should NOT add 7 hours again
  */
+
+function padBangkokPart(value: number, size = 2): string {
+  return String(value).padStart(size, '0')
+}
+
+/**
+ * Serialize a JS Date that Prisma interpreted as UTC back into Bangkok wall-clock time.
+ * Example: 2026-03-15T17:00:00.000Z -> 2026-03-15T17:00:00.000+07:00
+ */
+export function serializeBangkokWallTime(date: Date | string | null | undefined): string | null {
+  if (!date) return null
+  const value = typeof date === 'string' ? new Date(date) : date
+  if (Number.isNaN(value.getTime())) return null
+
+  const year = value.getUTCFullYear()
+  const month = padBangkokPart(value.getUTCMonth() + 1)
+  const day = padBangkokPart(value.getUTCDate())
+  const hours = padBangkokPart(value.getUTCHours())
+  const minutes = padBangkokPart(value.getUTCMinutes())
+  const seconds = padBangkokPart(value.getUTCSeconds())
+  const millis = padBangkokPart(value.getUTCMilliseconds(), 3)
+
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${millis}+07:00`
+}
+
+/**
+ * Prisma writes DATETIME values using the process timezone. We shift "now" forward so the
+ * stored face-value matches the Bangkok wall-clock convention used by the PHP system.
+ */
+export function toBangkokDatabaseTime(date: Date | string): Date {
+  const value = typeof date === 'string' ? new Date(date) : date
+  return new Date(value.getTime() + BANGKOK_OFFSET_MS)
+}
 
 export function formatTimeAgo(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date
@@ -39,11 +75,11 @@ export function formatMessageTime(date: Date | string): string {
   
   // Get current time in Bangkok (UTC+7)
   const nowUTC = new Date()
-  const bangkokNow = new Date(nowUTC.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+  const bangkokNow = new Date(nowUTC.toLocaleString('en-US', { timeZone: BANGKOK_TIME_ZONE }))
   
   // Parse message date in Bangkok timezone
   const messageDate = new Date(d)
-  const messageBangkok = new Date(messageDate.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+  const messageBangkok = new Date(messageDate.toLocaleString('en-US', { timeZone: BANGKOK_TIME_ZONE }))
   
   // Compare dates (year, month, day only)
   const nowYear = bangkokNow.getFullYear()
@@ -81,7 +117,7 @@ export function formatMessageTime(date: Date | string): string {
 export function toBangkokTime(date: Date | string): Date {
   const d = typeof date === 'string' ? new Date(date) : date
   // Convert to Bangkok timezone
-  return new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+  return new Date(d.toLocaleString('en-US', { timeZone: BANGKOK_TIME_ZONE }))
 }
 
 export function formatDate(date: Date | string): string {

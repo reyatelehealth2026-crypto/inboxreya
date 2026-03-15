@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { broadcastRealtimeEvent } from '@/lib/realtime'
 import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
+import { toBangkokDatabaseTime } from '@/lib/utils'
 
  async function resolveReplyToId(userId: number, quotedMessageId: string) {
    const exactMatch = await prisma.message.findFirst({
@@ -135,10 +136,7 @@ async function handleSyncMessage(data: any) {
   const resolvedLineMessageId = lineMessageId ?? parsedMetadata?.lineMessageId
   const resolvedQuotedMessageId = quotedMessageId ?? parsedMetadata?.quotedMessageId
 
-  // PHP stores DATETIME as Bangkok wall-clock time (no timezone).
-  // Prisma reads it as UTC. To keep consistency, we add +7h so the stored
-  // face-value matches what PHP would have written directly.
-  const bangkokCreatedAt = new Date(createdAt.getTime() + 7 * 60 * 60 * 1000)
+  const bangkokCreatedAt = toBangkokDatabaseTime(createdAt)
 
   // 1. Resolve LineAccount
   // Convert lineAccountId to integer if provided (it comes as string from JSON)
@@ -201,7 +199,7 @@ async function handleSyncMessage(data: any) {
         displayName: displayName || 'Unknown',
         pictureUrl: safePictureUrl,
         isRegistered: false,
-        lastInteraction: new Date(timestamp || Date.now())
+        lastInteraction: bangkokCreatedAt
       },
       select: {
         id: true,
@@ -216,7 +214,7 @@ async function handleSyncMessage(data: any) {
       data: {
         displayName: displayName || user.displayName,
         pictureUrl: safePictureUrl || user.pictureUrl,
-        lastInteraction: new Date(timestamp || Date.now())
+        lastInteraction: bangkokCreatedAt
       },
       select: { id: true }
     })
