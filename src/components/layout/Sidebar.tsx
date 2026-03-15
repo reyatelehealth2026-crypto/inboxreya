@@ -29,6 +29,9 @@ import {
   Link2,
   Package,
   Briefcase,
+  Send,
+  ShoppingBag,
+  Tag,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -68,6 +71,9 @@ const menuGroups: MenuGroup[] = [
     menus: [
       { title: 'กล่องข้อความ', icon: <MessageSquare className="h-4 w-4" />, href: '/inbox' },
       { title: 'แชทกลุ่ม', icon: <MessagesSquare className="h-4 w-4" />, href: '/inbox/groups' },
+      { title: 'Broadcast', icon: <Send className="h-4 w-4" />, href: '/inbox/broadcasts' },
+      { title: 'แคตตาล็อคสินค้า', icon: <ShoppingBag className="h-4 w-4" />, href: '/inbox/catalog' },
+      { title: 'โปรโมชัน', icon: <Tag className="h-4 w-4" />, href: '/inbox/promotions' },
     ],
   },
   {
