@@ -499,7 +499,7 @@ export function ProductSelector({ products, className }: ProductSelectorProps) {
                     )}
 
                     {/* Stock Info */}
-                    {!badge?.text === 'FlashSale' && stock && (
+                    {badge?.text !== 'FlashSale' && stock && (
                       <p className={cn(
                         "text-[10px]",
                         parseFloat(stock.stock_num) <= 10 ? "text-red-500 font-medium" : "text-gray-500"
