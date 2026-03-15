@@ -580,8 +580,10 @@ export function ProductSelector({ products, className }: ProductSelectorProps) {
               <ScrollArea className="h-32">
                 <div className="space-y-2">
                   {Array.from(selectedItems.values()).map((item, idx) => {
-                    const data = item.product.product_data[0];
-                    const price = item.product.product_price[0]?.product_price[0];
+                    const data = item.product.product_data?.[0];
+                    if (!data) return null;
+                    
+                    const price = item.product.product_price?.[0]?.product_price?.[0];
                     const displayPrice = price?.promotion_price !== '0.00' 
                       ? parseFloat(price.promotion_price) 
                       : parseFloat(price?.price || '0');
