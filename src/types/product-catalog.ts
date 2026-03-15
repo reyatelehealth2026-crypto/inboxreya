@@ -49,15 +49,15 @@ export interface Product {
   product_photo: ProductPhoto[];
   product_unit: ProductUnit[];
   product_price: ProductPrice[];
-  product_stock: ProductStock[];
-  product_wishlists: number;
-  product_related_lists: any[];
-  product_hashtag: any[];
-  product_hashtag_new: any[];
+  product_stock?: ProductStock[];
+  product_wishlists?: number;
+  product_related_lists?: any[];
+  product_hashtag?: any[];
+  product_hashtag_new?: any[];
   customer_buyed: number;
-  product_is_flashSale: number;
-  product_is_recommend: number;
-  product_flasSale: any[];
+  product_is_flashSale?: number;
+  product_is_recommend?: number;
+  product_flasSale?: any[];
   is_rx: number;
 }
 
