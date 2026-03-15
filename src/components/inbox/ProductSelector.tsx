@@ -58,16 +58,16 @@ export function ProductSelector({ products, className }: ProductSelectorProps) {
   // Filter products
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
-      const data = product.product_data[0];
+      const data = product.product_data?.[0];
       if (!data) return false;
 
       // Search filter
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch = !searchQuery || 
-        data.name.toLowerCase().includes(searchLower) ||
-        data.name_en.toLowerCase().includes(searchLower) ||
-        data.sku.toLowerCase().includes(searchLower) ||
-        data.barcode.toLowerCase().includes(searchLower);
+        (data.name?.toLowerCase().includes(searchLower) ||
+        data.name_en?.toLowerCase().includes(searchLower) ||
+        data.sku?.toLowerCase().includes(searchLower) ||
+        data.barcode?.toLowerCase().includes(searchLower));
 
       // Category filter
       let matchesFilter = true;
@@ -92,7 +92,9 @@ export function ProductSelector({ products, className }: ProductSelectorProps) {
 
   // Toggle selection
   const toggleSelection = useCallback((product: Product) => {
-    const data = product.product_data[0];
+    const data = product.product_data?.[0];
+    if (!data) return;
+    
     const newSelected = new Map(selectedItems);
     
     if (newSelected.has(data.id)) {
@@ -101,7 +103,7 @@ export function ProductSelector({ products, className }: ProductSelectorProps) {
       newSelected.set(data.id, {
         product,
         quantity: 1,
-        selectedUnit: product.product_unit[0] || null
+        selectedUnit: product.product_unit?.[0] || null
       });
     }
     setSelectedItems(newSelected);
@@ -138,10 +140,12 @@ export function ProductSelector({ products, className }: ProductSelectorProps) {
   // Generate Flex Message
   const generateFlexMessage = useCallback(() => {
     const items = Array.from(selectedItems.values()).map(item => {
-      const data = item.product.product_data[0];
+      const data = item.product.product_data?.[0];
+      if (!data) return null;
+      
       const unit = item.selectedUnit;
-      const price = item.product.product_price[0]?.product_price[0];
-      const photo = item.product.product_photo[0];
+      const price = item.product.product_price?.[0]?.product_price?.[0];
+      const photo = item.product.product_photo?.[0];
       
       const displayPrice = price?.promotion_price !== '0.00' 
         ? parseFloat(price.promotion_price) 
@@ -219,7 +223,7 @@ export function ProductSelector({ products, className }: ProductSelectorProps) {
           }]
         } : undefined
       };
-    });
+    }).filter(Boolean);
 
     // Add header based on filter type
     let headerText = '📋 แคตตาล็อคสินค้า';
@@ -381,10 +385,12 @@ export function ProductSelector({ products, className }: ProductSelectorProps) {
         {filteredProducts.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
             {filteredProducts.map((product) => {
-              const data = product.product_data[0];
-              const price = product.product_price[0]?.product_price[0];
-              const photo = product.product_photo[0];
-              const stock = product.product_stock[0];
+              const data = product.product_data?.[0];
+              if (!data) return null;
+              
+              const price = product.product_price?.[0]?.product_price?.[0];
+              const photo = product.product_photo?.[0];
+              const stock = product.product_stock?.[0];
               const selected = isSelected(data.id);
               const selectedData = selectedItems.get(data.id);
 
