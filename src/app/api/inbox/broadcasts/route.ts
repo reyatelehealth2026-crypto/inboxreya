@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-middleware'
 import { z } from 'zod'
 
-const createBroadcastSchema = z.object({
-  content: z.string().min(1).max(5000),
-  mediaUrl: z.string().url().optional(),
-  targetSegmentId: z.number().int().positive().optional(),
-  targetCustomerIds: z.array(z.number().int().positive()).optional(),
-  scheduledAt: z.string().datetime().optional(),
+const createBroadcastSchema = z
+  .object({
+    content: z.string().max(50000).optional(),
+    mediaUrl: z.string().url().optional(),
+    flexContent: z.record(z.string(), z.any()).optional(),
+    targetSegmentId: z.number().int().positive().optional(),
+    targetCustomerIds: z.array(z.number().int().positive()).optional(),
+    scheduledAt: z.string().datetime().optional(),
+  })
+  .refine((data) => !!data.content || !!data.flexContent, {
+  message: 'Either content or flexContent is required',
 })
 
 // GET /api/inbox/broadcasts - List all broadcasts
@@ -105,10 +111,14 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    const content = body.flexContent
+      ? JSON.stringify(body.flexContent)
+      : (validated.content || 'Broadcast message')
+
     const broadcast = await prisma.broadcastMessageV2.create({
       data: {
         lineAccountId: session.user.lineAccountId as number,
-        content: validated.content,
+        content,
         mediaUrl: validated.mediaUrl,
         targetSegmentId: validated.targetSegmentId,
         scheduledAt: validated.scheduledAt ? new Date(validated.scheduledAt) : null,
@@ -120,10 +130,11 @@ export async function POST(req: NextRequest) {
 
     // Store target customer IDs if provided
     if (body.targetCustomerIds && body.targetCustomerIds.length > 0) {
-      await prisma.$executeRaw`
-        INSERT INTO broadcast_recipients (broadcast_id, user_id)
-        VALUES ${body.targetCustomerIds.map((userId: number) => `(${broadcast.id}, ${userId})`).join(', ')}
-      `
+      const values = Prisma.join(
+        body.targetCustomerIds.map((userId: number) => Prisma.sql`(${broadcast.id}, ${userId})`),
+        ', '
+      )
+      await prisma.$executeRaw(Prisma.sql`INSERT INTO broadcast_recipients (broadcast_id, user_id) VALUES ${values}`)
     }
 
     return NextResponse.json({

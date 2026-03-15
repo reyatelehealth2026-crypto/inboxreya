@@ -33,7 +33,7 @@ export default function InboxLayoutClient({ children }: { children: ReactNode })
       <main 
         id="main-content"
         className={cn(
-          "flex-1 min-w-0 h-screen overflow-hidden transition-all duration-300",
+          "flex-1 min-w-0 h-screen overflow-y-auto overflow-x-hidden transition-all duration-300",
           sidebarCollapsed ? "ml-16" : "ml-64"
         )}
       >
