@@ -1,27 +1,29 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import { getUnifiedAnalyticsData } from '@/lib/analytics/queries';
+
+vi.mock('@/lib/db');
 
 describe('Analytics Dashboard Integration', () => {
   test('should fetch all analytics data successfully', async () => {
     const data = await getUnifiedAnalyticsData(1);
-    
+
     // Verify structure
     expect(data).toHaveProperty('segments');
     expect(data).toHaveProperty('topCustomers');
     expect(data).toHaveProperty('stats');
     expect(data).toHaveProperty('behaviorPatterns');
-    
+
     // Verify arrays
     expect(Array.isArray(data.segments)).toBe(true);
     expect(Array.isArray(data.topCustomers)).toBe(true);
     expect(Array.isArray(data.behaviorPatterns)).toBe(true);
-    
+
     // Verify stats structure
     expect(data.stats).toHaveProperty('totalRevenue');
     expect(data.stats).toHaveProperty('totalCustomers');
     expect(data.stats).toHaveProperty('avgOrderValue');
     expect(data.stats).toHaveProperty('totalOrders');
-    
+
     // Verify data types
     expect(typeof data.stats.totalRevenue).toBe('number');
     expect(typeof data.stats.totalCustomers).toBe('number');
@@ -31,7 +33,7 @@ describe('Analytics Dashboard Integration', () => {
 
   test('should have valid customer segments', async () => {
     const data = await getUnifiedAnalyticsData(1);
-    
+
     if (data.segments.length > 0) {
       const segment = data.segments[0];
       expect(segment).toHaveProperty('name');
@@ -45,7 +47,7 @@ describe('Analytics Dashboard Integration', () => {
 
   test('should have valid top customers', async () => {
     const data = await getUnifiedAnalyticsData(1);
-    
+
     if (data.topCustomers.length > 0) {
       const customer = data.topCustomers[0];
       expect(customer).toHaveProperty('memberId');
