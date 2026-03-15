@@ -444,6 +444,48 @@ export function buildFlexPayload(products: ExportPreviewProduct[], config: Expor
   };
 }
 
+/**
+ * Build multiple carousels for broadcast - split products into chunks
+ * @param products All products
+ * @param config Flex config
+ * @param productsPerCarousel Max products per carousel (default 6)
+ * @param includeIntroBubbleInFirst Only first carousel gets intro bubble
+ */
+export function buildFlexPayloadChunked(
+  products: ExportPreviewProduct[],
+  config: ExportGlobalConfig,
+  productsPerCarousel: number = 6,
+  includeIntroBubbleInFirst: boolean = true
+): object[] {
+  const resolvedConfig = getResolvedConfig(config);
+  const themeColor = resolvedConfig.accentColor || THEME_COLORS[resolvedConfig.theme];
+  const carousels: object[] = [];
+  const maxFirst = Math.min(
+    productsPerCarousel,
+    MAX_CAROUSEL_BUBBLES - (includeIntroBubbleInFirst && resolvedConfig.includeIntroBubble ? 1 : 0)
+  );
+  const maxRest = Math.min(productsPerCarousel, MAX_CAROUSEL_BUBBLES);
+
+  let i = 0;
+  while (i < products.length) {
+    const isFirst = carousels.length === 0;
+    const maxThis = isFirst ? maxFirst : maxRest;
+    const chunk = products.slice(i, i + maxThis);
+    const contents: object[] = [];
+
+    if (isFirst && includeIntroBubbleInFirst && resolvedConfig.includeIntroBubble) {
+      contents.push(buildIntroBubble(resolvedConfig, themeColor, products.length));
+    }
+
+    contents.push(...chunk.map((p) => buildProductCard(p, resolvedConfig)));
+
+    carousels.push({ type: 'carousel', contents });
+    i += maxThis;
+  }
+
+  return carousels;
+}
+
 export function buildFlexPayloadMinified(
   products: ExportPreviewProduct[],
   config: ExportGlobalConfig

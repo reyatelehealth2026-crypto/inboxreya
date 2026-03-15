@@ -37,6 +37,7 @@ import {
   type SelectedProduct,
   type FlexMessageTemplate,
 } from '@/types/product-catalog';
+import { SendToBroadcastDialog } from './SendToBroadcastDialog';
 
 interface ProductSelectorProps {
   products: Product[];
@@ -60,6 +61,7 @@ export function ProductSelector({ products, className }: ProductSelectorProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [selectedItems, setSelectedItems] = useState<Map<number, SelectedProduct>>(new Map());
   const [showFlexDialog, setShowFlexDialog] = useState(false);
+  const [showBroadcastDialog, setShowBroadcastDialog] = useState(false);
   const [copied, setCopied] = useState(false);
 
   // Filter products
@@ -465,14 +467,32 @@ export function ProductSelector({ products, className }: ProductSelectorProps) {
           {/* Generate Flex Button */}
           <Button
             size="lg"
-            className="bg-green-600 hover:bg-green-700 text-white shadow-lg rounded-full px-6"
+            variant="outline"
+            className="rounded-full px-6"
             onClick={() => setShowFlexDialog(true)}
           >
             <Share2 className="w-5 h-5 mr-2" />
             สร้าง Flex Message
           </Button>
+          {/* Send to Broadcast Button */}
+          <Button
+            size="lg"
+            className="bg-green-600 hover:bg-green-700 text-white shadow-lg rounded-full px-6"
+            onClick={() => setShowBroadcastDialog(true)}
+          >
+            <Share2 className="w-5 h-5 mr-2" />
+            ส่งไป Broadcast
+          </Button>
         </div>
       )}
+
+      {/* Send to Broadcast Dialog */}
+      <SendToBroadcastDialog
+        open={showBroadcastDialog}
+        onOpenChange={setShowBroadcastDialog}
+        selectedProducts={Array.from(selectedItems.values())}
+        onSuccess={() => setShowBroadcastDialog(false)}
+      />
 
       {/* Flex Message Dialog */}
       <Dialog open={showFlexDialog} onOpenChange={setShowFlexDialog}>

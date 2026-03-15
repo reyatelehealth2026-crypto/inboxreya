@@ -296,9 +296,30 @@ export default function ProductCatalogPage() {
   const [loading, setLoading] = useState(false);
   const [showInput, setShowInput] = useState(true);
 
-  // Load sample data on mount
+  // Fetch products from API on mount, fallback to sample
   useEffect(() => {
-    loadSampleData();
+    let cancelled = false;
+    async function fetchProducts() {
+      setLoading(true);
+      try {
+        const res = await fetch('/api/inbox/catalog/products');
+        if (cancelled) return;
+        if (res.ok) {
+          const { products: data } = await res.json();
+          setProducts(data || []);
+          setError(null);
+          setShowInput(false);
+        } else {
+          loadSampleData();
+        }
+      } catch {
+        if (!cancelled) loadSampleData();
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    fetchProducts();
+    return () => { cancelled = true; };
   }, []);
 
   const loadSampleData = () => {

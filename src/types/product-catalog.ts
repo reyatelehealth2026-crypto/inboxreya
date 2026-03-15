@@ -1,5 +1,6 @@
 import {
   buildFlexPayload,
+  buildFlexPayloadChunked,
   buildProductCard,
   type ExportPreviewProduct,
   type FlexMessageTemplate,
@@ -168,6 +169,42 @@ export function generateFlexCarousel(products: SelectedProduct[]): object {
       theme: 'emerald',
       includeIntroBubble: false,
     }
+  );
+}
+
+/**
+ * Generate multiple carousels for broadcast - split by productsPerCarousel
+ */
+export function generateFlexCarouselsChunked(
+  products: SelectedProduct[],
+  template: FlexMessageTemplate,
+  options: {
+    productsPerCarousel?: number;
+    title?: string;
+    subtitle?: string;
+    headerColor?: string;
+  } = {}
+): object[] {
+  const previewProducts = products.map((p) =>
+    selectedProductToPreviewProduct(p.product, p.quantity, p.selectedUnit)
+  );
+  const theme: 'rose' | 'violet' | 'emerald' | 'amber' | 'sky' =
+    template === 'promotion' ? 'rose' : template === 'flash_sale' ? 'amber' : 'emerald';
+  const config = {
+    template,
+    title: options.title || '',
+    intro: options.subtitle || '',
+    footerText: 'แตะปุ่มเพื่อดูรายละเอียดสินค้าเพิ่มเติม',
+    ctaLabel: template === 'product_catalog' ? 'ดูรายละเอียด' : 'ดูสินค้า',
+    theme,
+    accentColor: options.headerColor,
+    includeIntroBubble: template !== 'product_catalog',
+  };
+  return buildFlexPayloadChunked(
+    previewProducts,
+    config,
+    options.productsPerCarousel ?? 6,
+    template !== 'product_catalog'
   );
 }
 
