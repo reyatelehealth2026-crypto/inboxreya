@@ -346,7 +346,9 @@ export function SendCatalogDialog({
   const canGoNext =
     step === 'flex-settings' ? products.length > 0
     : step === 'preview' ? true
-    : step === 'select-tags' ? selectedTagIds.size > 0
+    // Allow proceeding when no tags exist in the system (so JSON validation is still reachable)
+    // If tags DO exist, require at least one to be selected
+    : step === 'select-tags' ? (selectedTagIds.size > 0 || (!loadingTags && tags.length === 0))
     : false;
 
   const goNext = () => { const n = STEPS[stepIndex + 1]; if (n) setStep(n.key); };
@@ -753,9 +755,11 @@ export function SendCatalogDialog({
             )}
 
             {step === 'confirm' && !sendResult && (
-              <Button onClick={handleSend} disabled={sending || !jsonValidated} className="bg-green-600 hover:bg-green-700">
+              <Button onClick={handleSend} disabled={sending || !jsonValidated || selectedTagIds.size === 0} className="bg-green-600 hover:bg-green-700">
                 {sending ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> กำลังส่ง...</>
+                ) : selectedTagIds.size === 0 ? (
+                  <><AlertCircle className="w-4 h-4 mr-2" /> เลือก Tag ก่อนส่ง</>
                 ) : !jsonValidated ? (
                   <><AlertCircle className="w-4 h-4 mr-2" /> ตรวจสอบ JSON ก่อนส่ง</>
                 ) : (
