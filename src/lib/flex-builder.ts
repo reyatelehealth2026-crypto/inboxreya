@@ -18,6 +18,8 @@ export type ExportGlobalConfig = {
   accentColor?: string;
   actionUrl?: string;
   includeIntroBubble?: boolean;
+  /** Optional hero image URL for the promo cover bubble */
+  heroImageUrl?: string;
 };
 
 export type ExportPreviewProduct = {
@@ -123,6 +125,7 @@ function getResolvedConfig(config: ExportGlobalConfig): Required<ExportGlobalCon
     actionUrl: config.actionUrl || 'https://www.cnypharmacy.com',
     includeIntroBubble:
       config.includeIntroBubble ?? config.template !== 'product_catalog',
+    heroImageUrl: config.heroImageUrl || '',
   };
 }
 
@@ -584,32 +587,61 @@ function buildPromoGridBubble(
   };
 }
 
-/** Cover / promo-header bubble (first bubble of the first carousel) */
+/**
+ * Cover / promo-header bubble (first bubble of the first carousel).
+ *
+ * When `config.heroImageUrl` is set the bubble uses a full-bleed hero image
+ * with light body styling.  Without it the body background is the theme
+ * colour with white text.
+ *
+ * ALL bubbles in the carousel MUST share the same `size` value (LINE spec).
+ * This bubble is explicitly sized `PROMO_BUBBLE_SIZE` ("giga").
+ */
 function buildPromoCoverBubble(
   config: Required<ExportGlobalConfig>,
   themeColor: string,
   totalProductCount: number
 ): object {
+  const hasHero = Boolean(config.heroImageUrl);
+  const bodyTextColor = hasHero ? themeColor : '#FFFFFF';
+  const bodySubTextColor = hasHero ? '#475569' : '#FFFFFF';
+  const badgeBg = hasHero ? themeColor + '22' : 'rgba(255,255,255,0.25)';
+  const badgeTextColor = hasHero ? themeColor : '#FFFFFF';
+  const footerTextColor = hasHero ? '#64748B' : '#FFFFFF';
+
   return {
     type: 'bubble',
     size: PROMO_BUBBLE_SIZE,
+    // hero image (optional — requires a public HTTPS URL)
+    ...(hasHero
+      ? {
+          hero: {
+            type: 'image',
+            url: config.heroImageUrl,
+            size: 'full',
+            aspectMode: 'cover',
+            aspectRatio: '20:13',
+            action: { type: 'uri', uri: config.actionUrl },
+          },
+        }
+      : {}),
     styles: {
-      body: { backgroundColor: themeColor },
-      footer: { backgroundColor: themeColor },
+      body: { backgroundColor: hasHero ? '#FFFFFF' : themeColor },
+      footer: { backgroundColor: hasHero ? '#FFFFFF' : themeColor },
     },
     body: {
       type: 'box',
       layout: 'vertical',
-      paddingAll: '24px',
+      paddingAll: '20px',
       spacing: 'md',
       contents: [
-        { type: 'text', text: '🔥', size: '3xl', align: 'center' },
+        ...(!hasHero ? [{ type: 'text', text: '🔥', size: '3xl', align: 'center' }] : []),
         {
           type: 'text',
           text: config.title,
           size: 'xl',
           weight: 'bold',
-          color: '#FFFFFF',
+          color: bodyTextColor,
           align: 'center',
           wrap: true,
         },
@@ -617,7 +649,7 @@ function buildPromoCoverBubble(
           type: 'text',
           text: config.intro,
           size: 'sm',
-          color: '#FFFFFF',
+          color: bodySubTextColor,
           align: 'center',
           wrap: true,
           margin: 'md',
@@ -625,7 +657,7 @@ function buildPromoCoverBubble(
         {
           type: 'box',
           layout: 'vertical',
-          backgroundColor: 'rgba(255,255,255,0.2)',
+          backgroundColor: badgeBg,
           cornerRadius: '12px',
           paddingAll: '12px',
           margin: 'lg',
@@ -635,14 +667,14 @@ function buildPromoCoverBubble(
               text: String(totalProductCount),
               size: '3xl',
               weight: 'bold',
-              color: '#FFFFFF',
+              color: badgeTextColor,
               align: 'center',
             },
             {
               type: 'text',
               text: 'รายการสินค้าพิเศษ',
               size: 'sm',
-              color: '#FFFFFF',
+              color: badgeTextColor,
               align: 'center',
             },
           ],
@@ -651,7 +683,7 @@ function buildPromoCoverBubble(
           type: 'text',
           text: config.footerText,
           size: 'xs',
-          color: '#FFFFFF',
+          color: footerTextColor,
           align: 'center',
           wrap: true,
           margin: 'md',
@@ -666,7 +698,7 @@ function buildPromoCoverBubble(
         {
           type: 'button',
           style: 'primary',
-          color: '#FFFFFF',
+          color: themeColor,
           action: {
             type: 'uri',
             label: config.ctaLabel,
@@ -690,9 +722,13 @@ export function buildPromoCarouselContents(
     productsPerBubble?: number;
     startBubbleNum?: number;
     totalProducts?: number;
+    /** Override hero image URL (takes precedence over config.heroImageUrl) */
+    heroImageUrl?: string;
   } = {}
 ): object {
   const resolvedConfig = getResolvedConfig(config);
+  // Allow per-call heroImageUrl override (used in preview when URL changes live)
+  if (options.heroImageUrl !== undefined) resolvedConfig.heroImageUrl = options.heroImageUrl;
   const themeColor = resolvedConfig.accentColor || THEME_COLORS[resolvedConfig.theme];
   const { includeCover = true, productsPerBubble = 6, startBubbleNum = 1, totalProducts } = options;
 
