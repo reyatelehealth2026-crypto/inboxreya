@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-middleware';
 import prisma from '@/lib/prisma';
 import { pushLineMessage } from '@/lib/line-api';
-import { buildPromoMessages } from '@/lib/flex-builder';
+import { buildPromoMessages, buildDetailMessages } from '@/lib/flex-builder';
 import type { ExportPreviewProduct, ExportGlobalConfig } from '@/lib/flex-builder';
 
 /**
@@ -35,12 +35,14 @@ export async function POST(request: NextRequest) {
     const {
       products,
       config,
+      layoutMode = 'grid',
       productsPerBubble = 6,
       closingText,
       tagIds,
     } = body as {
       products: ExportPreviewProduct[];
       config: ExportGlobalConfig;
+      layoutMode?: 'grid' | 'detail';
       productsPerBubble?: number;
       closingText?: string;
       tagIds: number[];
@@ -61,11 +63,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Build all message objects once (reused for every recipient)
-    const messages = buildPromoMessages(products, config, {
-      productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
-      closingText: closingText?.trim() || undefined,
-      maxCarousels: 3,
-    });
+    const closing = closingText?.trim() || undefined;
+    const messages =
+      layoutMode === 'detail'
+        ? buildDetailMessages(products, config, { closingText: closing, maxCarousels: 4 })
+        : buildPromoMessages(products, config, {
+            productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
+            closingText: closing,
+            maxCarousels: 3,
+          });
 
     if (messages.length === 0) {
       return NextResponse.json(

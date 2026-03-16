@@ -37,11 +37,15 @@ import {
   MessageSquareText,
   ImageIcon,
   Code2,
+  LayoutGrid,
+  FileText,
 } from 'lucide-react';
 import { FlexPreview } from './FlexPreview';
 import {
   buildPromoCarouselContents,
   buildPromoMessages,
+  buildDetailCarouselContents,
+  buildDetailMessages,
   getTemplateDefaults,
   type ExportPreviewProduct,
   type ExportGlobalConfig,
@@ -214,6 +218,7 @@ export function SendCatalogDialog({
     heroImageUrl: '',
     ...defaultConfig,
   });
+  const [layoutMode, setLayoutMode] = useState<'grid' | 'detail'>('grid');
   const [productsPerBubble, setProductsPerBubble] = useState(6);
   const [closingText, setClosingText] = useState(
     'ด่วน! โปรโมชั่นนี้มีจำนวนจำกัด ทักแชทสั่งซื้อได้เลยค่ะ 👇'
@@ -229,6 +234,7 @@ export function SendCatalogDialog({
       setJsonValidated(false);
       setValidationResult(null);
       setShowJson(false);
+      setLayoutMode('grid');
     }
   }, [open]);
 
@@ -244,35 +250,74 @@ export function SendCatalogDialog({
     }
   }, [step, tags.length]);
 
-  // Carousel splits
+  // ── Carousel splits (grid mode only — used for payload count in grid mode) ──
   const carouselSplits = useMemo(
-    () => computeCarouselSplits(products, productsPerBubble, includeClosingText && !!closingText.trim()),
-    [products, productsPerBubble, includeClosingText, closingText]
+    () =>
+      layoutMode === 'grid'
+        ? computeCarouselSplits(products, productsPerBubble, includeClosingText && !!closingText.trim())
+        : [],
+    [layoutMode, products, productsPerBubble, includeClosingText, closingText]
   );
 
-  // Per-carousel payloads for preview
+  // ── Detail mode carousel count ──
+  const detailCarouselCount = useMemo(() => {
+    if (layoutMode !== 'detail') return 0;
+    const hasClosing = includeClosingText && !!closingText.trim();
+    const maxCarousels = hasClosing ? 4 : 5;
+    let remaining = products.length;
+    let count = 0;
+    for (let i = 0; i < maxCarousels && remaining > 0; i++) {
+      const slots = 12 - (i === 0 ? 1 : 0); // first carousel reserves 1 for cover
+      remaining -= slots;
+      count++;
+    }
+    return count;
+  }, [layoutMode, products.length, includeClosingText, closingText]);
+
+  const totalPayloads =
+    (layoutMode === 'grid' ? carouselSplits.length : detailCarouselCount) +
+    (includeClosingText && closingText.trim() ? 1 : 0);
+
+  // ── Per-carousel payloads for preview ──
   const carouselPayloads = useMemo(() => {
-    return carouselSplits.map((split) =>
-      buildPromoCarouselContents(split.products, config, {
-        includeCover: split.isFirst,
-        productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
-        startBubbleNum: split.startBubbleNum,
-        totalProducts: products.length,
-        heroImageUrl: config.heroImageUrl || undefined,
-      })
-    );
-  }, [carouselSplits, config, productsPerBubble, products.length]);
+    if (layoutMode === 'grid') {
+      return carouselSplits.map((split) =>
+        buildPromoCarouselContents(split.products, config, {
+          includeCover: split.isFirst,
+          productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
+          startBubbleNum: split.startBubbleNum,
+          totalProducts: products.length,
+          heroImageUrl: config.heroImageUrl || undefined,
+        })
+      );
+    }
+    // detail mode — rebuild from allMessages (carousel contents)
+    return [];
+  }, [layoutMode, carouselSplits, config, productsPerBubble, products.length]);
 
-  // Full message objects for JSON validation
+  // ── Full message objects for JSON validation + detail preview ──
   const allMessages = useMemo(() => {
-    return buildPromoMessages(products, config, {
-      productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
-      closingText: includeClosingText && closingText.trim() ? closingText.trim() : undefined,
-      maxCarousels: 3,
+    const closing = includeClosingText && closingText.trim() ? closingText.trim() : undefined;
+    if (layoutMode === 'grid') {
+      return buildPromoMessages(products, config, {
+        productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
+        closingText: closing,
+        maxCarousels: 3,
+      });
+    }
+    return buildDetailMessages(products, config, {
+      closingText: closing,
+      maxCarousels: 4,
     });
-  }, [products, config, productsPerBubble, includeClosingText, closingText]);
+  }, [layoutMode, products, config, productsPerBubble, includeClosingText, closingText]);
 
-  const totalPayloads = carouselSplits.length + (includeClosingText && closingText.trim() ? 1 : 0);
+  // Extract carousel contents from allMessages for detail-mode preview
+  const detailCarouselPayloads = useMemo(() => {
+    if (layoutMode !== 'detail') return [];
+    return allMessages
+      .filter((m: any) => m.type === 'flex')
+      .map((m: any) => m.contents);
+  }, [layoutMode, allMessages]);
 
   const totalTargetUsers = useMemo(
     () => tags.filter((t) => selectedTagIds.has(t.id)).reduce((s, t) => s + t.userCount, 0),
@@ -323,6 +368,7 @@ export function SendCatalogDialog({
         body: JSON.stringify({
           products,
           config,
+          layoutMode,
           productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
           closingText: includeClosingText && closingText.trim() ? closingText.trim() : undefined,
           tagIds: Array.from(selectedTagIds),
@@ -410,10 +456,51 @@ export function SendCatalogDialog({
               <div className="space-y-4">
                 <h3 className="font-semibold text-gray-800 flex items-center gap-2">
                   <LayoutTemplate className="w-4 h-4" />
-                  ตั้งค่า Flex Message (Grid Layout · size: giga)
+                  ตั้งค่า Flex Message
                 </h3>
 
-                <div className="grid grid-cols-2 gap-4">
+                {/* Layout Mode Toggle */}
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    {
+                      mode: 'grid' as const,
+                      icon: LayoutGrid,
+                      title: 'Grid (ประหยัด Quota)',
+                      desc: '6 สินค้า/Bubble · 2×3 grid · size: giga',
+                      cap: `รองรับสูงสุด ~210 สินค้า`,
+                    },
+                    {
+                      mode: 'detail' as const,
+                      icon: FileText,
+                      title: 'Detail (รายละเอียดครบ)',
+                      desc: '1 สินค้า/Bubble · ภาพ + ชื่อ + โปร + ราคา · size: kilo',
+                      cap: `รองรับสูงสุด ~59 สินค้า`,
+                    },
+                  ] as const).map(({ mode, icon: Icon, title, desc, cap }) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setLayoutMode(mode)}
+                      className={cn(
+                        'rounded-lg border-2 p-3 text-left transition-all',
+                        layoutMode === mode
+                          ? 'border-green-500 bg-green-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      )}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Icon className={cn('w-4 h-4', layoutMode === mode ? 'text-green-600' : 'text-gray-400')} />
+                        <span className={cn('text-xs font-semibold', layoutMode === mode ? 'text-green-800' : 'text-gray-700')}>
+                          {title}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-gray-500 leading-snug">{desc}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{cap}</p>
+                    </button>
+                  ))}
+                </div>
+
+                <div className={cn('grid gap-4', layoutMode === 'grid' ? 'grid-cols-2' : 'grid-cols-1')}>
                   <div className="space-y-1.5">
                     <Label className="text-xs">เทมเพลต</Label>
                     <Select value={config.template} onValueChange={(v) => handleTemplateChange(v as FlexMessageTemplate)}>
@@ -425,18 +512,20 @@ export function SendCatalogDialog({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">สินค้าต่อ Bubble (สูงสุด 6)</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number" min={1} max={6}
-                        value={productsPerBubble}
-                        onChange={(e) => setProductsPerBubble(Math.min(6, Math.max(1, parseInt(e.target.value) || 1)))}
-                        className="h-9 text-sm w-20"
-                      />
-                      <span className="text-xs text-gray-500">→ {carouselSplits.length} carousel{carouselSplits.length > 1 ? 's' : ''}</span>
+                  {layoutMode === 'grid' && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">สินค้าต่อ Bubble (สูงสุด 6)</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number" min={1} max={6}
+                          value={productsPerBubble}
+                          onChange={(e) => setProductsPerBubble(Math.min(6, Math.max(1, parseInt(e.target.value) || 1)))}
+                          className="h-9 text-sm w-20"
+                        />
+                        <span className="text-xs text-gray-500">→ {carouselSplits.length} carousel{carouselSplits.length > 1 ? 's' : ''}</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Payload counter */}
@@ -444,7 +533,8 @@ export function SendCatalogDialog({
                   <div className="flex items-start gap-2 text-sm text-blue-800">
                     <Package className="w-4 h-4 mt-0.5 shrink-0" />
                     <div>
-                      <strong>{products.length}</strong> สินค้า · <strong>{carouselSplits.length}</strong> Flex Carousel ·{' '}
+                      <strong>{products.length}</strong> สินค้า ·{' '}
+                      <strong>{layoutMode === 'grid' ? carouselSplits.length : detailCarouselCount}</strong> Flex Carousel ·{' '}
                       {includeClosingText && closingText.trim() && <><strong>1</strong> ข้อความปิดท้าย = </>}
                       <strong className={totalPayloads >= 5 ? 'text-red-600' : 'text-blue-800'}>
                         {totalPayloads} payload{totalPayloads !== 1 ? 's' : ''}
@@ -453,7 +543,9 @@ export function SendCatalogDialog({
                     </div>
                   </div>
                   <p className="text-xs text-blue-600 pl-6">
-                    2 คอลัมน์ × 3 แถว = 6 สินค้า/Bubble · ทุก Bubble ใช้ size=<strong>giga</strong>
+                    {layoutMode === 'grid'
+                      ? `2 คอลัมน์ × 3 แถว = 6 สินค้า/Bubble · size=giga`
+                      : `1 สินค้า/Bubble · ภาพ + ชื่อ + โปร + ราคา + CTA · size=kilo`}
                   </p>
                 </div>
 
@@ -541,10 +633,15 @@ export function SendCatalogDialog({
               <div className="space-y-4">
                 <h3 className="font-semibold text-gray-800 flex items-center gap-2">
                   <Eye className="w-4 h-4" />
-                  Preview — {carouselSplits.length} Flex + {totalPayloads} payload{totalPayloads !== 1 ? 's' : ''} total
+                  Preview — {layoutMode === 'grid' ? carouselSplits.length : detailCarouselCount} Flex ·{' '}
+                  {totalPayloads} payload{totalPayloads !== 1 ? 's' : ''} total
+                  <Badge variant="outline" className="text-[10px] ml-1">
+                    {layoutMode === 'grid' ? `size: giga · grid` : `size: kilo · detail`}
+                  </Badge>
                 </h3>
 
-                {carouselPayloads.map((payload, idx) => {
+                {/* Grid mode carousels */}
+                {layoutMode === 'grid' && carouselPayloads.map((payload, idx) => {
                   const split = carouselSplits[idx];
                   return (
                     <div key={idx} className="rounded-lg border bg-slate-50 p-3 space-y-2">
@@ -562,10 +659,31 @@ export function SendCatalogDialog({
                   );
                 })}
 
+                {/* Detail mode carousels */}
+                {layoutMode === 'detail' && detailCarouselPayloads.map((payload, idx) => {
+                  const flexMsg = allMessages.filter((m: any) => m.type === 'flex')[idx] as any;
+                  const bubbleCount = (payload as any)?.contents?.length ?? 0;
+                  return (
+                    <div key={idx} className="rounded-lg border bg-slate-50 p-3 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-xs font-medium">
+                          Payload {idx + 1} — Flex Carousel
+                        </Badge>
+                        <span className="text-xs text-gray-500">
+                          {idx === 0 ? `Cover + ${bubbleCount - 1} สินค้า` : `${bubbleCount} สินค้า`}
+                          {idx === 0 && config.heroImageUrl ? ' 🖼️' : ''}
+                          {' · '}size: kilo
+                        </span>
+                      </div>
+                      <FlexPreview flex={payload} />
+                    </div>
+                  );
+                })}
+
                 {includeClosingText && closingText.trim() && (
                   <div className="rounded-lg border bg-slate-50 p-3 space-y-2">
                     <Badge variant="outline" className="text-xs font-medium">
-                      Payload {carouselSplits.length + 1} — Text
+                      Payload {(layoutMode === 'grid' ? carouselSplits.length : detailCarouselCount) + 1} — Text
                     </Badge>
                     <div className="bg-white rounded-lg border p-3 text-sm text-gray-800 whitespace-pre-wrap">
                       {closingText}
@@ -706,18 +824,20 @@ export function SendCatalogDialog({
                     {/* ── Summary ── */}
                     <div className="rounded-lg border bg-gray-50 p-4 space-y-2.5 text-sm">
                       {[
+                        ['Layout mode', layoutMode === 'grid' ? 'Grid (6 สินค้า/Bubble · size: giga)' : 'Detail (1 สินค้า/Bubble · size: kilo)'],
                         ['เทมเพลต', TEMPLATE_OPTIONS.find((o) => o.value === config.template)?.label],
                         ['สินค้า', `${products.length} รายการ`],
-                        ['สินค้าต่อ Bubble', `${productsPerBubble} (2 col × 3 row grid)`],
-                        ['Bubble size', 'giga (LINE spec ✓)'],
-                        ['Flex Carousels', String(carouselSplits.length)],
+                        ...(layoutMode === 'grid'
+                          ? [['สินค้าต่อ Bubble', `${productsPerBubble} (2 col × 3 row grid)`]]
+                          : [['ภาพ + ชื่อ + โปร + ราคา', 'ครบทุก Bubble']]),
+                        ['Flex Carousels', String(layoutMode === 'grid' ? carouselSplits.length : detailCarouselCount)],
                         ...(includeClosingText && closingText.trim() ? [['ข้อความปิดท้าย', 'มี']] : []),
                         ['Payloads / call', `${totalPayloads} / 5 ✓`],
                         ['Tags ที่เลือก', tags.filter((t) => selectedTagIds.has(t.id)).map((t) => t.name).join(', ') || '—'],
                       ].map(([label, val], i) => (
-                        <div key={i} className={cn('flex justify-between', i === 7 ? 'border-t pt-2' : '')}>
+                        <div key={i} className={cn('flex justify-between')}>
                           <span className="text-gray-600">{label}</span>
-                          <span className={cn('font-medium', label === 'Payloads / call' ? 'text-green-700 font-bold' : '')}>{val}</span>
+                          <span className={cn('font-medium text-right ml-4', label === 'Payloads / call' ? 'text-green-700 font-bold' : label === 'Layout mode' ? (layoutMode === 'detail' ? 'text-violet-700' : 'text-blue-700') : '')}>{val}</span>
                         </div>
                       ))}
                       <div className="flex justify-between border-t pt-2">
