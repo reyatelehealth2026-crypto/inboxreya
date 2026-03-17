@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 
@@ -412,6 +413,12 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2024') {
+      return NextResponse.json(
+        { error: 'Database is busy, please try again in a moment.' },
+        { status: 503 }
+      )
+    }
     console.error('Error fetching conversations:', error)
     return NextResponse.json(
       { error: 'Failed to fetch conversations' },
