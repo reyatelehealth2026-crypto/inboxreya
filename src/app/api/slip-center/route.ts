@@ -37,7 +37,8 @@ export async function GET(request: NextRequest) {
         headers: { 'User-Agent': 'InboxReya-SlipCenter/1.0' },
         cache: 'no-store',
       }).then(r => r.json()).catch(() => ({ success: false })),
-      phpPost({ action: 'odoo_bdo_list_api', limit: 200, offset: 0 }),
+      // Use local DB query (no Odoo live API) for fast global BDO overview
+      phpPost({ action: 'slip_center_bdo_overview', limit: 200 }),
     ])
 
     const customers = custRes?.success && custRes?.data?.customers
@@ -48,11 +49,11 @@ export async function GET(request: NextRequest) {
       ? slipRes.data.slips
       : []
 
+    // slip_center_bdo_overview returns { bdos: [...] } from local odoo_bdo_orders table
     const allBdos = bdoRes?.success && bdoRes?.data?.bdos
       ? bdoRes.data.bdos
       : []
 
-    // Count pending BDOs (pending or partial payment status)
     const pendingBdos = allBdos.filter((b: any) => {
       const status = String(b?.payment_status || b?.status || '').toLowerCase()
       if (status === 'paid' || status === 'fully_paid' || status === 'done') return false
