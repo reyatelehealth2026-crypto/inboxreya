@@ -78,37 +78,70 @@ export function CustomerSlipDetail({
 
   const canMatch = selectedSlipId !== null && selectedBdoId !== null
 
-  // Auto-suggest: find pairs where slip amount ≈ BDO amount
+  // Auto-suggest: 3-pass matching algorithm (mirrors computeSmartMatches in odoo-dashboard.js)
   const suggestions = useMemo(() => {
     if (!data) return []
-    const pairs: { slip: SlipCenterSlip; bdo: SlipCenterBdo; confidence: string }[] = []
+    const pairs: { slip: SlipCenterSlip; bdo: SlipCenterBdo; confidence: string; diff: number }[] = []
     const usedSlips = new Set<number>()
     const usedBdos = new Set<number>()
 
-    data.pendingSlips.forEach(slip => {
+    const pendingSlips = data.pendingSlips
+    const pendingBdos = data.bdoOrders
+
+    // Pass 0: bdo_id direct match — highest confidence
+    pendingSlips.forEach(slip => {
+      if (usedSlips.has(slip.id) || !slip.bdo_id) return
+      pendingBdos.forEach(bdo => {
+        if (usedBdos.has(bdo.bdo_id)) return
+        if (String(slip.bdo_id) !== String(bdo.bdo_id)) return
+        const slipAmt = parseFloat(String(slip.amount || 0))
+        const bdoAmt = parseFloat(String(bdo.amount_total || bdo.amount_net_to_pay || 0))
+        const diff = slipAmt - bdoAmt
+        pairs.push({ slip, bdo, confidence: 'exact_bdo', diff })
+        usedSlips.add(slip.id)
+        usedBdos.add(bdo.bdo_id)
+      })
+    })
+
+    // Pass 1: exact amount match (unique candidate only, ≤1 THB tolerance)
+    pendingSlips.forEach(slip => {
       if (usedSlips.has(slip.id)) return
       const slipAmt = parseFloat(String(slip.amount || 0))
       if (slipAmt <= 0) return
-
-      data.bdoOrders.forEach(bdo => {
-        if (usedBdos.has(bdo.bdo_id)) return
-        const bdoAmt = parseFloat(String(bdo.amount_total || 0))
-        if (bdoAmt <= 0) return
-
-        // Exact match
-        if (Math.abs(slipAmt - bdoAmt) < 0.01) {
-          pairs.push({ slip, bdo, confidence: 'exact' })
-          usedSlips.add(slip.id)
-          usedBdos.add(bdo.bdo_id)
-        }
-        // ±5% match
-        else if (Math.abs(slipAmt - bdoAmt) / bdoAmt <= 0.05) {
-          pairs.push({ slip, bdo, confidence: 'partial' })
-          usedSlips.add(slip.id)
-          usedBdos.add(bdo.bdo_id)
-        }
+      const candidates = pendingBdos.filter(bdo => {
+        if (usedBdos.has(bdo.bdo_id)) return false
+        const bdoAmt = parseFloat(String(bdo.amount_total || bdo.amount_net_to_pay || 0))
+        return Math.abs(slipAmt - bdoAmt) <= 1
       })
+      if (candidates.length === 1) {
+        const bdo = candidates[0]
+        const bdoAmt = parseFloat(String(bdo.amount_total || bdo.amount_net_to_pay || 0))
+        pairs.push({ slip, bdo, confidence: 'exact_amount', diff: slipAmt - bdoAmt })
+        usedSlips.add(slip.id)
+        usedBdos.add(bdo.bdo_id)
+      }
     })
+
+    // Pass 2: ±5% amount match (unique candidate only)
+    pendingSlips.forEach(slip => {
+      if (usedSlips.has(slip.id)) return
+      const slipAmt = parseFloat(String(slip.amount || 0))
+      if (slipAmt <= 0) return
+      const candidates = pendingBdos.filter(bdo => {
+        if (usedBdos.has(bdo.bdo_id)) return false
+        const bdoAmt = parseFloat(String(bdo.amount_total || bdo.amount_net_to_pay || 0))
+        if (bdoAmt <= 0) return false
+        return Math.abs(slipAmt - bdoAmt) / bdoAmt <= 0.05
+      })
+      if (candidates.length === 1) {
+        const bdo = candidates[0]
+        const bdoAmt = parseFloat(String(bdo.amount_total || bdo.amount_net_to_pay || 0))
+        pairs.push({ slip, bdo, confidence: 'partial', diff: slipAmt - bdoAmt })
+        usedSlips.add(slip.id)
+        usedBdos.add(bdo.bdo_id)
+      }
+    })
+
     return pairs
   }, [data])
 
@@ -128,6 +161,7 @@ export function CustomerSlipDetail({
         body: JSON.stringify({
           slipInboxId: slip?.slip_inbox_id || slip?.odoo_slip_id || 0,
           lineUserId: slip?.line_user_id || lineUserId,
+          lineAccountId: slip?.line_account_id || 0,
           localSlipId: slipId,
           matches: [{ bdo_id: bdoId, amount: parseFloat(String(bdo?.amount_total || 0)) }],
           note: note || matchNote || 'Matched from Slip Center',
@@ -139,6 +173,16 @@ export function CustomerSlipDetail({
         setSelectedSlipId(null)
         setSelectedBdoId(null)
         setMatchNote('')
+        // Optimistic update: remove matched slip from pending list immediately
+        qc.setQueryData<CustomerDetailData>(
+          ['slip-center-detail', customerRef, partnerId],
+          old => old ? {
+            ...old,
+            pendingSlips: old.pendingSlips.filter(s => s.id !== slipId),
+            stats: { ...old.stats, totalPendingSlips: Math.max(0, old.stats.totalPendingSlips - 1) },
+          } : old
+        )
+        // Background revalidation
         refreshDetail()
         onRefreshParent()
       } else {
@@ -149,7 +193,7 @@ export function CustomerSlipDetail({
     } finally {
       setIsMatching(false)
     }
-  }, [data, lineUserId, matchNote, refreshDetail, onRefreshParent, toast])
+  }, [data, lineUserId, matchNote, customerRef, partnerId, qc, refreshDetail, onRefreshParent, toast])
 
   const handleUnmatch = useCallback(async (slip: SlipCenterSlip) => {
     if (!confirm('ยกเลิกการจับคู่สลิปนี้ ใช่ไหม?')) return
@@ -263,9 +307,12 @@ export function CustomerSlipDetail({
 
                 <Badge className={cn(
                   "text-[9px] h-4 px-1.5",
-                  sg.confidence === 'exact' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                  sg.confidence === 'exact_bdo' ? 'bg-blue-100 text-blue-700' :
+                  sg.confidence === 'exact_amount' ? 'bg-green-100 text-green-700' :
+                  'bg-amber-100 text-amber-700'
                 )}>
-                  {sg.confidence === 'exact' ? 'ตรงยอด' : '±5%'}
+                  {sg.confidence === 'exact_bdo' ? 'bdo_id ตรง' :
+                   sg.confidence === 'exact_amount' ? 'ยอดตรง' : '±5%'}
                 </Badge>
 
                 <Button

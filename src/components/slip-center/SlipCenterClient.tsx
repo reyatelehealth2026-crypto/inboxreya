@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Link from 'next/link'
 import {
@@ -172,23 +172,29 @@ function SlipCenterInner() {
     qc.invalidateQueries({ queryKey: ['slip-center'] })
   }, [qc])
 
-  // Build slip/BDO count maps for the customer grid
-  const slipCountByRef: Record<string, number> = {}
-  const bdoCountByRef: Record<string, number> = {}
-
-  if (data) {
+  // Build slip/BDO count maps for the customer grid — memoized on data only
+  const slipCountByRef = useMemo<Record<string, number>>(() => {
+    const map: Record<string, number> = {}
+    if (!data) return map
     data.pendingSlips.forEach(s => {
       const ref = getSlipCustomerRef(s)
-      if (ref) slipCountByRef[ref] = (slipCountByRef[ref] || 0) + 1
+      if (ref) map[ref] = (map[ref] || 0) + 1
     })
+    return map
+  }, [data])
+
+  const bdoCountByRef = useMemo<Record<string, number>>(() => {
+    const map: Record<string, number> = {}
+    if (!data) return map
     data.pendingBdos.forEach(b => {
       const ps = normalizeBdoPaymentStatus(b)
       if (ps.key === 'pending' || ps.key === 'partial') {
         const ref = getBdoCustomerRef(b)
-        if (ref) bdoCountByRef[ref] = (bdoCountByRef[ref] || 0) + 1
+        if (ref) map[ref] = (map[ref] || 0) + 1
       }
     })
-  }
+    return map
+  }, [data])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50/30">
