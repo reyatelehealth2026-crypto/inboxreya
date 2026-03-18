@@ -39,16 +39,22 @@ export async function GET(request: NextRequest) {
         limit: 100,
       }),
       cache: 'no-store',
-      signal: AbortSignal.timeout(15000), // 15s timeout — fail fast before Vercel 30s
+      signal: AbortSignal.timeout(25000), // 25s timeout — fail fast before Vercel 30s
     })
 
     const json = await res.json().catch(() => ({ success: false, error: 'Invalid JSON from PHP' }))
 
     if (!json.success) {
-      return NextResponse.json({ success: false, error: json.error || 'PHP error' }, { status: 502 })
+      // Return empty data with error info instead of 5xx so transient PHP failures
+      // don't inflate the Vercel function error rate.
+      return NextResponse.json({
+        success: false,
+        error: json.error || 'PHP error',
+        data: { bdoOrders: [], pendingSlips: [], allSlips: [], matchedToday: [], stats: { totalBdos: 0, totalPendingSlips: 0, totalMatchedToday: 0 } },
+      })
     }
 
-    const d = json.data
+    const d = json.data || {}
     return NextResponse.json({
       success: true,
       data: {

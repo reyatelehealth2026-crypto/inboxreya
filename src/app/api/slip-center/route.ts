@@ -11,6 +11,7 @@ async function phpPost(body: Record<string, unknown>) {
     headers: { 'Content-Type': 'application/json', 'User-Agent': 'InboxReya-SlipCenter/1.0' },
     body: JSON.stringify(body),
     cache: 'no-store',
+    signal: AbortSignal.timeout(25000), // 25s — fail fast before Vercel 30s limit
   })
   return res.json().catch(() => ({ success: false, error: 'Invalid JSON' }))
 }
@@ -36,6 +37,7 @@ export async function GET(request: NextRequest) {
       fetch(`${SLIPS_API}?status=pending&limit=200&offset=0`, {
         headers: { 'User-Agent': 'InboxReya-SlipCenter/1.0' },
         cache: 'no-store',
+        signal: AbortSignal.timeout(25000), // 25s — fail fast before Vercel 30s limit
       }).then(r => r.json()).catch(() => ({ success: false })),
       // Use local DB query (no Odoo live API) for fast global BDO overview
       phpPost({ action: 'slip_center_bdo_overview', limit: 200 }),
