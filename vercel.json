@@ -8,6 +8,12 @@
     "src/app/api/**/*.ts": {
       "maxDuration": 30
     },
+    "src/app/api/slip-center/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/slip-center/customer-detail/route.ts": {
+      "maxDuration": 60
+    },
     "src/app/api/inbox/realtime/route.ts": {
       "maxDuration": 300
     },
