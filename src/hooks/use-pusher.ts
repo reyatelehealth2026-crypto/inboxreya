@@ -12,7 +12,12 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useChatStore } from '@/stores/chat'
 import { useInboxStore } from '@/stores/inbox'
 import { CHANNELS, EVENTS } from '@/lib/pusher-constants'
-import type { NewMessageEvent, ConversationUpdatedEvent, TypingEvent } from '@/lib/pusher-constants'
+import type {
+  NewMessageEvent,
+  ConversationUpdatedEvent,
+  MessageReadEvent,
+  TypingEvent,
+} from '@/lib/pusher-constants'
 import { queryKeys } from '@/lib/query-keys'
 
 // Singleton Pusher instance
@@ -142,6 +147,24 @@ export function usePusher(options: UsePusherOptions = {}) {
     }
   }, [queryClient, selectedConversationId])
 
+  const handleMessageRead = useCallback((data: MessageReadEvent) => {
+    console.log('[Pusher] Message read:', data)
+
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.conversationsRoot(),
+      exact: false,
+      refetchType: 'active',
+    })
+
+    if (data.conversationId === selectedConversationId) {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.messagesForUser(data.conversationId),
+        exact: false,
+        refetchType: 'none',
+      })
+    }
+  }, [queryClient, selectedConversationId])
+
   // Handle typing start
   const handleTypingStart = useCallback((data: TypingEvent) => {
     addTypingUser(data.conversationId, {
@@ -210,7 +233,7 @@ export function usePusher(options: UsePusherOptions = {}) {
     })
     inboxChannel.bind(EVENTS.MESSAGE_READ, (data: any) => {
       console.log('[Pusher] Raw event received:', EVENTS.MESSAGE_READ, data)
-      handleConversationUpdate(data)
+      handleMessageRead(data)
     })
     
     // Debug: Log all events
@@ -224,7 +247,7 @@ export function usePusher(options: UsePusherOptions = {}) {
       inboxChannel.unbind_all()
       pusher.unsubscribe(CHANNELS.INBOX)
     }
-  }, [enabled, handleNewMessage, handleConversationUpdate])
+  }, [enabled, handleNewMessage, handleConversationUpdate, handleMessageRead])
 
   // Subscribe to conversation-specific channel for typing indicators
   useEffect(() => {

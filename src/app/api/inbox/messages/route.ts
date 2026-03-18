@@ -4,24 +4,11 @@ import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { sendPlatformMessage } from '@/lib/php-bridge'
 import { broadcastRealtimeEvent } from '@/lib/realtime'
-import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
+import { broadcastNewMessage } from '@/lib/pusher'
+import { serializeBangkokWallTime, toBangkokDatabaseTime } from '@/lib/utils'
 
 const isInternalRequest = (request: NextRequest) =>
   request.headers.get('x-internal-request') === 'true'
-
-// Helper to handle the timezone discrepancy between Next.js (UTC connection) and PHP (Local connection + DATETIME)
-// The DB stores literal Bangkok time (e.g. 17:00) but Prisma reads it as UTC (17:00Z).
-// We simply assert that the time read IS +07:00.
-const toBangkokWallTime = (date: Date | null | undefined) => {
-  if (!date) return null
-  try {
-    // Take the ISO string (e.g. "2024-01-30T17:00:00.000Z") and declare it as +07:00
-    // Result: "2024-01-30T17:00:00.000+07:00"
-    return date.toISOString().replace('Z', '+07:00')
-  } catch (e) {
-    return null
-  }
-}
 
 const parseMetadata = (value: string | null) => {
   if (!value) return null
@@ -47,7 +34,6 @@ export async function GET(request: NextRequest) {
     const cursor = searchParams.get('cursor')
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
-    const markRead = searchParams.get('markRead')
 
     if (!userId) {
       return NextResponse.json({ error: 'userId is required' }, { status: 400 })
@@ -119,18 +105,6 @@ export async function GET(request: NextRequest) {
 
     const total = await prisma.message.count({ where })
 
-    const shouldMarkRead = markRead !== 'false' && markRead !== '0'
-    if (shouldMarkRead) {
-      await prisma.message.updateMany({
-        where: {
-          userId: parsedUserId,
-          direction: 'incoming',
-          isRead: false,
-        },
-        data: { isRead: true },
-      })
-    }
-
     const formattedMessages = messages.map((msg) => ({
       id: msg.id.toString(),
       userId: msg.userId?.toString() ?? '',
@@ -150,8 +124,8 @@ export async function GET(request: NextRequest) {
         }
         : null,
       platform: (msg.platform ?? 'line') as 'line' | 'facebook' | 'tiktok',
-      createdAt: toBangkokWallTime(msg.createdAt),
-      updatedAt: toBangkokWallTime(msg.updatedAt),
+      createdAt: serializeBangkokWallTime(msg.createdAt),
+      updatedAt: serializeBangkokWallTime(msg.updatedAt),
     }))
 
     // DEBUG: Log first and last message content
@@ -305,10 +279,7 @@ export async function POST(request: NextRequest) {
       console.warn('PHP_API_URL not configured, message will be saved but not sent to platform')
     }
 
-    // Manual Time override for Bangkok Time
-    const now = new Date()
-    // Add 7 hours to ensure DATETIME columns receive the Bangkok face-value time
-    const bangkokNow = new Date(now.getTime() + 7 * 60 * 60 * 1000)
+    const bangkokNow = toBangkokDatabaseTime(new Date())
     
     // Build metadata including quoteToken and lineMessageId from LINE API response
     const messageMetadata: any = metadata || {}
@@ -345,7 +316,7 @@ export async function POST(request: NextRequest) {
     // Update user's last interaction
     await prisma.lineUser.update({
       where: { id: parsedUserId },
-      data: { lastInteraction: new Date() }, // lastInteraction might be TIMESTAMP or DATETIME? Usually datetime. Should probably apply same logic but usually less critical.
+      data: { lastInteraction: bangkokNow },
       select: { id: true },
     })
 
@@ -368,8 +339,8 @@ export async function POST(request: NextRequest) {
         }
         : null,
       platform: userPlatform,
-      createdAt: toBangkokWallTime(message.createdAt),
-      updatedAt: toBangkokWallTime(message.updatedAt),
+      createdAt: serializeBangkokWallTime(message.createdAt),
+      updatedAt: serializeBangkokWallTime(message.updatedAt),
       platformSent: platformSendSuccess,
     }
 

@@ -7,7 +7,20 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import type { ExportGlobalConfig, ExportThemeKey } from '@/lib/flex-builder';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { FlexPreview } from '@/components/inbox/FlexPreview';
+import type {
+  ExportGlobalConfig,
+  ExportThemeKey,
+  FlexMessageTemplate,
+} from '@/lib/flex-builder';
+import { getTemplateDefaults } from '@/lib/flex-builder';
 import { useFlexExport } from './hooks/useFlexExport';
 import type { CsvProduct } from '@/lib/csv-product';
 
@@ -17,6 +30,14 @@ const THEME_OPTIONS: { value: ExportThemeKey; label: string; color: string }[] =
   { value: 'emerald', label: 'เขียว', color: '#38A169' },
   { value: 'amber', label: 'ส้ม', color: '#D69E2E' },
   { value: 'sky', label: 'ฟ้า', color: '#4299E1' },
+];
+
+const TEMPLATE_OPTIONS: { value: FlexMessageTemplate; label: string }[] = [
+  { value: 'promotion', label: 'โปรโมชัน' },
+  { value: 'flash_sale', label: 'Flash Sale' },
+  { value: 'new_arrival', label: 'สินค้าใหม่' },
+  { value: 'bestseller', label: 'สินค้าขายดี' },
+  { value: 'product_catalog', label: 'แคตตาล็อคสินค้า' },
 ];
 
 function formatBytes(bytes: number): string {
@@ -32,18 +53,19 @@ interface FlexExportPanelProps {
 }
 
 export function FlexExportPanel({ selectedProducts }: FlexExportPanelProps) {
+  const initialDefaults = getTemplateDefaults('promotion');
   const [config, setConfig] = useState<ExportGlobalConfig>({
     template: 'promotion',
-    title: 'โปรโมชันพิเศษ',
-    intro: 'รวมสินค้าราคาพิเศษ คัดมาให้พร้อมโปรเด่น',
-    footerText: 'สนใจตัวไหน แจ้งรหัสส่งกลับมาได้เลย',
-    ctaLabel: 'ซื้อเลย',
-    theme: 'rose',
+    title: initialDefaults.title,
+    intro: initialDefaults.intro,
+    footerText: initialDefaults.footerText,
+    ctaLabel: initialDefaults.ctaLabel,
+    theme: initialDefaults.theme,
   });
   const [minify, setMinify] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const { flexJsonPretty, flexJsonMinified, sizePretty, sizeMinified } = useFlexExport(
+  const { flexPayload, flexJsonPretty, flexJsonMinified, sizePretty, sizeMinified } = useFlexExport(
     selectedProducts,
     config
   );
@@ -63,7 +85,7 @@ export function FlexExportPanel({ selectedProducts }: FlexExportPanelProps) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'flex-promotion.json';
+    a.download = `flex-${config.template}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -73,6 +95,37 @@ export function FlexExportPanel({ selectedProducts }: FlexExportPanelProps) {
       <h3 className="font-semibold text-slate-900">ตั้งค่า Flex Message</h3>
 
       <div className="space-y-3">
+        <div>
+          <Label className="text-xs">เทมเพลต</Label>
+          <Select
+            value={config.template}
+            onValueChange={(value) => {
+              const nextTemplate = value as FlexMessageTemplate;
+              const defaults = getTemplateDefaults(nextTemplate);
+              setConfig({
+                ...config,
+                template: nextTemplate,
+                title: defaults.title,
+                intro: defaults.intro,
+                footerText: defaults.footerText,
+                ctaLabel: defaults.ctaLabel,
+                theme: defaults.theme,
+              });
+            }}
+          >
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TEMPLATE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         <div>
           <Label className="text-xs">หัวข้อ</Label>
           <Input
@@ -92,10 +145,29 @@ export function FlexExportPanel({ selectedProducts }: FlexExportPanelProps) {
         </div>
 
         <div>
+          <Label className="text-xs">ข้อความท้ายการ์ด</Label>
+          <Textarea
+            value={config.footerText}
+            onChange={(e) => setConfig({ ...config, footerText: e.target.value })}
+            className="min-h-[56px] text-sm"
+          />
+        </div>
+
+        <div>
+          <Label className="text-xs">ข้อความปุ่ม CTA</Label>
+          <Input
+            value={config.ctaLabel}
+            onChange={(e) => setConfig({ ...config, ctaLabel: e.target.value })}
+            className="h-8 text-sm"
+          />
+        </div>
+
+        <div>
           <Label className="text-xs">ธีมสี</Label>
           <div className="flex gap-2">
             {THEME_OPTIONS.map((t) => (
               <button
+                type="button"
                 key={t.value}
                 onClick={() => setConfig({ ...config, theme: t.value })}
                 className={`w-8 h-8 rounded-full border-2 ${
@@ -108,12 +180,20 @@ export function FlexExportPanel({ selectedProducts }: FlexExportPanelProps) {
           </div>
         </div>
 
+        <div className="space-y-2">
+          <Label className="text-xs">Preview</Label>
+          <div className="rounded-lg border bg-slate-50 p-3">
+            <FlexPreview flex={flexPayload} />
+          </div>
+        </div>
+
         <div className="flex items-center justify-between rounded-lg bg-slate-50 p-3">
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-amber-500" />
             <span className="text-sm">Minify JSON</span>
           </div>
           <button
+            type="button"
             onClick={() => setMinify(!minify)}
             className={`relative h-5 w-9 rounded-full transition-colors ${
               minify ? 'bg-violet-500' : 'bg-slate-300'

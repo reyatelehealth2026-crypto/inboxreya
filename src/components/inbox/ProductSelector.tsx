@@ -29,7 +29,14 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import type { Product, ProductUnit, SelectedProduct } from '@/types/product-catalog';
+import {
+  generateFlexCarousel,
+  generateFlexMessageByTemplate,
+  type Product,
+  type ProductUnit,
+  type SelectedProduct,
+  type FlexMessageTemplate,
+} from '@/types/product-catalog';
 
 interface ProductSelectorProps {
   products: Product[];
@@ -139,145 +146,49 @@ export function ProductSelector({ products, className }: ProductSelectorProps) {
 
   // Generate Flex Message
   const generateFlexMessage = useCallback(() => {
-    const items = Array.from(selectedItems.values()).map(item => {
-      const data = item.product.product_data?.[0];
-      if (!data) return null;
-      
-      const unit = item.selectedUnit;
-      const price = item.product.product_price?.[0]?.product_price?.[0];
-      const photo = item.product.product_photo?.[0];
-      
-      const displayPrice = price?.promotion_price !== '0.00' 
-        ? parseFloat(price.promotion_price) 
-        : parseFloat(price?.price || '0');
-      const originalPrice = parseFloat(price?.price || '0');
-      const hasDiscount = displayPrice < originalPrice;
+    const selectedProducts = Array.from(selectedItems.values());
 
-      return {
-        type: 'bubble',
-        size: 'micro',
-        hero: photo ? {
-          type: 'image',
-          url: `https://www.cnypharmacy.com/${photo.photo_path}`,
-          size: 'full',
-          aspectRatio: '1:1',
-          aspectMode: 'cover'
-        } : undefined,
-        body: {
-          type: 'box',
-          layout: 'vertical',
-          spacing: 'sm',
-          contents: [
-            {
-              type: 'text',
-              text: data.name.substring(0, 35) + (data.name.length > 35 ? '...' : ''),
-              weight: 'bold',
-              size: 'sm',
-              wrap: true,
-              color: '#1a1a1a'
-            },
-            {
-              type: 'box',
-              layout: 'horizontal',
-              spacing: 'sm',
-              contents: [
-                {
-                  type: 'text',
-                  text: `฿${displayPrice.toLocaleString()}`,
-                  weight: 'bold',
-                  size: 'lg',
-                  color: '#DC2626',
-                  flex: 0
-                },
-                ...(hasDiscount ? [{
-                  type: 'text',
-                  text: `฿${originalPrice.toLocaleString()}`,
-                  decoration: 'line-through',
-                  size: 'xs',
-                  color: '#9CA3AF',
-                  align: 'end' as const,
-                  flex: 1
-                }] : [])
-              ]
-            },
-            {
-              type: 'text',
-              text: unit ? `${item.quantity} ${unit.unit}` : `${item.quantity} ชิ้น`,
-              size: 'xs',
-              color: '#6B7280'
-            }
-          ]
-        },
-        footer: data.is_rx === 1 ? {
-          type: 'box',
-          layout: 'vertical',
-          backgroundColor: '#FEF2F2',
-          paddingAll: '8px',
-          contents: [{
-            type: 'text',
-            text: '⚠️ ยาตามใบสั่งแพทย์',
-            size: 'xs',
-            color: '#DC2626',
-            align: 'center',
-            weight: 'bold'
-          }]
-        } : undefined
-      };
-    }).filter(Boolean);
-
-    // Add header based on filter type
-    let headerText = '📋 แคตตาล็อคสินค้า';
-    let headerColor = '#15803D';
-    
-    switch (activeFilter) {
-      case 'flashsale':
-        headerText = '⚡ FLASH SALE ล้อดูร้อน ⚡';
-        headerColor = '#FFD600';
-        break;
-      case 'promotion':
-        headerText = '🔥 โปรโมชั่นพิเศษ';
-        headerColor = '#EA580C';
-        break;
-      case 'new':
-        headerText = '✨ สินค้าใหม่';
-        headerColor = '#7C3AED';
-        break;
-      case 'bestseller':
-        headerText = '🏆 สินค้าขายดี';
-        headerColor = '#CA8A04';
-        break;
-    }
-
-    const flexMessage = {
-      type: 'bubble',
-      size: 'mega',
-      header: {
-        type: 'box',
-        layout: 'vertical',
-        backgroundColor: headerColor,
-        paddingAll: '12px',
-        alignItems: 'center',
-        contents: [{
-          type: 'text',
-          text: headerText,
-          color: activeFilter === 'flashsale' ? '#1e3a8a' : '#FFFFFF',
-          weight: 'bold',
-          size: 'md'
-        }]
-      },
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        paddingAll: '12px',
-        spacing: 'md',
-        contents: [
-          {
-            type: 'carousel',
-            contents: items
-          }
-        ]
-      }
+    const templateMap: Record<FilterType, FlexMessageTemplate> = {
+      all: 'product_catalog',
+      flashsale: 'flash_sale',
+      promotion: 'promotion',
+      new: 'new_arrival',
+      bestseller: 'bestseller',
     };
+
+    const titleMap: Record<FilterType, string> = {
+      all: 'แคตตาล็อคสินค้า',
+      flashsale: 'Flash Sale',
+      promotion: 'โปรโมชันพิเศษ',
+      new: 'สินค้าใหม่',
+      bestseller: 'สินค้าขายดี',
+    };
+
+    const subtitleMap: Record<FilterType, string> = {
+      all: 'รวมสินค้าที่เลือกไว้สำหรับส่งต่อผ่าน LINE',
+      flashsale: 'สินค้าจำนวนจำกัด รีบสั่งก่อนหมด',
+      promotion: 'รวมสินค้าราคาพิเศษ คัดมาให้พร้อมโปรเด่น',
+      new: 'อัปเดตรายการสินค้ามาใหม่ล่าสุด',
+      bestseller: 'รวมสินค้ายอดนิยมจากลูกค้า',
+    };
+
+    const colorMap: Record<FilterType, string> = {
+      all: '#15803D',
+      flashsale: '#D69E2E',
+      promotion: '#EA580C',
+      new: '#7C3AED',
+      bestseller: '#15803D',
+    };
+
+    const template = templateMap[activeFilter];
+    const flexMessage =
+      template === 'product_catalog'
+        ? generateFlexCarousel(selectedProducts)
+        : generateFlexMessageByTemplate(selectedProducts, template, {
+            title: titleMap[activeFilter],
+            subtitle: subtitleMap[activeFilter],
+            headerColor: colorMap[activeFilter],
+          });
 
     return JSON.stringify(flexMessage, null, 2);
   }, [selectedItems, activeFilter]);

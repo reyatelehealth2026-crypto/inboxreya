@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import {
   csvProductToPreviewProduct,
+  buildFlexPayload,
   buildFlexPayloadPretty,
   buildFlexPayloadMinified,
   type ExportGlobalConfig,
@@ -13,6 +14,10 @@ export function useFlexExport(products: CsvProduct[], config: ExportGlobalConfig
   const previewProducts = useMemo(() => {
     return products.map(csvProductToPreviewProduct);
   }, [products]);
+
+  const flexPayload = useMemo(() => {
+    return buildFlexPayload(previewProducts, config);
+  }, [previewProducts, config]);
 
   const flexJsonPretty = useMemo(() => {
     return buildFlexPayloadPretty(previewProducts, config);
@@ -27,6 +32,7 @@ export function useFlexExport(products: CsvProduct[], config: ExportGlobalConfig
 
   return {
     previewProducts,
+    flexPayload,
     flexJsonPretty,
     flexJsonMinified,
     sizePretty,

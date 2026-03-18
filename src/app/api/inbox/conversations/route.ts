@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { serializeBangkokWallTime } from '@/lib/utils'
 
 const isInternalRequest = (request: NextRequest) =>
   request.headers.get('x-internal-request') === 'true'
@@ -13,19 +14,6 @@ const normalizePictureUrl = (value: string | null) => {
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed
   if (trimmed.startsWith('//')) return `https:${trimmed}`
   return `https://${trimmed}`
-}
-
-const toBangkokWallTime = (date: Date | null | undefined) => {
-  if (!date) return null
-  const pad = (value: number, size = 2) => String(value).padStart(size, '0')
-  const year = date.getUTCFullYear()
-  const month = pad(date.getUTCMonth() + 1)
-  const day = pad(date.getUTCDate())
-  const hours = pad(date.getUTCHours())
-  const minutes = pad(date.getUTCMinutes())
-  const seconds = pad(date.getUTCSeconds())
-  const millis = pad(date.getUTCMilliseconds(), 3)
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${millis}+07:00`
 }
 
 export async function GET(request: NextRequest) {
@@ -345,7 +333,7 @@ export async function GET(request: NextRequest) {
         points: user.points,
         totalSpent: user.totalSpent,
         orderCount: user.orderCount,
-        lastInteraction: toBangkokWallTime(user.lastInteraction),
+        lastInteraction: serializeBangkokWallTime(user.lastInteraction),
         chatStatus: user.chatStatus,
         isBlocked: user.isBlocked,
         isRegistered: user.isRegistered,
@@ -368,8 +356,8 @@ export async function GET(request: NextRequest) {
           sentBy: msg.sentBy,
           replyToId: msg.replyToId ? msg.replyToId.toString() : null,
           platform: (msg.platform ?? 'line') as 'line' | 'facebook' | 'tiktok',
-          createdAt: toBangkokWallTime(msg.createdAt),
-          updatedAt: toBangkokWallTime(msg.updatedAt),
+          createdAt: serializeBangkokWallTime(msg.createdAt),
+          updatedAt: serializeBangkokWallTime(msg.updatedAt),
         }
       })(),
       unreadCount: user._count.messages,
@@ -393,7 +381,7 @@ export async function GET(request: NextRequest) {
         isAuto: ta.tag.tagType !== 'manual',
         sortOrder: ta.tag.priority ?? 0,
       })),
-      updatedAt: toBangkokWallTime(user.lastInteraction) || toBangkokWallTime(user.updatedAt),
+      updatedAt: serializeBangkokWallTime(user.lastInteraction) || serializeBangkokWallTime(user.updatedAt),
     }))
 
     const nextCursor =

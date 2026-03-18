@@ -8,11 +8,16 @@
 
 import Pusher from 'pusher'
 import { CHANNELS, EVENTS } from './pusher-constants'
-import type { NewMessageEvent, ConversationUpdatedEvent, TypingEvent } from './pusher-constants'
+import type {
+  NewMessageEvent,
+  ConversationUpdatedEvent,
+  MessageReadEvent,
+  TypingEvent,
+} from './pusher-constants'
 
 // Re-export constants and types for backward compatibility
 export { CHANNELS, EVENTS }
-export type { NewMessageEvent, ConversationUpdatedEvent, TypingEvent }
+export type { NewMessageEvent, ConversationUpdatedEvent, MessageReadEvent, TypingEvent }
 
 // Singleton pattern for Pusher instance
 const globalForPusher = globalThis as typeof globalThis & {
@@ -85,6 +90,13 @@ export async function broadcastNewMessage(data: NewMessageEvent) {
  */
 export async function broadcastConversationUpdate(data: ConversationUpdatedEvent) {
   return triggerPusherEvent(CHANNELS.INBOX, EVENTS.CONVERSATION_UPDATED, data)
+}
+
+/**
+ * Broadcast read receipts to inbox channel
+ */
+export async function broadcastMessageRead(data: MessageReadEvent) {
+  return triggerPusherEvent(CHANNELS.INBOX, EVENTS.MESSAGE_READ, data)
 }
 
 /**
