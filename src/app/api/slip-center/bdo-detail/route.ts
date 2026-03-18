@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
         partner_id: partnerId || '',
       }),
       cache: 'no-store',
+      signal: AbortSignal.timeout(15000), // 15s timeout — fail fast before Vercel 30s
     })
 
     const json = await res.json().catch(() => ({ success: false, error: 'Invalid JSON from PHP' }))
