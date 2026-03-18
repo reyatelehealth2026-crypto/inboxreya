@@ -31,28 +31,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const [custRes, slipRes, bdoRes] = await Promise.all([
-      phpPost({ action: 'customer_list', limit: 100, offset: 0, fast: 1 }),
+    const [slipRes, bdoRes] = await Promise.all([
       fetch(`${SLIPS_API}?status=pending&limit=200&offset=0`, {
         headers: { 'User-Agent': 'InboxReya-SlipCenter/1.0' },
         cache: 'no-store',
       }).then(r => r.json()).catch(() => ({ success: false })),
-      // Use local DB query (no Odoo live API) for fast global BDO overview
-      phpPost({ action: 'slip_center_bdo_overview', limit: 200 }),
+      // Fast local-DB BDO overview — no Odoo live API, no customer_list bottleneck
+      phpPost({ action: 'slip_center_bdo_overview', limit: 500 }),
     ])
 
-    const customers = custRes?.success && custRes?.data?.customers
-      ? custRes.data.customers
-      : []
+    const pendingSlips: any[] = slipRes?.data?.slips ?? slipRes?.slips ?? []
 
-    const pendingSlips = slipRes?.success && slipRes?.data?.slips
-      ? slipRes.data.slips
-      : []
-
-    // slip_center_bdo_overview returns { bdos: [...] } from local odoo_bdo_orders table
-    const allBdos = bdoRes?.success && bdoRes?.data?.bdos
-      ? bdoRes.data.bdos
-      : []
+    // slip_center_bdo_overview returns odoo_bdo_orders with payment_status pending/partial
+    const allBdos: any[] = bdoRes?.data?.bdos ?? bdoRes?.bdos ?? []
 
     const pendingBdos = allBdos.filter((b: any) => {
       const status = String(b?.payment_status || b?.status || '').toLowerCase()
@@ -60,6 +51,34 @@ export async function GET(request: NextRequest) {
       if (status === 'matched' || status === 'reconciled') return false
       return true
     })
+
+    // Derive unique customer list from BDO + slip data (avoids slow customer_list action)
+    const customerMap = new Map<string, any>()
+    for (const b of allBdos) {
+      const ref = b.customer_ref || b.line_user_id
+      if (!ref) continue
+      if (!customerMap.has(ref)) {
+        customerMap.set(ref, {
+          customer_ref: b.customer_ref || '',
+          customer_name: b.customer_name || '',
+          partner_id: b.partner_id ?? null,
+          line_user_id: b.line_user_id || '',
+        })
+      }
+    }
+    for (const s of pendingSlips) {
+      const ref = s.customer_ref || s.line_user_id
+      if (!ref) continue
+      if (!customerMap.has(ref)) {
+        customerMap.set(ref, {
+          customer_ref: s.customer_ref || '',
+          customer_name: s.customer_name || '',
+          partner_id: s.partner_id ?? null,
+          line_user_id: s.line_user_id || '',
+        })
+      }
+    }
+    const customers = Array.from(customerMap.values())
 
     return NextResponse.json({
       success: true,

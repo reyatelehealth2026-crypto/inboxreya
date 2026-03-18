@@ -78,6 +78,7 @@ export interface SlipCenterBdo {
   bdo_date?: string | null
   qr_data?: string | null
   statement_pdf_path?: string | null
+  statement_pdf_url?: string | null
   created_at?: string
   slip_upload_id?: number | null
   slip_image_url?: string | null
@@ -139,7 +140,7 @@ export function normalizeBdoPaymentStatus(bdo: SlipCenterBdo): { key: string; la
 // Create a query client for the Slip Center
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 30000, retry: 1 },
+    queries: { staleTime: 30000, retry: false },
   },
 })
 
