@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Image from 'next/image'
 import {
   FileCheck, Calendar, AlertCircle, Paperclip, Clock, CheckCircle2,
-  Upload, XCircle, ExternalLink, ChevronDown, Eye, FileText, Truck, Send, Loader2,
+  Upload, XCircle, ExternalLink, ChevronDown, Eye, FileText, Truck, Send, Loader2, Download,
 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -78,7 +78,7 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
   const [previewBdo, setPreviewBdo] = useState<BdoOrderRecord | null>(null)
   const [previewFlex, setPreviewFlex] = useState<Record<string, any> | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
-  const [previewMeta, setPreviewMeta] = useState<{ bdo_ref: string; amount: number; has_qr: boolean } | null>(null)
+  const [previewMeta, setPreviewMeta] = useState<{ bdo_ref: string; amount: number; has_qr: boolean; qr_code_url: string | null } | null>(null)
 
   const handleOpenPreview = async (bdo: BdoOrderRecord) => {
     setPreviewBdo(bdo)
@@ -98,7 +98,7 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
       const json = await res.json()
       if (json.success && json.data?.flex_message) {
         setPreviewFlex(json.data.flex_message.contents)
-        setPreviewMeta({ bdo_ref: json.data.bdo_ref, amount: json.data.amount, has_qr: json.data.has_qr })
+        setPreviewMeta({ bdo_ref: json.data.bdo_ref, amount: json.data.amount, has_qr: json.data.has_qr, qr_code_url: json.data.qr_code_url || null })
       } else {
         toast({ title: 'ไม่สามารถโหลด preview ได้', description: json.error || 'ลองอีกครั้ง', variant: 'destructive' })
         setPreviewBdo(null)
@@ -266,7 +266,40 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
                 <span className="ml-2 text-sm text-gray-500">กำลังโหลด preview...</span>
               </div>
             ) : previewFlex ? (
-              <FlexPreview flex={previewFlex} />
+              <>
+                <FlexPreview flex={previewFlex} />
+                {previewMeta?.qr_code_url && (
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold text-slate-600 mb-2">QR PromptPay</p>
+                    <div className="flex items-start gap-3">
+                      <Image
+                        src={previewMeta.qr_code_url}
+                        alt="QR PromptPay"
+                        width={120}
+                        height={120}
+                        className="rounded border border-slate-200 bg-white"
+                        unoptimized
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-slate-500">{previewMeta.bdo_ref}</p>
+                        <p className="text-sm font-bold text-slate-800 mt-0.5">
+                          ฿{previewMeta.amount?.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                        </p>
+                        <a
+                          href={previewMeta.qr_code_url}
+                          download={`QR-${previewMeta.bdo_ref}.png`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 mt-2 px-3 py-1.5 text-xs font-medium rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
+                        >
+                          <Download className="h-3 w-3" />
+                          บันทึก QR
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="text-center py-8 text-sm text-gray-400">ไม่สามารถแสดง preview ได้</div>
             )}
