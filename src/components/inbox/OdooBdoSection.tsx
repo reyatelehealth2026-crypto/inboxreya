@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Image from 'next/image'
 import {
   FileCheck, Calendar, AlertCircle, Paperclip, Clock, CheckCircle2,
-  Upload, XCircle, ExternalLink, ChevronDown, Eye, FileText, Truck,
+  Upload, XCircle, ExternalLink, ChevronDown, Eye, FileText, Truck, Send,
 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -73,6 +73,33 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [unmatchingId, setUnmatchingId] = useState<number | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [sendingBdoId, setSendingBdoId] = useState<number | null>(null)
+
+  const handleSendNotification = async (bdo: BdoOrderRecord) => {
+    if (!confirm(`ส่งแจ้งยอดชำระ ${bdo.bdo_name || 'BDO-' + bdo.bdo_id} ให้ลูกค้าทาง LINE?\n\nระบบจะส่ง Flex Message สรุปยอด พร้อม QR พร้อมเพย์ (ถ้ามี)`)) return
+    setSendingBdoId(bdo.bdo_id)
+    try {
+      const res = await fetch('/api/odoo-dashboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_bdo_payment_notification',
+          bdo_id: bdo.bdo_id,
+          partner_id: bdo.partner_id || '',
+        }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        toast({ title: '✅ ส่งแจ้งยอดสำเร็จ', description: `ส่ง ${bdo.bdo_name || 'BDO-' + bdo.bdo_id} ไปยัง LINE แล้ว` })
+      } else {
+        toast({ title: 'เกิดข้อผิดพลาด', description: json.error || 'ไม่สามารถส่งแจ้งเตือนได้', variant: 'destructive' })
+      }
+    } catch {
+      toast({ title: 'Network error', variant: 'destructive' })
+    } finally {
+      setSendingBdoId(null)
+    }
+  }
 
   const refreshAll = () => {
     queryClient.invalidateQueries({ queryKey: ['customer-bdos', userId] })
@@ -140,6 +167,8 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
             onUnmatch={handleUnmatch}
             unmatchingId={unmatchingId}
             onPreviewSlip={setPreviewUrl}
+            onSendNotification={() => handleSendNotification(bdo)}
+            sendingBdoId={sendingBdoId}
           />
         ))}
 
@@ -181,13 +210,15 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
 }
 
 function BdoCard({
-  bdo, onAttachSlip, onUnmatch, unmatchingId, onPreviewSlip,
+  bdo, onAttachSlip, onUnmatch, unmatchingId, onPreviewSlip, onSendNotification, sendingBdoId,
 }: {
   bdo: BdoOrderRecord
   onAttachSlip: () => void
   onUnmatch: (slipUploadId: number, bdoId: number) => void
   unmatchingId: number | null
   onPreviewSlip: (url: string) => void
+  onSendNotification: () => void
+  sendingBdoId: number | null
 }) {
   const statusConfig: Record<string, { color: string; label: string; icon: any }> = {
     pending: { color: 'bg-amber-100 text-amber-700', label: 'รอชำระ', icon: Clock },
@@ -298,15 +329,26 @@ function BdoCard({
         </span>
         <div className="flex gap-1.5">
           {isPending && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs gap-1 border-teal-300 text-teal-700 hover:bg-teal-50"
-              onClick={onAttachSlip}
-            >
-              <Paperclip className="h-3 w-3" />
-              แนบสลิป
-            </Button>
+            <>
+              <Button
+                size="sm"
+                className="h-7 text-xs gap-1 bg-[#06C755] hover:bg-[#05a547] text-white"
+                disabled={sendingBdoId === bdo.bdo_id}
+                onClick={onSendNotification}
+              >
+                <Send className="h-3 w-3" />
+                {sendingBdoId === bdo.bdo_id ? 'กำลังส่ง...' : 'ส่งแจ้งยอดผ่าน LINE'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1 border-teal-300 text-teal-700 hover:bg-teal-50"
+                onClick={onAttachSlip}
+              >
+                <Paperclip className="h-3 w-3" />
+                แนบสลิป
+              </Button>
+            </>
           )}
           {isMatched && bdo.slip_upload_id && (
             <Button

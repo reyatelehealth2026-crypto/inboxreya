@@ -22,6 +22,7 @@ const ALLOWED_ACTIONS = [
   'order_grouped_today', 'customer_detail',
   'order_status_override', 'order_note_add', 'order_notes_list',
   'activity_log_list', 'salesperson_list',
+  'send_bdo_payment_notification',
 ]
 
 function normalizeActionInput(input: Record<string, unknown>) {
