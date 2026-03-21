@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Image from 'next/image'
 import {
   FileCheck, Calendar, AlertCircle, Paperclip, Clock, CheckCircle2,
-  Upload, XCircle, ExternalLink, ChevronDown, Eye, FileText, Truck, Send,
+  Upload, XCircle, ExternalLink, ChevronDown, Eye, FileText, Truck, Send, Loader2,
 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -15,6 +15,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { SlipUploadModal } from './SlipUploadModal'
+import { FlexPreview } from './FlexPreview'
 
 const ODOO_BASE = 'https://erp.cnyrxapp.com'
 const PAGE_SIZE = 5
@@ -74,9 +75,47 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
   const [unmatchingId, setUnmatchingId] = useState<number | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [sendingBdoId, setSendingBdoId] = useState<number | null>(null)
+  const [previewBdo, setPreviewBdo] = useState<BdoOrderRecord | null>(null)
+  const [previewFlex, setPreviewFlex] = useState<Record<string, any> | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewMeta, setPreviewMeta] = useState<{ bdo_ref: string; amount: number; has_qr: boolean } | null>(null)
 
-  const handleSendNotification = async (bdo: BdoOrderRecord) => {
-    if (!confirm(`ส่งแจ้งยอดชำระ ${bdo.bdo_name || 'BDO-' + bdo.bdo_id} ให้ลูกค้าทาง LINE?\n\nระบบจะส่ง Flex Message สรุปยอด พร้อม QR พร้อมเพย์ (ถ้ามี)`)) return
+  const handleOpenPreview = async (bdo: BdoOrderRecord) => {
+    setPreviewBdo(bdo)
+    setPreviewFlex(null)
+    setPreviewMeta(null)
+    setPreviewLoading(true)
+    try {
+      const res = await fetch('/api/odoo-dashboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview_bdo_payment_notification',
+          bdo_id: bdo.bdo_id,
+          partner_id: bdo.partner_id || '',
+        }),
+      })
+      const json = await res.json()
+      if (json.success && json.data?.flex_message) {
+        setPreviewFlex(json.data.flex_message.contents)
+        setPreviewMeta({ bdo_ref: json.data.bdo_ref, amount: json.data.amount, has_qr: json.data.has_qr })
+      } else {
+        toast({ title: 'ไม่สามารถโหลด preview ได้', description: json.error || 'ลองอีกครั้ง', variant: 'destructive' })
+        setPreviewBdo(null)
+      }
+    } catch {
+      toast({ title: 'Network error', variant: 'destructive' })
+      setPreviewBdo(null)
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  const handleConfirmSend = async () => {
+    if (!previewBdo) return
+    const bdo = previewBdo
+    setPreviewBdo(null)
+    setPreviewFlex(null)
     setSendingBdoId(bdo.bdo_id)
     try {
       const res = await fetch('/api/odoo-dashboard', {
@@ -167,7 +206,7 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
             onUnmatch={handleUnmatch}
             unmatchingId={unmatchingId}
             onPreviewSlip={setPreviewUrl}
-            onSendNotification={() => handleSendNotification(bdo)}
+            onSendNotification={() => handleOpenPreview(bdo)}
             sendingBdoId={sendingBdoId}
           />
         ))}
@@ -203,6 +242,54 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
           {previewUrl && (
             <Image src={previewUrl} alt="สลิป" width={800} height={1200} className="w-full h-auto rounded-lg" unoptimized />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* BDO Payment Notification Preview Modal */}
+      <Dialog open={!!previewBdo} onOpenChange={(open) => { if (!open) { setPreviewBdo(null); setPreviewFlex(null) } }}>
+        <DialogContent className="max-w-sm sm:max-w-md p-0 overflow-hidden">
+          <div className="px-4 pt-4 pb-2">
+            <h3 className="text-sm font-semibold text-gray-800">
+              ตัวอย่างข้อความที่จะส่งให้ลูกค้า
+            </h3>
+            {previewMeta && (
+              <p className="text-xs text-gray-500 mt-0.5">
+                {previewMeta.bdo_ref} &middot; ฿{previewMeta.amount?.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                {previewMeta.has_qr && ' &middot; มี QR พร้อมเพย์'}
+              </p>
+            )}
+          </div>
+          <div className="px-4 pb-3 max-h-[65vh] overflow-y-auto">
+            {previewLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                <span className="ml-2 text-sm text-gray-500">กำลังโหลด preview...</span>
+              </div>
+            ) : previewFlex ? (
+              <FlexPreview flex={previewFlex} />
+            ) : (
+              <div className="text-center py-8 text-sm text-gray-400">ไม่สามารถแสดง preview ได้</div>
+            )}
+          </div>
+          <div className="flex items-center gap-2 px-4 py-3 border-t bg-gray-50">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 h-9"
+              onClick={() => { setPreviewBdo(null); setPreviewFlex(null) }}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              size="sm"
+              className="flex-1 h-9 bg-[#06C755] hover:bg-[#05a547] text-white gap-1"
+              disabled={previewLoading || !previewFlex}
+              onClick={handleConfirmSend}
+            >
+              <Send className="h-3.5 w-3.5" />
+              ส่งให้ลูกค้าเลย
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>
