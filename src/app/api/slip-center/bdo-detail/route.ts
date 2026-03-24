@@ -3,13 +3,14 @@ import { auth } from '@/lib/auth'
 import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 const PHP_BASE = process.env.PHP_API_URL || process.env.NEXT_PUBLIC_PHP_API_URL || 'https://cny.re-ya.com'
-const DASHBOARD_API = `${PHP_BASE}/api/odoo-dashboard-api.php`
+const BDO_API  = `${PHP_BASE}/api/bdo-inbox-api.php`
+const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || ''
 
 /**
- * GET /api/slip-center/bdo-detail?bdoId=xxx&partnerId=xxx
+ * GET /api/slip-center/bdo-detail?bdoId=xxx&lineUserId=xxx
  *
- * Fetch full BDO detail via odoo_bdo_detail_api action (same as odoo-dashboard.js openBdoDetail).
- * Returns: bdo summary, sale_orders, slips, outstanding_invoices, credit_notes, deposits, pdf_url
+ * Fetch full BDO detail from bdo-inbox-api.php (live from Odoo).
+ * Returns: bdo, sale_orders, outstanding_invoices, credit_notes, deposits, slips, summary, odoo_url
  */
 export async function GET(request: NextRequest) {
   try {
@@ -19,26 +20,30 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const bdoId = searchParams.get('bdoId') || ''
-    const partnerId = searchParams.get('partnerId') || ''
+    const bdoId     = searchParams.get('bdoId') || ''
+    const lineUserId = searchParams.get('lineUserId') || ''
 
     if (!bdoId) {
       return NextResponse.json({ success: false, error: 'bdoId is required' }, { status: 400 })
     }
 
     const data = await cacheQuery(
-      `slipcenter:bdo:${bdoId}:${partnerId}`,
+      `slipcenter:bdodetail:${bdoId}`,
       async () => {
-        const res = await fetch(DASHBOARD_API, {
+        const res = await fetch(BDO_API, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'User-Agent': 'InboxReya-SlipCenter/1.0' },
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'InboxReya-SlipCenter/1.0',
+            'X-Internal-Secret': INTERNAL_SECRET,
+          },
           body: JSON.stringify({
-            action: 'odoo_bdo_detail_api',
-            bdo_id: bdoId,
-            partner_id: partnerId || '',
+            action: 'bdo_detail',
+            bdo_id: Number(bdoId),
+            line_user_id: lineUserId,
           }),
           cache: 'no-store',
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(20000),
         })
 
         const json = await res.json().catch(() => ({ success: false, error: 'Invalid JSON from PHP' }))
@@ -47,22 +52,21 @@ export async function GET(request: NextRequest) {
           throw new Error(json.error || 'PHP error')
         }
 
+        // bdo-inbox-api wraps result under json.data which contains the actionBdoDetail return
         const d = json.data || {}
 
-        const pdfUrl = d.statement_pdf_url
-          ? `${PHP_BASE}/api/odoo-dashboard-api.php?action=odoo_bdo_statement_pdf&bdo_id=${encodeURIComponent(String(bdoId))}`
-          : (d.bdo?.statement_pdf_path ? `${PHP_BASE}/api/odoo-dashboard-api.php?action=odoo_bdo_statement_pdf&bdo_id=${encodeURIComponent(String(bdoId))}` : null)
-
         return {
-          bdo: d.bdo ?? null,
-          summary: d.summary ?? null,
-          sale_orders: d.sale_orders ?? [],
+          bdo:                  d.bdo                  ?? null,
+          sale_orders:          d.sale_orders          ?? [],
           outstanding_invoices: d.outstanding_invoices ?? [],
-          credit_notes: d.credit_notes ?? [],
-          deposits: d.deposits ?? [],
-          slips: d.slips ?? [],
-          odoo_url: d.odoo_url ?? null,
-          pdf_url: pdfUrl,
+          credit_notes:         d.credit_notes         ?? [],
+          deposits:             d.deposits             ?? [],
+          slips:                d.slips                ?? [],
+          summary:              d.summary              ?? null,
+          odoo_url:             d.odoo_url             ?? null,
+          statement_pdf_url:    d.statement_pdf_url    ?? null,
+          source:               d.source               ?? 'odoo',
+          stale_warning:        d.stale_warning        ?? null,
         }
       },
       CACHE_TTL.SLIP_CENTER  // 30s

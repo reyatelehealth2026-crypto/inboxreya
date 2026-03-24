@@ -56,8 +56,9 @@ export async function GET(request: NextRequest) {
         const rawBdos: any[] = d.bdo_orders ?? []
 
         const isPaid = (b: any) => {
-          const s = String(b?.payment_status || b?.status || '').toLowerCase().trim()
-          return s === 'paid' || s === 'fully_paid' || s === 'done'
+          const s  = String(b?.payment_status || b?.status || '').toLowerCase().trim()
+          const st = String(b?.state || '').toLowerCase().trim()
+          return s === 'paid' || s === 'fully_paid' || s === 'done' || st === 'done'
         }
 
         const activeBdos = rawBdos.filter(b => !isPaid(b))

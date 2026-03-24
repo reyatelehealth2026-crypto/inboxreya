@@ -43,6 +43,28 @@ interface CustomerDetailData {
   }
 }
 
+interface BdoDetailData {
+  bdo: any
+  sale_orders: any[]
+  outstanding_invoices: any[]
+  credit_notes: any[]
+  deposits: any[]
+  slips: any[]
+  summary: any
+  odoo_url: string | null
+  statement_pdf_url: string | null
+  source: string
+  stale_warning: string | null
+}
+
+async function fetchBdoDetail(bdoId: number, lineUserId: string): Promise<BdoDetailData> {
+  const params = new URLSearchParams({ bdoId: String(bdoId), lineUserId })
+  const res = await fetch(`/api/slip-center/bdo-detail?${params}`)
+  const json = await res.json()
+  if (!res.ok || !json.success) throw new Error(json.error || 'Failed to load BDO detail')
+  return json.data
+}
+
 async function fetchCustomerDetail(ref: string, partnerId: string, lineUserId: string): Promise<CustomerDetailData> {
   const params = new URLSearchParams()
   if (ref) params.set('ref', ref)
@@ -82,6 +104,27 @@ export function CustomerSlipDetail({
 
   // Paid BDO section toggle
   const [showPaidBdos, setShowPaidBdos] = useState(false)
+
+  // BDO detail modal
+  const [bdoDetailId, setBdoDetailId] = useState<number | null>(null)
+  const [bdoDetailData, setBdoDetailData] = useState<BdoDetailData | null>(null)
+  const [bdoDetailLoading, setBdoDetailLoading] = useState(false)
+  const [bdoDetailError, setBdoDetailError] = useState<string | null>(null)
+
+  const openBdoDetail = useCallback(async (bdoId: number) => {
+    setBdoDetailId(bdoId)
+    setBdoDetailData(null)
+    setBdoDetailError(null)
+    setBdoDetailLoading(true)
+    try {
+      const d = await fetchBdoDetail(bdoId, lineUserId)
+      setBdoDetailData(d)
+    } catch (e) {
+      setBdoDetailError(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
+    } finally {
+      setBdoDetailLoading(false)
+    }
+  }, [lineUserId])
 
   const selectedSlip = useMemo(() =>
     data?.pendingSlips.find(s => s.id === selectedSlipId), [data, selectedSlipId])
@@ -480,8 +523,9 @@ export function CustomerSlipDetail({
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <button
                           type="button"
-                          onClick={() => setSelectedBdoId(isSelected ? null : bdo.bdo_id)}
-                          className="text-sm font-semibold text-gray-900 hover:text-blue-700 transition-colors"
+                          onClick={() => openBdoDetail(bdo.bdo_id)}
+                          className="text-sm font-semibold text-blue-700 hover:text-blue-900 underline underline-offset-2 transition-colors"
+                          title="ดูรายละเอียด BDO"
                         >
                           {bdo.bdo_name || `BDO-${bdo.bdo_id}`}
                         </button>
@@ -929,6 +973,206 @@ export function CustomerSlipDetail({
           {previewUrl && (
             <Image src={previewUrl} alt="สลิป" width={800} height={1200} className="w-full h-auto rounded-lg" unoptimized />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* BDO Detail Modal */}
+      <Dialog open={bdoDetailId !== null} onOpenChange={(open) => { if (!open) { setBdoDetailId(null); setBdoDetailData(null) } }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
+          {/* Header */}
+          <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-gray-900">
+                {bdoDetailData?.bdo?.name || `BDO #${bdoDetailId}`}
+              </h2>
+              {bdoDetailData?.bdo?.partner_name && (
+                <p className="text-xs text-gray-500">{bdoDetailData.bdo.partner_name}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {bdoDetailData?.odoo_url && (
+                <a href={bdoDetailData.odoo_url} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                  <ExternalLink className="h-3 w-3" /> Odoo
+                </a>
+              )}
+              {bdoDetailData?.statement_pdf_url && (
+                <a href={`https://cny.re-ya.com${bdoDetailData.statement_pdf_url}`} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-gray-500 hover:underline flex items-center gap-1">
+                  <Receipt className="h-3 w-3" /> PDF
+                </a>
+              )}
+            </div>
+          </div>
+
+          <div className="p-4 space-y-4">
+            {bdoDetailLoading && (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                <span className="ml-2 text-sm text-gray-500">กำลังโหลด...</span>
+              </div>
+            )}
+
+            {bdoDetailError && (
+              <div className="rounded-lg bg-red-50 border border-red-200 p-4 text-sm text-red-700">
+                {bdoDetailError}
+              </div>
+            )}
+
+            {bdoDetailData && !bdoDetailLoading && (() => {
+              const bdo = bdoDetailData.bdo
+              const summary = bdoDetailData.summary
+              return (
+                <>
+                  {bdoDetailData.stale_warning && (
+                    <div className="rounded-lg bg-amber-50 border border-amber-200 p-2 text-xs text-amber-700 flex items-center gap-1.5">
+                      <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                      {bdoDetailData.stale_warning}
+                    </div>
+                  )}
+
+                  {/* BDO Summary */}
+                  {bdo && (
+                    <div className="rounded-xl border border-gray-200 overflow-hidden">
+                      <div className="bg-gray-50 px-3 py-2 border-b border-gray-200">
+                        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">ข้อมูล BDO</p>
+                      </div>
+                      <div className="p-3 grid grid-cols-2 gap-2 text-sm">
+                        <div><span className="text-xs text-gray-400">วันที่</span><p className="font-medium">{bdo.doc_date || '-'}</p></div>
+                        <div><span className="text-xs text-gray-400">สถานะ</span><p className="font-medium">{bdo.state_display || bdo.state || '-'}</p></div>
+                        <div><span className="text-xs text-gray-400">ประเภทส่ง</span><p className="font-medium">{bdo.delivery_type || '-'}</p></div>
+                        <div><span className="text-xs text-gray-400">ยอดสุทธิ</span><p className="font-bold text-blue-700">฿{Number(bdo.amount_net_to_pay ?? 0).toLocaleString()}</p></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Financial Summary */}
+                  {summary && (
+                    <div className="rounded-xl border border-blue-100 bg-blue-50/40 overflow-hidden">
+                      <div className="bg-blue-50 px-3 py-2 border-b border-blue-100">
+                        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">สรุปยอด</p>
+                      </div>
+                      <div className="p-3 space-y-1 text-sm">
+                        <div className="flex justify-between"><span className="text-gray-500">ยอด SO</span><span>฿{Number(summary.so_amount ?? 0).toLocaleString()}</span></div>
+                        {summary.credit_note_amount !== 0 && <div className="flex justify-between"><span className="text-gray-500">เครดิตโน้ต</span><span className="text-green-600">฿{Number(summary.credit_note_amount ?? 0).toLocaleString()}</span></div>}
+                        {summary.deposit_amount !== 0 && <div className="flex justify-between"><span className="text-gray-500">มัดจำ</span><span className="text-green-600">฿{Number(summary.deposit_amount ?? 0).toLocaleString()}</span></div>}
+                        <div className="flex justify-between font-bold border-t border-blue-200 pt-1"><span>ยอดสุทธิที่ต้องชำระ</span><span className="text-blue-700">฿{Number(summary.net_to_pay ?? 0).toLocaleString()}</span></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sale Orders */}
+                  {bdoDetailData.sale_orders.length > 0 && (
+                    <div className="rounded-xl border border-gray-200 overflow-hidden">
+                      <div className="bg-gray-50 px-3 py-2 border-b border-gray-200 flex items-center justify-between">
+                        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">ใบสั่งขาย (SO)</p>
+                        <span className="text-xs text-gray-400">{bdoDetailData.sale_orders.length} รายการ</span>
+                      </div>
+                      <div className="divide-y divide-gray-100">
+                        {bdoDetailData.sale_orders.map((so: any) => (
+                          <div key={so.id} className="p-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <a href={so.odoo_url} target="_blank" rel="noopener noreferrer"
+                                className="text-sm font-semibold text-blue-600 hover:underline flex items-center gap-1">
+                                {so.name} <ExternalLink className="h-3 w-3" />
+                              </a>
+                              <span className="text-sm font-bold">฿{Number(so.amount_total ?? 0).toLocaleString()}</span>
+                            </div>
+                            {so.lines?.length > 0 && (
+                              <table className="w-full text-xs">
+                                <thead><tr className="text-gray-400"><th className="text-left pb-1">สินค้า</th><th className="text-right pb-1">จำนวน</th><th className="text-right pb-1">ราคา</th><th className="text-right pb-1">รวม</th></tr></thead>
+                                <tbody className="divide-y divide-gray-50">
+                                  {so.lines.map((line: any, i: number) => (
+                                    <tr key={i}>
+                                      <td className="py-0.5 pr-2">
+                                        <p className="font-medium text-gray-800 leading-tight">{line.product_name}</p>
+                                        {line.product_code && <p className="text-gray-400">{line.product_code}</p>}
+                                      </td>
+                                      <td className="text-right py-0.5 whitespace-nowrap">{line.quantity} {line.uom}</td>
+                                      <td className="text-right py-0.5 whitespace-nowrap">฿{Number(line.unit_price ?? 0).toLocaleString()}</td>
+                                      <td className="text-right py-0.5 font-medium whitespace-nowrap">฿{Number(line.subtotal ?? 0).toLocaleString()}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Outstanding Invoices */}
+                  {bdoDetailData.outstanding_invoices.length > 0 && (
+                    <div className="rounded-xl border border-gray-200 overflow-hidden">
+                      <div className="bg-gray-50 px-3 py-2 border-b border-gray-200 flex items-center justify-between">
+                        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">ใบแจ้งหนี้ค้างชำระ</p>
+                        <span className="text-xs text-gray-400">{bdoDetailData.outstanding_invoices.length} รายการ</span>
+                      </div>
+                      <div className="max-h-48 overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead className="sticky top-0 bg-gray-50"><tr className="text-gray-400">
+                            <th className="text-left px-3 py-1.5">เลขที่</th>
+                            <th className="text-left px-2 py-1.5">วันที่</th>
+                            <th className="text-right px-3 py-1.5">ยอด</th>
+                            <th className="text-right px-3 py-1.5">คงเหลือ</th>
+                          </tr></thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {bdoDetailData.outstanding_invoices.map((inv: any) => (
+                              <tr key={inv.id} className={cn(inv.selected ? 'bg-green-50/30' : '')}>
+                                <td className="px-3 py-1.5">
+                                  {inv.odoo_url
+                                    ? <a href={inv.odoo_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">{inv.number}</a>
+                                    : <span className="font-medium">{inv.number}</span>}
+                                  {inv.selected && <span className="ml-1 text-green-600">✔</span>}
+                                </td>
+                                <td className="px-2 py-1.5 text-gray-500">{inv.date}</td>
+                                <td className="px-3 py-1.5 text-right">฿{Number(inv.amount_total ?? 0).toLocaleString()}</td>
+                                <td className="px-3 py-1.5 text-right font-medium">{Number(inv.residual ?? 0) === 0 ? <span className="text-green-600">ชำระแล้ว</span> : `฿${Number(inv.residual).toLocaleString()}`}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Credit Notes */}
+                  {bdoDetailData.credit_notes.length > 0 && (
+                    <div className="rounded-xl border border-green-100 overflow-hidden">
+                      <div className="bg-green-50 px-3 py-2 border-b border-green-100">
+                        <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">เครดิตโน้ต ({bdoDetailData.credit_notes.length})</p>
+                      </div>
+                      <div className="divide-y divide-green-50">
+                        {bdoDetailData.credit_notes.map((cn: any) => (
+                          <div key={cn.id} className="flex items-center justify-between px-3 py-1.5 text-sm">
+                            <span className="font-medium text-gray-700">{cn.number}</span>
+                            <span className="text-green-600 font-bold">-฿{Number(cn.amount_total ?? 0).toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Slips */}
+                  {bdoDetailData.slips.length > 0 && (
+                    <div className="rounded-xl border border-violet-100 overflow-hidden">
+                      <div className="bg-violet-50 px-3 py-2 border-b border-violet-100">
+                        <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">สลิปที่แนบ ({bdoDetailData.slips.length})</p>
+                      </div>
+                      <div className="p-2 flex flex-wrap gap-2">
+                        {bdoDetailData.slips.map((slip: any, i: number) => (
+                          <div key={i} className="text-xs text-gray-600 bg-violet-50/60 rounded px-2 py-1 border border-violet-100">
+                            สลิป #{slip.id || i+1} — ฿{Number(slip.amount ?? 0).toLocaleString()}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )
+            })()}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
