@@ -37,40 +37,48 @@ export function formatMessageTime(date: Date | string | null | undefined): strin
   // Guard: if date is invalid, return fallback
   if (!(d instanceof Date) || isNaN(d.getTime())) return '-'
   
-  // The server encodes Bangkok wall time with +07:00 suffix via toBangkokWallTime.
-  // So d.getUTCHours() etc. give the Bangkok wall-clock hours directly.
-  // We must NOT re-apply timezone conversion (Intl Bangkok) as that would shift by +7 again.
-  const msgYear  = d.getUTCFullYear()
-  const msgMonth = d.getUTCMonth() + 1   // 1-based
-  const msgDay   = d.getUTCDate()
-  const msgHour  = String(d.getUTCHours()).padStart(2, '0')
-  const msgMin   = String(d.getUTCMinutes()).padStart(2, '0')
-  const timeStr  = `${msgHour}:${msgMin}`
+  const bangkokParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(d)
 
-  // Current Bangkok wall time — also derived from UTC+7 offset
-  const nowUtc  = new Date()
-  const bkkNow  = new Date(nowUtc.getTime() + 7 * 3600_000)
-  const nowYear  = bkkNow.getUTCFullYear()
-  const nowMonth = bkkNow.getUTCMonth() + 1
-  const nowDay   = bkkNow.getUTCDate()
+  const getPart = (type: string) => bangkokParts.find(p => p.type === type)?.value || ''
+  const msgYear = parseInt(getPart('year'))
+  const msgMonth = parseInt(getPart('month'))
+  const msgDay = parseInt(getPart('day'))
+  const msgHour = getPart('hour').padStart(2, '0')
+  const msgMin = getPart('minute').padStart(2, '0')
+  const timeStr = `${msgHour}:${msgMin}`
+
+  const nowParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date())
+
+  const getNowPart = (type: string) => nowParts.find(p => p.type === type)?.value || ''
+  const nowYear = parseInt(getNowPart('year'))
+  const nowMonth = parseInt(getNowPart('month'))
+  const nowDay = parseInt(getNowPart('day'))
 
   if (nowYear === msgYear && nowMonth === msgMonth && nowDay === msgDay) {
     return timeStr
   }
 
-  // Yesterday in Bangkok
-  const bkkYesterday = new Date(bkkNow.getTime() - 86_400_000)
-  if (
-    bkkYesterday.getUTCFullYear() === msgYear &&
-    bkkYesterday.getUTCMonth() + 1 === msgMonth &&
-    bkkYesterday.getUTCDate() === msgDay
-  ) {
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(yesterday)
+  const getYPart = (type: string) => yParts.find(p => p.type === type)?.value || ''
+
+  if (parseInt(getYPart('year')) === msgYear && parseInt(getYPart('month')) === msgMonth && parseInt(getYPart('day')) === msgDay) {
     return `เมื่อวาน ${timeStr}`
   }
 
-  // Older — render as local Date (no tz shift needed since values are already Bangkok)
-  const localDate = new Date(msgYear, msgMonth - 1, msgDay, parseInt(msgHour), parseInt(msgMin))
-  return format(localDate, 'd MMM HH:mm', { locale: th })
+  const bangkokDate = new Date(msgYear, msgMonth - 1, msgDay, parseInt(msgHour), parseInt(msgMin))
+  return format(bangkokDate, 'd MMM HH:mm', { locale: th })
 }
 
 /**
