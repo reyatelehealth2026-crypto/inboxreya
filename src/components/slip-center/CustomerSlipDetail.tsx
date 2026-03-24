@@ -439,65 +439,148 @@ export function CustomerSlipDetail({
               </span>
             </h3>
           </div>
-          <div className="max-h-[50vh] overflow-y-auto p-2 space-y-2">
+          <div className="max-h-[50vh] overflow-y-auto p-2 space-y-2.5">
             {activeBdos.length === 0 ? (
               <p className="text-center py-6 text-sm text-gray-400">ไม่มี BDO ค้างชำระ</p>
-            ) : activeBdos.map((bdo: SlipCenterBdo) => {
+            ) : activeBdos.slice().sort((a, b) => {
+              const rank: Record<string, number> = { pending: 0, partial: 1, slip_uploaded: 2, matched: 3, paid: 4 }
+              return (rank[normalizeBdoPaymentStatus(a).key] ?? 99) - (rank[normalizeBdoPaymentStatus(b).key] ?? 99)
+            }).map((bdo: SlipCenterBdo) => {
               const isSelected = selectedBdoId === bdo.bdo_id
               const ps = normalizeBdoPaymentStatus(bdo)
-              const deliveryLabel = bdo.delivery_type === 'company' ? 'สายส่ง' : bdo.delivery_type === 'private' ? 'ขนส่งเอกชน' : null
+              const isPending = ps.key === 'pending' || ps.key === 'partial'
+              const isMatched = ps.key === 'matched' || ps.key === 'slip_uploaded'
+              const deliveryLabel = bdo.delivery_type === 'company' ? 'สายส่ง (จ่ายทีหลัง)' : bdo.delivery_type === 'private' ? 'ขนส่งเอกชน (จ่ายก่อนส่ง)' : null
+              const fmtDate = (raw?: string | null) => {
+                if (!raw) return '-'
+                const dt = new Date(raw)
+                return isNaN(dt.getTime()) ? String(raw).slice(0, 10) : dt.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' })
+              }
+              const payMethodLabel = bdo.payment_method === 'promptpay' ? 'พร้อมเพย์' : bdo.payment_method === 'bank_transfer' ? 'โอนเงิน' : bdo.payment_method || ''
+              const linkedSlip = data?.allSlips?.find(s => s.bdo_id && String(s.bdo_id) === String(bdo.bdo_id))
+
               return (
-                <button
+                <div
                   key={bdo.bdo_id}
-                  type="button"
-                  onClick={() => setSelectedBdoId(isSelected ? null : bdo.bdo_id)}
                   className={cn(
-                    "w-full text-left rounded-lg border p-2.5 transition-all",
+                    "rounded-xl border-[1.5px] p-3 transition-all",
                     isSelected
-                      ? "border-violet-400 bg-violet-50 ring-1 ring-violet-200"
-                      : "border-gray-100 hover:border-violet-200 bg-white"
+                      ? "border-violet-400 ring-2 ring-violet-200"
+                      : isPending
+                      ? "border-amber-200 bg-amber-50/60"
+                      : isMatched
+                      ? "border-blue-200 bg-blue-50/40"
+                      : "border-gray-200 bg-white"
                   )}
                 >
+                  {/* Row 1: BDO name + badges */}
                   <div className="flex items-start justify-between mb-1">
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-gray-900 truncate">{bdo.bdo_name || `BDO-${bdo.bdo_id}`}</p>
-                      {bdo.order_name && <p className="text-[10px] text-blue-600 truncate">{bdo.order_name}</p>}
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0 ml-1">
-                      {deliveryLabel && (
-                        <Badge variant="outline" className="text-[9px] h-4 gap-0.5 px-1 border-sky-200 text-sky-600">
-                          <Truck className="h-2 w-2" /> {deliveryLabel}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">เลข BDO</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedBdoId(isSelected ? null : bdo.bdo_id)}
+                          className="text-sm font-semibold text-gray-900 hover:text-blue-700 transition-colors"
+                        >
+                          {bdo.bdo_name || `BDO-${bdo.bdo_id}`}
+                        </button>
+                        <Badge className={cn(
+                          "text-[9px] h-4 px-1.5 gap-0.5",
+                          ps.key === 'pending' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                          ps.key === 'partial' ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                          ps.key === 'slip_uploaded' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                          ps.key === 'matched' ? 'bg-green-100 text-green-700 border-green-200' :
+                          'bg-gray-100 text-gray-500'
+                        )}>
+                          {ps.key === 'pending' && <Clock className="h-2 w-2" />}
+                          {ps.key === 'partial' && <Clock className="h-2 w-2" />}
+                          {ps.key === 'matched' && <CheckCircle2 className="h-2 w-2" />}
+                          {ps.label}
                         </Badge>
-                      )}
-                      <a href={`${ODOO_BASE}/web#id=${bdo.bdo_id}&model=cny.bill.invoice.before.delivery&view_type=form`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
-                        <ExternalLink className="h-3 w-3 text-gray-300 hover:text-blue-500" />
+                        {deliveryLabel && (
+                          <Badge variant="outline" className="text-[9px] h-4 gap-0.5 px-1.5 border-sky-200 text-sky-600 bg-sky-50">
+                            <Truck className="h-2 w-2" /> {deliveryLabel}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-0.5">Odoo ID: #{bdo.bdo_id}</p>
+                    </div>
+                    <a
+                      href={`${ODOO_BASE}/web#id=${bdo.bdo_id}&model=cny.bill.invoice.before.delivery&view_type=form`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      title="เปิดใน Odoo"
+                      className="text-gray-300 hover:text-blue-500 transition-colors flex-shrink-0 ml-1.5"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
+
+                  {/* Row 2: SO + date + payment method */}
+                  <div className="flex items-center gap-2 flex-wrap text-[11px] text-gray-500 mb-1.5">
+                    {bdo.order_id ? (
+                      <a
+                        href={`${ODOO_BASE}/web#id=${bdo.order_id}&model=sale.order&view_type=form`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 font-medium hover:underline"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        {bdo.order_name || '-'}
                       </a>
+                    ) : bdo.order_name ? (
+                      <span>{bdo.order_name}</span>
+                    ) : null}
+                    <span className="flex items-center gap-0.5">
+                      <Calendar className="h-2.5 w-2.5" />
+                      {fmtDate(bdo.bdo_date || bdo.created_at)}
+                    </span>
+                    {payMethodLabel && <span>ชำระ: {payMethodLabel}</span>}
+                  </div>
+
+                  {/* Row 3: Amount + action buttons */}
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-base font-bold text-gray-900">
+                      ฿{Number(bdo.amount_total || 0).toLocaleString()}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {isPending && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setSelectedBdoId(bdo.bdo_id) }}
+                          className="flex items-center gap-1 bg-emerald-600 text-white border-none rounded-md px-2.5 py-1 text-[11px] font-medium hover:bg-emerald-700 transition-colors"
+                        >
+                          <Receipt className="h-3 w-3" /> แนบสลิป
+                        </button>
+                      )}
+                      {isMatched && (
+                        <span className="flex items-center gap-1 bg-green-50 text-green-700 border border-green-200 rounded-md px-2 py-1 text-[10px] font-semibold">
+                          <CheckCircle2 className="h-2.5 w-2.5" /> จับคู่แล้ว
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-bold text-gray-900">
-                      ฿{Number(bdo.amount_total || 0).toLocaleString()}
-                    </p>
-                    <Badge className={cn(
-                      "text-[9px] h-4 px-1.5",
-                      ps.key === 'pending' ? 'bg-amber-100 text-amber-700' :
-                      ps.key === 'partial' ? 'bg-blue-100 text-blue-700' :
-                      ps.key === 'slip_uploaded' ? 'bg-sky-100 text-sky-700' :
-                      'bg-gray-100 text-gray-500'
-                    )}>
-                      {ps.label}
-                    </Badge>
-                  </div>
-                  {bdo.bdo_date && (
-                    <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-0.5">
-                      <Calendar className="h-2.5 w-2.5" />
-                      {new Date(bdo.bdo_date).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </p>
+
+                  {/* Row 4: Linked slip thumbnail */}
+                  {linkedSlip && linkedSlip.image_full_url && (
+                    <div className="mt-2 flex items-center gap-2 p-1.5 bg-emerald-50/60 rounded-lg border border-emerald-100">
+                      <button type="button" onClick={() => setPreviewUrl(linkedSlip.image_full_url!)}>
+                        <Image src={linkedSlip.image_full_url} alt="" width={36} height={44} className="w-9 h-11 object-cover rounded border border-emerald-200 cursor-pointer hover:opacity-80" unoptimized />
+                      </button>
+                      <div className="flex-1 text-xs">
+                        <span className="text-emerald-600 font-medium">✔ สลิปแนบแล้ว</span>
+                        {linkedSlip.amount != null && <span className="text-gray-500 ml-1.5">฿{Number(linkedSlip.amount).toLocaleString()}</span>}
+                        {linkedSlip.transfer_date && <span className="text-gray-400 ml-1.5">{fmtDate(linkedSlip.transfer_date)}</span>}
+                      </div>
+                    </div>
                   )}
+
                   {isSelected && (
-                    <p className="text-[9px] text-violet-600 font-semibold mt-1">✓ เลือกแล้ว — เลือกสลิปเพื่อจับคู่</p>
+                    <p className="text-[9px] text-violet-600 font-semibold mt-1.5 bg-violet-50 rounded px-2 py-0.5">✓ เลือกแล้ว — เลือกสลิปทางขวาเพื่อจับคู่</p>
                   )}
-                </button>
+                </div>
               )
             })}
           </div>

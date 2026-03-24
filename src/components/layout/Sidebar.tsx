@@ -32,6 +32,7 @@ import {
   Send,
   ShoppingBag,
   Tag,
+  Receipt,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -74,6 +75,7 @@ const menuGroups: MenuGroup[] = [
       { title: 'Broadcast', icon: <Send className="h-4 w-4" />, href: '/inbox/broadcasts' },
       { title: 'แคตตาล็อคสินค้า', icon: <ShoppingBag className="h-4 w-4" />, href: '/inbox/catalog' },
       { title: 'โปรโมชัน', icon: <Tag className="h-4 w-4" />, href: '/inbox/promotions' },
+      { title: 'Slip Center', icon: <Receipt className="h-4 w-4" />, href: '/dashboard/slip-center' },
     ],
   },
   {

@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
             customer_ref: ref,
             partner_id: partnerId,
             line_user_id: lineUserId,
-            limit: 100,
+            limit: 500,
           }),
           cache: 'no-store',
           signal: AbortSignal.timeout(15000),

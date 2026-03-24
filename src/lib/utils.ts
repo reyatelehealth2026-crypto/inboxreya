@@ -33,45 +33,57 @@ export function formatTimeAgo(date: Date | string): string {
 export function formatMessageTime(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date
   
-  // CRITICAL: Database stores dates in Bangkok time (+07:00)
-  // The date string from API includes timezone: "2025-01-29T05:17:00.000+07:00"
-  // Parse the date and extract Bangkok time components
+  // Guard: if date is invalid, return fallback
+  if (isNaN(d.getTime())) return '-'
   
-  // Get current time in Bangkok (UTC+7)
-  const nowUTC = new Date()
-  const bangkokNow = new Date(nowUTC.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+  // Use Intl.DateTimeFormat for reliable Bangkok timezone extraction
+  // This avoids the double-parse bug where toLocaleString → new Date() can produce Invalid Date
+  const bangkokParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(d)
   
-  // Parse message date in Bangkok timezone
-  const messageDate = new Date(d)
-  const messageBangkok = new Date(messageDate.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+  const getPart = (type: string) => bangkokParts.find(p => p.type === type)?.value || ''
+  const msgYear = parseInt(getPart('year'))
+  const msgMonth = parseInt(getPart('month'))
+  const msgDay = parseInt(getPart('day'))
+  const msgHour = getPart('hour').padStart(2, '0')
+  const msgMin = getPart('minute').padStart(2, '0')
+  const timeStr = `${msgHour}:${msgMin}`
   
-  // Compare dates (year, month, day only)
-  const nowYear = bangkokNow.getFullYear()
-  const nowMonth = bangkokNow.getMonth()
-  const nowDay = bangkokNow.getDate()
+  // Current time in Bangkok
+  const nowParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date())
   
-  const msgYear = messageBangkok.getFullYear()
-  const msgMonth = messageBangkok.getMonth()
-  const msgDay = messageBangkok.getDate()
+  const getNowPart = (type: string) => nowParts.find(p => p.type === type)?.value || ''
+  const nowYear = parseInt(getNowPart('year'))
+  const nowMonth = parseInt(getNowPart('month'))
+  const nowDay = parseInt(getNowPart('day'))
   
-  const isSameDay = nowYear === msgYear && nowMonth === msgMonth && nowDay === msgDay
-  
-  if (isSameDay) {
-    return format(messageBangkok, 'HH:mm')
+  // Same day
+  if (nowYear === msgYear && nowMonth === msgMonth && nowDay === msgDay) {
+    return timeStr
   }
   
-  // Check if yesterday
-  const yesterday = new Date(bangkokNow)
+  // Yesterday
+  const yesterday = new Date()
   yesterday.setDate(yesterday.getDate() - 1)
-  const isYesterdayDay = yesterday.getFullYear() === msgYear && 
-                         yesterday.getMonth() === msgMonth && 
-                         yesterday.getDate() === msgDay
+  const yParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(yesterday)
+  const getYPart = (type: string) => yParts.find(p => p.type === type)?.value || ''
   
-  if (isYesterdayDay) {
-    return `เมื่อวาน ${format(messageBangkok, 'HH:mm')}`
+  if (parseInt(getYPart('year')) === msgYear && parseInt(getYPart('month')) === msgMonth && parseInt(getYPart('day')) === msgDay) {
+    return `เมื่อวาน ${timeStr}`
   }
 
-  return format(messageBangkok, 'd MMM HH:mm', { locale: th })
+  // Older: use Bangkok-aware date for formatting
+  const bangkokDate = new Date(msgYear, msgMonth - 1, msgDay, parseInt(msgHour), parseInt(msgMin))
+  return format(bangkokDate, 'd MMM HH:mm', { locale: th })
 }
 
 /**
