@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
+
+// TTL สั้นมาก เพราะ conversation เปลี่ยนบ่อย (ข้อความใหม่เข้าตลอด)
+const CONV_TTL = 20   // วินาที
+const ADMIN_TTL = CACHE_TTL.TAGS  // 5 นาที — admin list เปลี่ยนนาน
 
 const isInternalRequest = (request: NextRequest) =>
   request.headers.get('x-internal-request') === 'true'
@@ -44,8 +49,6 @@ export async function GET(request: NextRequest) {
     const tagIdsParam = searchParams.get('tagIds')
     const search = searchParams.get('search')
     const assignedTo = searchParams.get('assignedTo')
-    console.log('[DEBUG] assignedTo param:', assignedTo)
-    
     const assignedToParam = searchParams.get('assignedToIds')
     const unreadOnly = searchParams.get('unreadOnly')
     const startDate = searchParams.get('startDate')
@@ -152,7 +155,6 @@ export async function GET(request: NextRequest) {
       }
     } else if (assignedTo === 'me' && !internalRequest && session?.user) {
       // Filter for conversations assigned to the current user
-      console.log('[DEBUG] assignedTo=me, session.user.id:', session.user.id, 'parsed:', parseInt(session.user.id))
       where.conversationAssignees = {
         some: { adminId: parseInt(session.user.id), status: 'active' },
       }
@@ -187,98 +189,108 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get users with their latest messages (without admin relation to avoid orphan issues)
-    console.log('[DEBUG] Final where clause:', JSON.stringify(where, null, 2))
-    const users = await prisma.lineUser.findMany({
-      where,
-      select: {
-        id: true,
-        lineUserId: true,
-        displayName: true,
-        pictureUrl: true,
-        statusMessage: true,
-        firstName: true,
-        lastName: true,
-        phone: true,
-        email: true,
-        gender: true,
-        address: true,
-        province: true,
-        membershipLevel: true,
-        tier: true,
-        points: true,
-        totalSpent: true,
-        orderCount: true,
-        lastInteraction: true,
-        chatStatus: true,
-        isBlocked: true,
-        isRegistered: true,
-        platform: true,
-        platformUserId: true,
-        createdAt: true,
-        updatedAt: true,
-        messages: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-          select: {
-            id: true,
-            userId: true,
-            direction: true,
-            messageType: true,
-            content: true,
-            mediaUrl: true,
-            metadata: true,
-            isRead: true,
-            sentBy: true,
-            replyToId: true,
-            platform: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        },
-        tagAssignments: {
-          select: {
-            tag: {
-              select: {
-                id: true,
-                name: true,
-                color: true,
-                description: true,
-                tagType: true,
-                priority: true,
-              },
-            },
-          },
-        },
-        conversationAssignees: {
-          where: { status: 'active' },
-          select: {
-            adminId: true,
-          },
-        },
-        _count: {
-          select: {
-            messages: {
-              where: {
-                direction: 'incoming',
-                isRead: false,
-              },
-            },
-          },
-        },
-      },
-      orderBy: [
-        { lastInteraction: 'desc' },
-        { updatedAt: 'desc' },
-        { id: 'desc' },
-      ],
-      take: limit,
-      skip,
-      ...(cursorId && { cursor: { id: cursorId } }),
-    })
+    // Determine if this is a cacheable request (default list, no dynamic filters)
+    const isDefaultList =
+      !trimmedSearch && !tagId && !tagIdsParam && !assignedTo && !assignedToParam &&
+      !unreadOnly && !startDate && !endDate && !cursorId && page === 1
 
-    // Get total count
-    const total = await prisma.lineUser.count({ where })
+    const accountId = (!internalRequest && session?.user) ? (session.user.lineAccountId ?? 'all') : 'all'
+    const statusKey = status && status !== 'all' ? status : 'all'
+    const convCacheKey = `conv:account:${accountId}:status:${statusKey}:p1:l${limit}`
+
+    // Get users with their latest messages
+    const [users, total] = await cacheQuery(
+      isDefaultList ? convCacheKey : `nocache:${Date.now()}`,
+      async () => {
+        const [rows, cnt] = await Promise.all([
+          prisma.lineUser.findMany({
+            where,
+            select: {
+              id: true,
+              lineUserId: true,
+              displayName: true,
+              pictureUrl: true,
+              statusMessage: true,
+              firstName: true,
+              lastName: true,
+              phone: true,
+              email: true,
+              gender: true,
+              address: true,
+              province: true,
+              membershipLevel: true,
+              tier: true,
+              points: true,
+              totalSpent: true,
+              orderCount: true,
+              lastInteraction: true,
+              chatStatus: true,
+              isBlocked: true,
+              isRegistered: true,
+              platform: true,
+              platformUserId: true,
+              createdAt: true,
+              updatedAt: true,
+              messages: {
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+                select: {
+                  id: true,
+                  userId: true,
+                  direction: true,
+                  messageType: true,
+                  content: true,
+                  mediaUrl: true,
+                  metadata: true,
+                  isRead: true,
+                  sentBy: true,
+                  replyToId: true,
+                  platform: true,
+                  createdAt: true,
+                  updatedAt: true,
+                },
+              },
+              tagAssignments: {
+                select: {
+                  tag: {
+                    select: {
+                      id: true,
+                      name: true,
+                      color: true,
+                      description: true,
+                      tagType: true,
+                      priority: true,
+                    },
+                  },
+                },
+              },
+              conversationAssignees: {
+                where: { status: 'active' },
+                select: { adminId: true },
+              },
+              _count: {
+                select: {
+                  messages: {
+                    where: { direction: 'incoming', isRead: false },
+                  },
+                },
+              },
+            },
+            orderBy: [
+              { lastInteraction: 'desc' },
+              { updatedAt: 'desc' },
+              { id: 'desc' },
+            ],
+            take: limit,
+            skip,
+            ...(cursorId && { cursor: { id: cursorId } }),
+          }),
+          prisma.lineUser.count({ where }),
+        ])
+        return [rows, cnt] as const
+      },
+      isDefaultList ? CONV_TTL : 0
+    )
 
     // Ensure ordering is based on latest message timestamp
     const sortedUsers = [...users].sort((a, b) => {
@@ -305,18 +317,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch admins separately to handle orphaned records
+    // Fetch admins separately — cached 5 นาที เพราะเปลี่ยนน้อย
     const admins = allAdminIds.size > 0
-      ? await prisma.adminUser.findMany({
-        where: { id: { in: Array.from(allAdminIds) } },
-        select: {
-          id: true,
-          username: true,
-          displayName: true,
-          avatarUrl: true,
-          role: true,
-        },
-      })
+      ? await cacheQuery(
+          `admins:ids:${Array.from(allAdminIds).sort().join(',')}`,
+          () => prisma.adminUser.findMany({
+            where: { id: { in: Array.from(allAdminIds) } },
+            select: {
+              id: true,
+              username: true,
+              displayName: true,
+              avatarUrl: true,
+              role: true,
+            },
+          }),
+          ADMIN_TTL
+        )
       : []
 
     // Create admin lookup map

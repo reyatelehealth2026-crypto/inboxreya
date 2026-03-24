@@ -5,6 +5,7 @@ import prisma from '@/lib/prisma'
 import { sendPlatformMessage } from '@/lib/php-bridge'
 import { broadcastRealtimeEvent } from '@/lib/realtime'
 import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
+import { cacheInvalidate } from '@/lib/redis'
 
 const isInternalRequest = (request: NextRequest) =>
   request.headers.get('x-internal-request') === 'true'
@@ -153,11 +154,6 @@ export async function GET(request: NextRequest) {
       createdAt: toBangkokWallTime(msg.createdAt),
       updatedAt: toBangkokWallTime(msg.updatedAt),
     }))
-
-    // DEBUG: Log first and last message content
-    if (formattedMessages.length > 0) {
-      console.log('[GET messages] First:', formattedMessages[0]?.content, 'Last:', formattedMessages[formattedMessages.length - 1]?.content)
-    }
 
     // Reverse to show oldest first
     formattedMessages.reverse()
@@ -401,6 +397,11 @@ export async function POST(request: NextRequest) {
         platform: userPlatform,
       },
     })
+
+    // Invalidate conversation list cache — เพื่อให้ inbox แสดงข้อความล่าสุดใหม่
+    if (user.lineAccountId) {
+      cacheInvalidate(`conv:account:${user.lineAccountId}:*`).catch(() => null)
+    }
 
     return NextResponse.json(responsePayload)
   } catch (error) {

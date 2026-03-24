@@ -7,6 +7,41 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { cacheQuery, cacheInvalidate } from '@/lib/redis'
+import crypto from 'crypto'
+
+// TTL (วินาที) สำหรับแต่ละ action — ตรงกับที่ PHP side กำหนด
+const ACTION_CACHE_TTL: Record<string, number> = {
+  stats:                    60,
+  order_grouped_today:      60,
+  customer_list:            60,
+  invoice_list:             60,
+  order_list:               60,
+  notification_log:         60,
+  salesperson_list:         300,
+  overview_today:           45,
+  customer_full_detail:     45,
+  overview_combined:        45,
+  odoo_orders:              30,
+  odoo_invoices:            30,
+  odoo_slips:               30,
+  odoo_bdo_list_api:        30,
+  customer_detail:          45,
+  customer_360:             30,
+  pending_bdo_orders:       60,
+  webhook_stats_mini:       30,
+  dlq_stats:                30,
+  activity_log_list:        30,
+}
+
+// Actions ที่ write/mutate ข้อมูล — ห้าม cache เด็ดขาด
+const MUTATION_ACTIONS = new Set([
+  'order_status_override', 'order_note_add', 'order_notes_list',
+  'send_bdo_payment_notification', 'preview_bdo_payment_notification',
+  'dlq_retry', 'slip_match_bdo', 'slip_unmatch',
+  'odoo_slip_match_api', 'odoo_slip_unmatch_api', 'unmatch_slip',
+  'send_daily_summary',
+])
 
 const ALLOWED_ACTIONS = [
   'health', 'stats', 'list', 'detail', 'order_timeline',
@@ -92,6 +127,47 @@ async function handleRequest(request: NextRequest) {
     const phpBase = process.env.PHP_API_URL || process.env.NEXT_PUBLIC_PHP_API_URL || 'https://cny.re-ya.com'
     const apiUrl = `${phpBase}/api/odoo-dashboard-api.php`
 
+    const cacheTtl = ACTION_CACHE_TTL[action]
+    const isCacheable = cacheTtl !== undefined && !MUTATION_ACTIONS.has(action) && request.method !== 'POST'
+
+    if (isCacheable) {
+      // สร้าง cache key จาก action + input params (ไม่รวม session)
+      const inputHash = crypto
+        .createHash('md5')
+        .update(JSON.stringify(input))
+        .digest('hex')
+        .slice(0, 12)
+      const cacheKey = `odoo:dash:${action}:${inputHash}`
+
+      const result = await cacheQuery(
+        cacheKey,
+        async () => {
+          const res = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'User-Agent': 'InboxReya-OdooDashboard/1.0',
+            },
+            body: JSON.stringify(input),
+            cache: 'no-store',
+          })
+          if (!res.ok) throw new Error(`PHP returned ${res.status}`)
+          const ct = res.headers.get('content-type')
+          if (!ct?.includes('application/json')) {
+            const text = await res.text()
+            throw new Error(`Non-JSON: ${text.substring(0, 200)}`)
+          }
+          return res.json()
+        },
+        cacheTtl
+      )
+      return NextResponse.json(result, {
+        headers: { 'X-Cache-Action': action, 'X-Cache-TTL': String(cacheTtl) },
+      })
+    }
+
+    // Non-cacheable: proxy ตรงๆ
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
