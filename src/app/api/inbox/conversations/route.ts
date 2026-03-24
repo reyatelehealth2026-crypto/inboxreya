@@ -294,16 +294,18 @@ export async function GET(request: NextRequest) {
 
     // Ensure ordering is based on latest message timestamp
     const sortedUsers = [...users].sort((a, b) => {
-      const aTime =
+      const aRaw =
         a.messages[0]?.createdAt ||
         a.lastInteraction ||
         a.updatedAt ||
         a.createdAt
-      const bTime =
+      const bRaw =
         b.messages[0]?.createdAt ||
         b.lastInteraction ||
         b.updatedAt ||
         b.createdAt
+      const aTime = aRaw instanceof Date ? aRaw : new Date(aRaw)
+      const bTime = bRaw instanceof Date ? bRaw : new Date(bRaw)
       const diff = bTime.getTime() - aTime.getTime()
       if (diff !== 0) return diff
       return b.id - a.id
