@@ -16,6 +16,7 @@ import {
   commonSchemas,
 } from '@/lib/api-utils'
 import { requireAuth } from '@/lib/auth-middleware'
+import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
 // ============================================================================
 // Validation Schemas
@@ -154,6 +155,8 @@ export const POST = withAPIRoute(
         priority: data.priority,
       },
     })
+
+    await cacheInvalidate('autoreplyrules:*')
 
     return successResponse(rule, 201)
   },

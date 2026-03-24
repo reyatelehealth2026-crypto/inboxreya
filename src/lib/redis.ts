@@ -160,5 +160,19 @@ export const CACHE_TTL = {
   CUSTOMER_PROFILE: 120,   // 2 นาที
   ANALYTICS:        300,   // 5 นาที
   HEALTH:            60,   // 1 นาที
+  MESSAGES:          15,   // 15 วิ — ข้อความเข้าออกบ่อย
+  ADMINS:           300,   // 5 นาที — admin list เปลี่ยนนาน
+  NOTES:             15,   // 15 วิ — note เปลี่ยนบ่อย
+  AUTO_RULES:       300,   // 5 นาที — config เปลี่ยนน้อย
+  LINK_PREVIEW:    3600,   // 1 ชม. — URL preview ไม่เปลี่ยน
+  BROADCASTS:        30,   // 30 วิ
+  GROUPS:            60,   // 1 นาที
+  ORDERS:            30,   // 30 วิ
+  SLIP_CENTER:       30,   // 30 วิ
+  QUOTED_MSG:       600,   // 10 นาที — ข้อความ quote ไม่เปลี่ยน
+  PRESCRIPTIONS:     60,   // 1 นาที
+  CUSTOMER_360:      30,   // 30 วิ — from PHP
+  ACTIVE_ORDERS:     30,   // 30 วิ
+  ODOO_PARTNER:     300,   // 5 นาที — local sync
 } as const
 

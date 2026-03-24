@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth-middleware';
+import { cacheQuery, CACHE_TTL } from '@/lib/redis';
 
 /**
  * GET /api/inbox/analytics/sla
@@ -44,6 +45,9 @@ export async function GET(request: NextRequest) {
 
     const lineAccountIdNum = parseInt(lineAccountId);
     const slaThresholdMs = slaThresholdMinutes * 60 * 1000;
+
+    const cacheKey = `analytics:sla:${lineAccountIdNum}:${slaThresholdMinutes}:${startDate.toISOString().slice(0,10)}:${endDate.toISOString().slice(0,10)}`;
+    const data = await cacheQuery(cacheKey, async () => {
 
     // Get all users with messages in date range
     const users = await prisma.lineUser.findMany({
@@ -149,9 +153,7 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    return NextResponse.json({
-      success: true,
-      data: {
+    return {
         slaComplianceRate,
         averageFirstResponseTimeMinutes,
         slaThresholdMinutes,
@@ -159,13 +161,15 @@ export async function GET(request: NextRequest) {
         conversationsWithinSLA: totalWithinSLA,
         conversationsExceedingSLA: exceedingSLA.length,
         breachSeverity,
-        exceedingSLADetails: exceedingSLA.slice(0, 10), // Top 10 worst
+        exceedingSLADetails: exceedingSLA.slice(0, 10),
         dateRange: {
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
         },
-      },
-    });
+      };
+    }, CACHE_TTL.HEALTH);  // 60s
+
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error('SLA analytics error:', error);
     return NextResponse.json(

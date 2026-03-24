@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 export async function GET() {
   try {
@@ -17,19 +18,24 @@ export async function GET() {
       where.lineAccountId = session.user.lineAccountId
     }
 
-    const admins = await prisma.adminUser.findMany({
-      where,
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        displayName: true,
-        avatarUrl: true,
-        role: true,
-        isActive: true,
-      },
-      orderBy: [{ displayName: 'asc' }, { username: 'asc' }],
-    })
+    const accountKey = session.user.lineAccountId ?? 'all'
+    const admins = await cacheQuery(
+      `admins:list:${accountKey}`,
+      () => prisma.adminUser.findMany({
+        where,
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          displayName: true,
+          avatarUrl: true,
+          role: true,
+          isActive: true,
+        },
+        orderBy: [{ displayName: 'asc' }, { username: 'asc' }],
+      }),
+      CACHE_TTL.ADMINS
+    )
 
     return NextResponse.json({
       data: admins.map((admin) => ({

@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { updateCustomerInfoField } from '@/lib/php-bridge'
 import { Prisma, users_gender } from '@prisma/client'
+import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
 // Helper function to get order days for a user
 async function getOrderDays(userId: number): Promise<string[]> {
@@ -108,67 +109,95 @@ export async function GET(
       where.lineAccountId = session.user.lineAccountId
     }
 
-    const user = await prisma.lineUser.findFirst({
-      where,
-      select: {
-        id: true,
-        lineUserId: true,
-        displayName: true,
-        pictureUrl: true,
-        statusMessage: true,
-        firstName: true,
-        lastName: true,
-        phone: true,
-        email: true,
-        gender: true,
-        weight: true,
-        height: true,
-        address: true,
-        district: true,
-        province: true,
-        postalCode: true,
-        memberId: true,
-        membershipLevel: true,
-        tier: true,
-        points: true,
-        totalPoints: true,
-        availablePoints: true,
-        usedPoints: true,
-        loyaltyPoints: true,
-        totalSpent: true,
-        orderCount: true,
-        lastInteraction: true,
-        chatStatus: true,
-        isBlocked: true,
-        isRegistered: true,
-        createdAt: true,
-        updatedAt: true,
-        tagAssignments: {
+    const customerData = await cacheQuery(
+      `customer:profile:${parsedUserId}`,
+      async () => {
+        const user = await prisma.lineUser.findFirst({
+          where,
           select: {
-            tag: {
+            id: true,
+            lineUserId: true,
+            displayName: true,
+            pictureUrl: true,
+            statusMessage: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            email: true,
+            gender: true,
+            weight: true,
+            height: true,
+            address: true,
+            district: true,
+            province: true,
+            postalCode: true,
+            memberId: true,
+            membershipLevel: true,
+            tier: true,
+            points: true,
+            totalPoints: true,
+            availablePoints: true,
+            usedPoints: true,
+            loyaltyPoints: true,
+            totalSpent: true,
+            orderCount: true,
+            lastInteraction: true,
+            chatStatus: true,
+            isBlocked: true,
+            isRegistered: true,
+            createdAt: true,
+            updatedAt: true,
+            tagAssignments: {
               select: {
-                id: true,
-                name: true,
-                color: true,
-                description: true,
-                tagType: true,
-                priority: true,
+                tag: {
+                  select: {
+                    id: true,
+                    name: true,
+                    color: true,
+                    description: true,
+                    tagType: true,
+                    priority: true,
+                  },
+                },
+              },
+            },
+            conversationAssignees: {
+              where: { status: 'active' },
+              select: {
+                adminId: true,
               },
             },
           },
-        },
-        conversationAssignees: {
-          where: { status: 'active' },
-          select: {
-            adminId: true,
-          },
-        },
-      },
-    })
+        })
 
-    if (!user) {
+        if (!user) return null
+
+        // Fetch additional fields + odoo link + points summary in parallel
+        const [additionalFields, odooLinkData, pointsSummary, orderDays] = await Promise.all([
+          getAdditionalFields(parsedUserId),
+          getOdooLinkData(user.lineUserId),
+          prisma.$queryRawUnsafe<any[]>(
+            `SELECT
+              COALESCE(SUM(CASE WHEN points > 0 THEN points ELSE 0 END), 0) as total_points,
+              COALESCE(SUM(points), 0) as available_points,
+              COALESCE(SUM(CASE WHEN points < 0 THEN ABS(points) ELSE 0 END), 0) as used_points
+             FROM points_transactions
+             WHERE user_id = ?`,
+            parsedUserId
+          ).catch(() => []),
+          getOrderDays(parsedUserId),
+        ])
+
+        return { user, additionalFields, odooLinkData, pointsSummary, orderDays }
+      },
+      CACHE_TTL.ORDERS  // 30s
+    )
+
+    if (!customerData) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
+
+    const { user, additionalFields, odooLinkData, pointsSummary: pointsSummaryArr, orderDays } = customerData
 
     const tags = user.tagAssignments.map((ta) => ({
       id: ta.tag.id.toString(),
@@ -219,25 +248,8 @@ export async function GET(
         isActive: admin.isActive ?? true,
       }))
 
-    // Fetch additional fields from raw query
-    const additionalFields = await getAdditionalFields(parsedUserId)
-    const odooLinkData = await getOdooLinkData(user.lineUserId)
-
     // Calculate points from transactions (Mirroring PHP LoyaltyPoints::getUserPoints)
-    let pointsSummary: any[] = []
-    try {
-      pointsSummary = await prisma.$queryRawUnsafe<any[]>(
-        `SELECT
-          COALESCE(SUM(CASE WHEN points > 0 THEN points ELSE 0 END), 0) as total_points,
-          COALESCE(SUM(points), 0) as available_points,
-          COALESCE(SUM(CASE WHEN points < 0 THEN ABS(points) ELSE 0 END), 0) as used_points
-         FROM points_transactions
-         WHERE user_id = ?`,
-        parsedUserId
-      )
-    } catch (error) {
-      console.warn('Could not fetch points summary:', error)
-    }
+    const pointsSummary = pointsSummaryArr
 
     const summary = pointsSummary[0]
     let currentBalance = 0
@@ -298,7 +310,7 @@ export async function GET(
           isRegistered: user.isRegistered,
           createdAt: user.createdAt.toISOString(),
           updatedAt: user.updatedAt.toISOString(),
-          orderDays: await getOrderDays(parsedUserId),
+          orderDays: orderDays,
           odooPartnerId: odooLinkData.partnerId,
           odooPartnerName: odooLinkData.partnerName,
           odooCustomerCode: odooLinkData.customerCode,
@@ -589,6 +601,10 @@ export async function PATCH(
         }
       }
     }
+
+    // Invalidate customer caches
+    cacheInvalidate(`customer:profile:${parsedUserId}`).catch(() => null)
+    cacheInvalidate(`conv:detail:${parsedUserId}`).catch(() => null)
 
     return NextResponse.json({ success: true })
   } catch (error) {

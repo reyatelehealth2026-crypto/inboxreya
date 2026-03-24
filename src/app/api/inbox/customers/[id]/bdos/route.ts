@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 /**
  * GET /api/inbox/customers/[id]/bdos
@@ -42,35 +43,36 @@ export async function GET(
     const phpBase = process.env.PHP_API_URL || process.env.NEXT_PUBLIC_PHP_API_URL || 'https://cny.re-ya.com'
     const apiUrl = `${phpBase}/api/odoo-webhooks-dashboard.php`
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': 'InboxReya-BDO/1.0',
+    const result = await cacheQuery(
+      `customer:bdos:${userId}`,
+      async () => {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'User-Agent': 'InboxReya-BDO/1.0',
+          },
+          body: JSON.stringify({
+            action: 'pending_bdo_orders',
+            customer_ref: user.memberId || '',
+            line_user_id: user.lineUserId || '',
+          }),
+          cache: 'no-store',
+        })
+
+        const contentType = response.headers.get('content-type')
+        if (!contentType || !contentType.includes('application/json')) {
+          return { bdo_orders: [], total: 0 }
+        }
+
+        const res = await response.json()
+        return res.data || { bdo_orders: res.bdo_orders || [], total: res.total || 0 }
       },
-      body: JSON.stringify({
-        action: 'pending_bdo_orders',
-        customer_ref: user.memberId || '',
-        line_user_id: user.lineUserId || '',
-      }),
-      cache: 'no-store',
-    })
+      CACHE_TTL.ORDERS  // 30s
+    )
 
-    const contentType = response.headers.get('content-type')
-    if (!contentType || !contentType.includes('application/json')) {
-      return NextResponse.json({
-        success: true,
-        data: { bdo_orders: [], total: 0 },
-      })
-    }
-
-    const result = await response.json()
-
-    return NextResponse.json({
-      success: true,
-      data: result.data || { bdo_orders: result.bdo_orders || [], total: result.total || 0 },
-    })
+    return NextResponse.json({ success: true, data: result })
   } catch (error) {
     console.error('[customer-bdos] Error:', error)
     return NextResponse.json(

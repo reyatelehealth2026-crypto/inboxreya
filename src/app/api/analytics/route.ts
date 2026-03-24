@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUnifiedAnalyticsData } from '@/lib/analytics/queries';
+import { cacheQuery, CACHE_TTL } from '@/lib/redis';
 
 /**
  * GET /api/analytics
@@ -15,7 +16,11 @@ export async function GET(request: NextRequest) {
     const daysParam = searchParams.get('days');
     const days = daysParam ? parseInt(daysParam) : 1; // Default to 1 day (today)
 
-    const data = await getUnifiedAnalyticsData(days);
+    const data = await cacheQuery(
+      `analytics:unified:${days}`,
+      () => getUnifiedAnalyticsData(days),
+      CACHE_TTL.HEALTH  // 60s
+    );
     return NextResponse.json(data);
   } catch (error) {
     console.error('Analytics API error:', error);

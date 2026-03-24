@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 const PHP_BASE = process.env.PHP_API_URL || process.env.NEXT_PUBLIC_PHP_API_URL || 'https://cny.re-ya.com'
 const DASHBOARD_API = `${PHP_BASE}/api/odoo-dashboard-api.php`
@@ -31,51 +32,54 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const [custRes, slipRes, bdoRes] = await Promise.all([
-      phpPost({ action: 'customer_list', limit: 100, offset: 0, fast: 1 }),
-      fetch(`${SLIPS_API}?status=pending&limit=200&offset=0`, {
-        headers: { 'User-Agent': 'InboxReya-SlipCenter/1.0' },
-        cache: 'no-store',
-      }).then(r => r.json()).catch(() => ({ success: false })),
-      // Use local DB query (no Odoo live API) for fast global BDO overview
-      phpPost({ action: 'slip_center_bdo_overview', limit: 200 }),
-    ])
+    const combinedData = await cacheQuery(
+      `slipcenter:dashboard`,
+      async () => {
+        const [custRes, slipRes, bdoRes] = await Promise.all([
+          phpPost({ action: 'customer_list', limit: 100, offset: 0, fast: 1 }),
+          fetch(`${SLIPS_API}?status=pending&limit=200&offset=0`, {
+            headers: { 'User-Agent': 'InboxReya-SlipCenter/1.0' },
+            cache: 'no-store',
+          }).then(r => r.json()).catch(() => ({ success: false })),
+          phpPost({ action: 'slip_center_bdo_overview', limit: 200 }),
+        ])
 
-    const customers = custRes?.success && custRes?.data?.customers
-      ? custRes.data.customers
-      : []
+        const customers = custRes?.success && custRes?.data?.customers
+          ? custRes.data.customers
+          : []
 
-    const pendingSlips = slipRes?.success && slipRes?.data?.slips
-      ? slipRes.data.slips
-      : []
+        const pendingSlips = slipRes?.success && slipRes?.data?.slips
+          ? slipRes.data.slips
+          : []
 
-    // slip_center_bdo_overview returns { bdos: [...] } from local odoo_bdo_orders table
-    const allBdos = bdoRes?.success && bdoRes?.data?.bdos
-      ? bdoRes.data.bdos
-      : []
+        const allBdos = bdoRes?.success && bdoRes?.data?.bdos
+          ? bdoRes.data.bdos
+          : []
 
-    const pendingBdos = allBdos.filter((b: any) => {
-      const status = String(b?.payment_status || b?.status || '').toLowerCase()
-      if (status === 'paid' || status === 'fully_paid' || status === 'done') return false
-      if (status === 'matched' || status === 'reconciled') return false
-      return true
-    })
+        const pendingBdos = allBdos.filter((b: any) => {
+          const status = String(b?.payment_status || b?.status || '').toLowerCase()
+          if (status === 'paid' || status === 'fully_paid' || status === 'done') return false
+          if (status === 'matched' || status === 'reconciled') return false
+          return true
+        })
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        customers,
-        pendingSlips,
-        pendingBdos,
-        allBdos,
-        stats: {
-          totalCustomers: customers.length,
-          totalPendingSlips: pendingSlips.length,
-          totalPendingBdos: pendingBdos.length,
-          totalAllBdos: allBdos.length,
-        },
+        return {
+          customers,
+          pendingSlips,
+          pendingBdos,
+          allBdos,
+          stats: {
+            totalCustomers: customers.length,
+            totalPendingSlips: pendingSlips.length,
+            totalPendingBdos: pendingBdos.length,
+            totalAllBdos: allBdos.length,
+          },
+        }
       },
-    })
+      CACHE_TTL.SLIP_CENTER  // 30s
+    )
+
+    return NextResponse.json({ success: true, data: combinedData })
   } catch (error) {
     console.error('[slip-center] GET error:', error)
     return NextResponse.json(

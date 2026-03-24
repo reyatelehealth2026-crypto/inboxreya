@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 export async function GET(
   request: NextRequest,
@@ -76,35 +77,39 @@ export async function GET(
     const invoicesLimit = searchParams.get('invoices_limit') || '10'
     const timelineLimit = searchParams.get('timeline_limit') || '20'
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
+    const result = await cacheQuery(
+      `customer:360:${userId}`,
+      async () => {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'customer_360',
+            line_user_id: user.lineUserId,
+            partner_id: partnerId ? String(partnerId) : '',
+            customer_ref: customerRef || '',
+            orders_limit: Number(ordersLimit),
+            invoices_limit: Number(invoicesLimit),
+            timeline_limit: Number(timelineLimit),
+          }),
+          cache: 'no-store',
+        })
+
+        const contentType = response.headers.get('content-type')
+        if (!contentType || !contentType.includes('application/json')) {
+          const text = await response.text()
+          console.error('[customer-360] Non-JSON:', text.substring(0, 200))
+          return { success: false, error: 'PHP backend returned non-JSON response' }
+        }
+
+        return response.json()
       },
-      body: JSON.stringify({
-        action: 'customer_360',
-        line_user_id: user.lineUserId,
-        partner_id: partnerId ? String(partnerId) : '',
-        customer_ref: customerRef || '',
-        orders_limit: Number(ordersLimit),
-        invoices_limit: Number(invoicesLimit),
-        timeline_limit: Number(timelineLimit),
-      }),
-      cache: 'no-store',
-    })
+      CACHE_TTL.CUSTOMER_360  // 30s
+    )
 
-    const contentType = response.headers.get('content-type')
-    if (!contentType || !contentType.includes('application/json')) {
-      const text = await response.text()
-      console.error('[customer-360] Non-JSON:', text.substring(0, 200))
-      return NextResponse.json(
-        { success: false, error: 'PHP backend returned non-JSON response' },
-        { status: 502 }
-      )
-    }
-
-    const result = await response.json()
     return NextResponse.json(result)
   } catch (error) {
     console.error('[customer-360] Error:', error)

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 const PHP_BASE = process.env.PHP_API_URL || process.env.NEXT_PUBLIC_PHP_API_URL || 'https://cny.re-ya.com'
 const DASHBOARD_API = `${PHP_BASE}/api/odoo-dashboard-api.php`
@@ -25,45 +26,49 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'bdoId is required' }, { status: 400 })
     }
 
-    const res = await fetch(DASHBOARD_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'InboxReya-SlipCenter/1.0' },
-      body: JSON.stringify({
-        action: 'odoo_bdo_detail_api',
-        bdo_id: bdoId,
-        partner_id: partnerId || '',
-      }),
-      cache: 'no-store',
-      signal: AbortSignal.timeout(15000), // 15s timeout — fail fast before Vercel 30s
-    })
+    const data = await cacheQuery(
+      `slipcenter:bdo:${bdoId}:${partnerId}`,
+      async () => {
+        const res = await fetch(DASHBOARD_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'User-Agent': 'InboxReya-SlipCenter/1.0' },
+          body: JSON.stringify({
+            action: 'odoo_bdo_detail_api',
+            bdo_id: bdoId,
+            partner_id: partnerId || '',
+          }),
+          cache: 'no-store',
+          signal: AbortSignal.timeout(15000),
+        })
 
-    const json = await res.json().catch(() => ({ success: false, error: 'Invalid JSON from PHP' }))
+        const json = await res.json().catch(() => ({ success: false, error: 'Invalid JSON from PHP' }))
 
-    if (!json.success) {
-      return NextResponse.json({ success: false, error: json.error || 'PHP error' }, { status: 502 })
-    }
+        if (!json.success) {
+          throw new Error(json.error || 'PHP error')
+        }
 
-    const d = json.data || {}
+        const d = json.data || {}
 
-    // Build statement PDF URL if available
-    const pdfUrl = d.statement_pdf_url
-      ? `${PHP_BASE}/api/odoo-dashboard-api.php?action=odoo_bdo_statement_pdf&bdo_id=${encodeURIComponent(String(bdoId))}`
-      : (d.bdo?.statement_pdf_path ? `${PHP_BASE}/api/odoo-dashboard-api.php?action=odoo_bdo_statement_pdf&bdo_id=${encodeURIComponent(String(bdoId))}` : null)
+        const pdfUrl = d.statement_pdf_url
+          ? `${PHP_BASE}/api/odoo-dashboard-api.php?action=odoo_bdo_statement_pdf&bdo_id=${encodeURIComponent(String(bdoId))}`
+          : (d.bdo?.statement_pdf_path ? `${PHP_BASE}/api/odoo-dashboard-api.php?action=odoo_bdo_statement_pdf&bdo_id=${encodeURIComponent(String(bdoId))}` : null)
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        bdo: d.bdo ?? null,
-        summary: d.summary ?? null,
-        sale_orders: d.sale_orders ?? [],
-        outstanding_invoices: d.outstanding_invoices ?? [],
-        credit_notes: d.credit_notes ?? [],
-        deposits: d.deposits ?? [],
-        slips: d.slips ?? [],
-        odoo_url: d.odoo_url ?? null,
-        pdf_url: pdfUrl,
+        return {
+          bdo: d.bdo ?? null,
+          summary: d.summary ?? null,
+          sale_orders: d.sale_orders ?? [],
+          outstanding_invoices: d.outstanding_invoices ?? [],
+          credit_notes: d.credit_notes ?? [],
+          deposits: d.deposits ?? [],
+          slips: d.slips ?? [],
+          odoo_url: d.odoo_url ?? null,
+          pdf_url: pdfUrl,
+        }
       },
-    })
+      CACHE_TTL.SLIP_CENTER  // 30s
+    )
+
+    return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('[slip-center/bdo-detail] GET error:', error)
     return NextResponse.json(

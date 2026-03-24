@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 /**
  * GET /api/inbox/customers/[id]/active-orders
@@ -101,24 +102,31 @@ export async function GET(
       queryParams = [user.lineUserId]
     }
 
-    // Fetch active orders (everything except invoice.paid and cancelled)
-    const activeOrders = await prisma.$queryRawUnsafe<OrderProjectionRow[]>(
-      `SELECT * FROM odoo_order_projection op
-       WHERE ${whereClause}
-         AND (op.latest_state IS NULL OR op.latest_state NOT IN ('invoice.paid', 'cancelled', 'bdo.cancelled'))
-       ORDER BY op.last_webhook_at DESC
-       LIMIT 20`,
-      ...queryParams
-    )
+    // Fetch active + completed orders (cached 30s)
+    const ordersData = await cacheQuery(
+      `customer:activeorders:${userId}`,
+      async () => {
+        const activeOrders = await prisma.$queryRawUnsafe<OrderProjectionRow[]>(
+          `SELECT * FROM odoo_order_projection op
+           WHERE ${whereClause}
+             AND (op.latest_state IS NULL OR op.latest_state NOT IN ('invoice.paid', 'cancelled', 'bdo.cancelled'))
+           ORDER BY op.last_webhook_at DESC
+           LIMIT 20`,
+          ...queryParams
+        )
 
-    // Fetch completed orders (invoice.paid)
-    const completedOrders = await prisma.$queryRawUnsafe<OrderProjectionRow[]>(
-      `SELECT * FROM odoo_order_projection op
-       WHERE ${whereClause}
-         AND op.latest_state = 'invoice.paid'
-       ORDER BY op.last_webhook_at DESC
-       LIMIT 10`,
-      ...queryParams
+        const completedOrders = await prisma.$queryRawUnsafe<OrderProjectionRow[]>(
+          `SELECT * FROM odoo_order_projection op
+           WHERE ${whereClause}
+             AND op.latest_state = 'invoice.paid'
+           ORDER BY op.last_webhook_at DESC
+           LIMIT 10`,
+          ...queryParams
+        )
+
+        return { activeOrders, completedOrders }
+      },
+      CACHE_TTL.ACTIVE_ORDERS  // 30s
     )
 
     // Serialize dates and decimals for JSON
@@ -142,8 +150,8 @@ export async function GET(
     return NextResponse.json({
       success: true,
       data: {
-        active: activeOrders.map(serialize),
-        completed: completedOrders.map(serialize),
+        active: ordersData.activeOrders.map(serialize),
+        completed: ordersData.completedOrders.map(serialize),
       },
     })
   } catch (error) {

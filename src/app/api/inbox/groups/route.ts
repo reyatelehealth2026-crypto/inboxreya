@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { phpApiRequest } from '@/lib/api-utils';
+import { cacheQuery, CACHE_TTL } from '@/lib/redis';
 
 /**
  * Convert snake_case keys to camelCase recursively

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 export async function GET(
   request: Request,
@@ -24,7 +25,9 @@ export async function GET(
 
     // Fetch activity logs for this user from activity_logs table
     // This uses raw query because the activity_logs table may not be in Prisma schema
-    const activities = await prisma.$queryRaw<{
+    const activities = await cacheQuery(
+      `customer:activity:${parsedUserId}`,
+      () => prisma.$queryRaw<{
       id: number
       log_type: string
       action: string
@@ -61,7 +64,9 @@ export async function GET(
          OR (entity_type = 'tag' AND user_id = ${parsedUserId})
       ORDER BY created_at DESC
       LIMIT 30
-    `
+    `,
+      CACHE_TTL.ORDERS  // 30s
+    )
 
     // Transform the data
     const formattedActivities = activities.map((activity) => ({

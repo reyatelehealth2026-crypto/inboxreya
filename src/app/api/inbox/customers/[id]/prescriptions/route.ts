@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
 export async function GET(
   request: Request,
@@ -37,53 +38,57 @@ export async function GET(
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Get prescriptions from prescriptions table
-    const prescriptions = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT * FROM prescriptions WHERE user_id = ? ORDER BY created_at DESC`,
-      parsedUserId
+    // Get prescriptions (cached 60s)
+    const data = await cacheQuery(
+      `customer:prescriptions:${parsedUserId}`,
+      async () => {
+        const prescriptions = await prisma.$queryRawUnsafe<any[]>(
+          `SELECT * FROM prescriptions WHERE user_id = ? ORDER BY created_at DESC`,
+          parsedUserId
+        )
+
+        return prescriptions.map((p) => {
+          let medications: any[] = []
+          if (p.medications) {
+            try {
+              medications = JSON.parse(p.medications)
+            } catch {
+              medications = []
+            }
+          }
+
+          const expiresAt = p.expires_at ? new Date(p.expires_at) : null
+          const now = new Date()
+          const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+          const isExpiringSoon = expiresAt && expiresAt > now && expiresAt < sevenDaysFromNow
+
+          return {
+            id: p.id,
+            userId: p.user_id,
+            prescriptionNumber: p.prescription_number || null,
+            imageUrl: p.image_url || p.prescription_image || null,
+            status: p.status || 'pending',
+            medications,
+            notes: p.notes || null,
+            prescribedBy: p.prescribed_by || null,
+            prescribedDate: p.prescribed_date || p.created_at,
+            expiresAt: p.expires_at || null,
+            dispensedAt: p.dispensed_at || null,
+            dispensedBy: p.dispensed_by || null,
+            requiresVerification: p.requires_verification || false,
+            verifiedBy: p.verified_by || null,
+            verifiedAt: p.verified_at || null,
+            isExpiringSoon,
+            isExpired: expiresAt && expiresAt < now,
+            refillCount: p.refill_count || 0,
+            maxRefills: p.max_refills || 0,
+            createdAt: p.created_at,
+            updatedAt: p.updated_at,
+          }
+        })
+      },
+      CACHE_TTL.PRESCRIPTIONS  // 60s
     )
-
-    const data = prescriptions.map((p) => {
-      // Parse medications if stored as JSON
-      let medications: any[] = []
-      if (p.medications) {
-        try {
-          medications = JSON.parse(p.medications)
-        } catch {
-          medications = []
-        }
-      }
-
-      // Calculate if prescription is expiring soon (within 7 days)
-      const expiresAt = p.expires_at ? new Date(p.expires_at) : null
-      const now = new Date()
-      const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-      const isExpiringSoon = expiresAt && expiresAt > now && expiresAt < sevenDaysFromNow
-
-      return {
-        id: p.id,
-        userId: p.user_id,
-        prescriptionNumber: p.prescription_number || null,
-        imageUrl: p.image_url || p.prescription_image || null,
-        status: p.status || 'pending',
-        medications,
-        notes: p.notes || null,
-        prescribedBy: p.prescribed_by || null,
-        prescribedDate: p.prescribed_date || p.created_at,
-        expiresAt: p.expires_at || null,
-        dispensedAt: p.dispensed_at || null,
-        dispensedBy: p.dispensed_by || null,
-        requiresVerification: p.requires_verification || false,
-        verifiedBy: p.verified_by || null,
-        verifiedAt: p.verified_at || null,
-        isExpiringSoon,
-        isExpired: expiresAt && expiresAt < now,
-        refillCount: p.refill_count || 0,
-        maxRefills: p.max_refills || 0,
-        createdAt: p.created_at,
-        updatedAt: p.updated_at,
-      }
-    })
 
     return NextResponse.json({ data })
   } catch (error) {
@@ -169,6 +174,9 @@ export async function POST(
       expiresAt || null,
       requiresVerification
     )
+
+    // Invalidate prescriptions cache
+    await cacheInvalidate(`customer:prescriptions:${parsedUserId}`)
 
     return NextResponse.json({
       success: true,

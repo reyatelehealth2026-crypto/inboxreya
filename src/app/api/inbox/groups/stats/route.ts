@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { phpApiRequest } from '@/lib/api-utils';
+import { cacheQuery, CACHE_TTL } from '@/lib/redis';
 
 /**
  * Convert snake_case keys to camelCase recursively
@@ -41,27 +42,32 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const lineAccountId = searchParams.get('lineAccountId') || defaultLineAccountId;
 
-    const response = await phpApiRequest(
-      `/api/inbox-groups.php?action=get_stats&line_account_id=${lineAccountId}`,
-      {
-        method: 'GET',
-        headers: {
-          'X-Admin-ID': adminId?.toString() || '',
-          'X-Line-Account-ID': lineAccountId?.toString() || '',
-        },
-      }
-    );
+    const data = await cacheQuery(
+      `groups:stats:${lineAccountId}`,
+      async () => {
+        const response = await phpApiRequest(
+          `/api/inbox-groups.php?action=get_stats&line_account_id=${lineAccountId}`,
+          {
+            method: 'GET',
+            headers: {
+              'X-Admin-ID': adminId?.toString() || '',
+              'X-Line-Account-ID': lineAccountId?.toString() || '',
+            },
+          }
+        );
 
-    if (!response.success) {
-      return NextResponse.json(
-        { success: false, error: response.error || 'Failed to fetch stats' },
-        { status: 500 }
-      );
-    }
+        if (!response.success) {
+          throw new Error(response.error || 'Failed to fetch stats');
+        }
+
+        return toCamelCase(response.data);
+      },
+      CACHE_TTL.GROUPS  // 60s
+    );
 
     return NextResponse.json({
       success: true,
-      data: toCamelCase(response.data),
+      data,
     });
   } catch (error) {
     console.error('Group stats API error:', error);

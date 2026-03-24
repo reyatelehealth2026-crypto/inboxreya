@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 export async function GET(
   request: NextRequest,
@@ -41,38 +42,43 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // Get status change history from activity logs
-    const history = await prisma.activity_logs.findMany({
-      where: {
-        entity_type: 'conversation',
-        entity_id: conversationId,
-        action: 'status_change',
-      },
-      orderBy: {
-        created_at: 'desc',
-      },
-      select: {
-        id: true,
-        action: true,
-        description: true,
-        admin_id: true,
-        admin_name: true,
-        old_value: true,
-        new_value: true,
-        created_at: true,
-      },
-    })
+    const formattedHistory = await cacheQuery(
+      `conv:statushistory:${conversationId}`,
+      async () => {
+        const history = await prisma.activity_logs.findMany({
+          where: {
+            entity_type: 'conversation',
+            entity_id: conversationId,
+            action: 'status_change',
+          },
+          orderBy: {
+            created_at: 'desc',
+          },
+          select: {
+            id: true,
+            action: true,
+            description: true,
+            admin_id: true,
+            admin_name: true,
+            old_value: true,
+            new_value: true,
+            created_at: true,
+          },
+        })
 
-    const formattedHistory = history.map((log) => ({
-      id: log.id.toString(),
-      action: log.action,
-      description: log.description,
-      adminId: log.admin_id?.toString(),
-      adminName: log.admin_name,
-      oldStatus: log.old_value,
-      newStatus: log.new_value,
-      createdAt: log.created_at.toISOString(),
-    }))
+        return history.map((log) => ({
+          id: log.id.toString(),
+          action: log.action,
+          description: log.description,
+          adminId: log.admin_id?.toString(),
+          adminName: log.admin_name,
+          oldStatus: log.old_value,
+          newStatus: log.new_value,
+          createdAt: log.created_at.toISOString(),
+        }))
+      },
+      CACHE_TTL.ORDERS  // 30s
+    )
 
     return NextResponse.json({
       success: true,

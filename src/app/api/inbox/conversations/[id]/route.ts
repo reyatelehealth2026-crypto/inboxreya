@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { broadcastRealtimeEvent } from '@/lib/realtime'
+import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
 export async function GET(
   request: NextRequest,
@@ -28,42 +29,46 @@ export async function GET(
       where.lineAccountId = session.user.lineAccountId
     }
 
-    const user = await prisma.lineUser.findFirst({
-      where,
-      include: {
-        messages: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-        },
-        tagAssignments: {
-          include: { tag: true },
-        },
-        conversationAssignments: {
-          where: { status: 'active' },
-          include: {
-            admin: {
-              select: {
-                id: true,
-                username: true,
-                displayName: true,
-                avatarUrl: true,
-                role: true,
+    const user = await cacheQuery(
+      `conv:detail:${parsedId}`,
+      () => prisma.lineUser.findFirst({
+        where,
+        include: {
+          messages: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+          tagAssignments: {
+            include: { tag: true },
+          },
+          conversationAssignments: {
+            where: { status: 'active' },
+            include: {
+              admin: {
+                select: {
+                  id: true,
+                  username: true,
+                  displayName: true,
+                  avatarUrl: true,
+                  role: true,
+                },
+              },
+            },
+          },
+          _count: {
+            select: {
+              messages: {
+                where: {
+                  direction: 'incoming',
+                  isRead: false,
+                },
               },
             },
           },
         },
-        _count: {
-          select: {
-            messages: {
-              where: {
-                direction: 'incoming',
-                isRead: false,
-              },
-            },
-          },
-        },
-      },
-    })
+      }),
+      CACHE_TTL.MESSAGES  // 15s — เปลี่ยนบ่อย
+    )
 
     if (!user) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
@@ -182,6 +187,10 @@ export async function PATCH(
         ...(isBlocked !== undefined && { isBlocked }),
       },
     })
+
+    // Invalidate caches
+    cacheInvalidate(`conv:detail:${parsedId}`).catch(() => null)
+    cacheInvalidate(`conv:account:*`).catch(() => null)
 
     broadcastRealtimeEvent({
       type: 'conversation_update',

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth-middleware';
+import { cacheQuery, CACHE_TTL } from '@/lib/redis';
 
 /**
  * GET /api/inbox/analytics/overview
@@ -42,6 +43,9 @@ export async function GET(request: NextRequest) {
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const lineAccountIdNum = parseInt(lineAccountId);
+
+    const cacheKey = `analytics:overview:${lineAccountIdNum}:${startDate.toISOString().slice(0,10)}:${endDate.toISOString().slice(0,10)}`;
+    const data = await cacheQuery(cacheKey, async () => {
 
     // Get all users (conversations) for this account in date range
     const users = await prisma.lineUser.findMany({
@@ -153,9 +157,7 @@ export async function GET(request: NextRequest) {
       0
     );
 
-    return NextResponse.json({
-      success: true,
-      data: {
+    return {
         totalConversations,
         averageResponseTimeMinutes,
         slaComplianceRate,
@@ -169,8 +171,10 @@ export async function GET(request: NextRequest) {
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
         },
-      },
-    });
+      };
+    }, CACHE_TTL.HEALTH);  // 60s
+
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error('Analytics overview error:', error);
     return NextResponse.json(

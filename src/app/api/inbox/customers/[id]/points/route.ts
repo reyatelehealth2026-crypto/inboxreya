@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
 export async function GET(
   request: Request,
@@ -48,88 +49,89 @@ export async function GET(
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Get points history from points_transactions table
-    const transactions = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT * FROM points_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
-      parsedUserId
-    )
+    const data = await cacheQuery(
+      `customer:points:${parsedUserId}`,
+      async () => {
+        // Get points history from points_transactions table
+        const transactions = await prisma.$queryRawUnsafe<any[]>(
+          `SELECT * FROM points_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
+          parsedUserId
+        )
 
-    // Get tier information
-    const tierInfo = getTierInfo(user.tier || user.membershipLevel)
+        // Get tier information
+        const tierInfo = getTierInfo(user.tier || user.membershipLevel)
 
-    // Calculate points expiring soon (if expiration tracking exists)
-    const expiringPoints = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT SUM(points) as total FROM points_transactions 
-       WHERE user_id = ? AND expires_at IS NOT NULL AND expires_at > NOW() AND expires_at < DATE_ADD(NOW(), INTERVAL 30 DAY)`,
-      parsedUserId
-    )
+        // Calculate points expiring soon (if expiration tracking exists)
+        const [expiringPoints, pointsSummary] = await Promise.all([
+          prisma.$queryRawUnsafe<any[]>(
+            `SELECT SUM(points) as total FROM points_transactions 
+             WHERE user_id = ? AND expires_at IS NOT NULL AND expires_at > NOW() AND expires_at < DATE_ADD(NOW(), INTERVAL 30 DAY)`,
+            parsedUserId
+          ),
+          prisma.$queryRawUnsafe<any[]>(
+            `SELECT
+              COALESCE(SUM(CASE WHEN points > 0 THEN points ELSE 0 END), 0) as total_points,
+              COALESCE(SUM(points), 0) as available_points,
+              COALESCE(SUM(CASE WHEN points < 0 THEN ABS(points) ELSE 0 END), 0) as used_points
+             FROM points_transactions
+             WHERE user_id = ?`,
+            parsedUserId
+          ),
+        ])
 
-    // Calculate points from transactions (Mirroring PHP LoyaltyPoints::getUserPoints)
-    const pointsSummary = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT
-        COALESCE(SUM(CASE WHEN points > 0 THEN points ELSE 0 END), 0) as total_points,
-        COALESCE(SUM(points), 0) as available_points,
-        COALESCE(SUM(CASE WHEN points < 0 THEN ABS(points) ELSE 0 END), 0) as used_points
-       FROM points_transactions
-       WHERE user_id = ?`,
-      parsedUserId
-    )
+        const summary = pointsSummary[0]
+        let currentBalance = 0
+        let totalPoints = 0
+        let usedPoints = 0
 
-    const summary = pointsSummary[0]
-    let currentBalance = 0
-    let totalPoints = 0
-    let usedPoints = 0
+        if (summary && (Number(summary.available_points) !== 0 || transactions.length > 0)) {
+          currentBalance = Number(summary.available_points)
+          totalPoints = Number(summary.total_points)
+          usedPoints = Number(summary.used_points)
+          currentBalance = Math.max(0, currentBalance)
+        } else {
+          currentBalance = user.availablePoints || user.points || 0
+          totalPoints = user.totalPoints || 0
+          usedPoints = user.usedPoints || 0
+        }
 
-    // Only use transaction data if we have transactions or non-zero balance
-    // This matches PHP logic: if (!$result || (int) $result['available_points'] === 0) -> check users table
-    if (summary && (Number(summary.available_points) !== 0 || transactions.length > 0)) {
-      currentBalance = Number(summary.available_points)
-      totalPoints = Number(summary.total_points)
-      usedPoints = Number(summary.used_points)
-
-      // Ensure available_points is not negative
-      currentBalance = Math.max(0, currentBalance)
-    } else {
-      // Fallback to users table
-      currentBalance = user.availablePoints || user.points || 0
-      totalPoints = user.totalPoints || 0
-      usedPoints = user.usedPoints || 0
-    }
-
-    const data = {
-      balance: {
-        current: currentBalance,
-        total: totalPoints,
-        used: usedPoints,
-        loyalty: user.loyaltyPoints || 0,
-        expiringSoon: expiringPoints[0]?.total || 0,
+        return {
+          balance: {
+            current: currentBalance,
+            total: totalPoints,
+            used: usedPoints,
+            loyalty: user.loyaltyPoints || 0,
+            expiringSoon: expiringPoints[0]?.total || 0,
+          },
+          tier: {
+            current: user.tier || user.membershipLevel || 'bronze',
+            name: tierInfo.name,
+            benefits: tierInfo.benefits,
+            nextTier: tierInfo.nextTier,
+            pointsToNextTier: tierInfo.pointsToNextTier,
+            progress: tierInfo.progress,
+          },
+          stats: {
+            totalSpent: user.totalSpent ? parseFloat(user.totalSpent.toString()) : 0,
+            orderCount: user.orderCount || 0,
+            averageOrderValue:
+              user.orderCount && user.totalSpent
+                ? parseFloat(user.totalSpent.toString()) / user.orderCount
+                : 0,
+          },
+          history: transactions.map((t) => ({
+            id: t.id,
+            type: t.transaction_type || t.type,
+            points: t.points,
+            description: t.description || t.notes,
+            orderId: t.order_id || null,
+            expiresAt: t.expires_at || null,
+            createdAt: t.created_at,
+          })),
+        }
       },
-      tier: {
-        current: user.tier || user.membershipLevel || 'bronze',
-        name: tierInfo.name,
-        benefits: tierInfo.benefits,
-        nextTier: tierInfo.nextTier,
-        pointsToNextTier: tierInfo.pointsToNextTier,
-        progress: tierInfo.progress,
-      },
-      stats: {
-        totalSpent: user.totalSpent ? parseFloat(user.totalSpent.toString()) : 0,
-        orderCount: user.orderCount || 0,
-        averageOrderValue:
-          user.orderCount && user.totalSpent
-            ? parseFloat(user.totalSpent.toString()) / user.orderCount
-            : 0,
-      },
-      history: transactions.map((t) => ({
-        id: t.id,
-        type: t.transaction_type || t.type,
-        points: t.points,
-        description: t.description || t.notes,
-        orderId: t.order_id || null,
-        expiresAt: t.expires_at || null,
-        createdAt: t.created_at,
-      })),
-    }
+      CACHE_TTL.ORDERS  // 30s
+    )
 
     return NextResponse.json({ data })
   } catch (error) {
@@ -208,6 +210,10 @@ export async function POST(
         points: newAvailable, // Keep legacy field in sync
       },
     })
+
+    // Invalidate points cache
+    await cacheInvalidate(`customer:points:${parsedUserId}`)
+    await cacheInvalidate(`customer:profile:${parsedUserId}`)
 
     return NextResponse.json({
       success: true,

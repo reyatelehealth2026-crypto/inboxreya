@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth-middleware';
+import { cacheQuery, CACHE_TTL } from '@/lib/redis';
 
 /**
  * GET /api/inbox/analytics/conversations
@@ -42,6 +43,9 @@ export async function GET(request: NextRequest) {
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const lineAccountIdNum = parseInt(lineAccountId);
+
+    const cacheKey = `analytics:conv:${lineAccountIdNum}:${groupBy}:${startDate.toISOString().slice(0,10)}:${endDate.toISOString().slice(0,10)}`;
+    const data = await cacheQuery(cacheKey, async () => {
 
     // Get all messages in date range
     const messages = await prisma.message.findMany({
@@ -135,9 +139,7 @@ export async function GET(request: NextRequest) {
     const sortedHours = [...busiestHours].sort((a, b) => b.messageCount - a.messageCount);
     const peakHours = sortedHours.slice(0, 3).map(h => h.hour);
 
-    return NextResponse.json({
-      success: true,
-      data: {
+    return {
         trends,
         busiestHours,
         peakHours,
@@ -146,8 +148,10 @@ export async function GET(request: NextRequest) {
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
         },
-      },
-    });
+      };
+    }, CACHE_TTL.HEALTH);  // 60s
+
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error('Conversation trends error:', error);
     return NextResponse.json(

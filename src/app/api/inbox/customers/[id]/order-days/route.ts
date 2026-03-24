@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
 export async function PUT(
     request: Request,
@@ -46,6 +47,10 @@ export async function PUT(
 
         console.log(`Order days saved for user ${parsedUserId}:`, orderDays)
 
+        // Invalidate order-days cache
+        await cacheInvalidate(`customer:orderdays:${parsedUserId}`)
+        await cacheInvalidate(`customer:profile:${parsedUserId}`)
+
         return NextResponse.json({ success: true, orderDays })
     } catch (error) {
         console.error('Error updating order days:', error)
@@ -73,11 +78,16 @@ export async function GET(
             return NextResponse.json({ error: 'User id must be a number' }, { status: 400 })
         }
 
-        const result = await prisma.$queryRaw<{ order_days: string | null }[]>`
-      SELECT order_days FROM users WHERE id = ${parsedUserId}
-    `
-
-        const orderDays = result[0]?.order_days ? JSON.parse(result[0].order_days) : []
+        const orderDays = await cacheQuery(
+          `customer:orderdays:${parsedUserId}`,
+          async () => {
+            const result = await prisma.$queryRaw<{ order_days: string | null }[]>`
+              SELECT order_days FROM users WHERE id = ${parsedUserId}
+            `
+            return result[0]?.order_days ? JSON.parse(result[0].order_days) : []
+          },
+          CACHE_TTL.CUSTOMER_PROFILE  // 120s
+        )
 
         return NextResponse.json({ orderDays })
     } catch (error) {

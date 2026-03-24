@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
 // Get all auto-tag rules
 export async function GET(request: NextRequest) {
@@ -10,39 +11,45 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const rules = await prisma.autoTagRule.findMany({
-      where: session.user.lineAccountId
-        ? {
-            OR: [
-              { lineAccountId: session.user.lineAccountId },
-              { lineAccountId: null },
-            ],
-          }
-        : {},
-      include: {
-        tag: true,
-      },
-      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
-    })
+    const data = await cacheQuery(
+      `autotags:account:${session.user.lineAccountId || 0}`,
+      async () => {
+        const rules = await prisma.autoTagRule.findMany({
+          where: session.user.lineAccountId
+            ? {
+                OR: [
+                  { lineAccountId: session.user.lineAccountId },
+                  { lineAccountId: null },
+                ],
+              }
+            : {},
+          include: {
+            tag: true,
+          },
+          orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+        })
 
-    return NextResponse.json({
-      data: rules.map((rule) => ({
-        id: rule.id.toString(),
-        tagId: rule.tagId.toString(),
-        ruleName: rule.ruleName,
-        triggerType: rule.triggerType,
-        conditions: JSON.parse(rule.conditions),
-        isActive: rule.isActive,
-        priority: rule.priority,
-        tag: {
-          id: rule.tag.id.toString(),
-          name: rule.tag.name,
-          color: rule.tag.color ?? '#3B82F6',
-        },
-        createdAt: rule.createdAt.toISOString(),
-        updatedAt: rule.updatedAt.toISOString(),
-      })),
-    })
+        return rules.map((rule) => ({
+          id: rule.id.toString(),
+          tagId: rule.tagId.toString(),
+          ruleName: rule.ruleName,
+          triggerType: rule.triggerType,
+          conditions: JSON.parse(rule.conditions),
+          isActive: rule.isActive,
+          priority: rule.priority,
+          tag: {
+            id: rule.tag.id.toString(),
+            name: rule.tag.name,
+            color: rule.tag.color ?? '#3B82F6',
+          },
+          createdAt: rule.createdAt.toISOString(),
+          updatedAt: rule.updatedAt.toISOString(),
+        }))
+      },
+      CACHE_TTL.AUTO_RULES  // 300s
+    )
+
+    return NextResponse.json({ data })
   } catch (error) {
     console.error('Error fetching auto-tag rules:', error)
     return NextResponse.json(
@@ -106,6 +113,9 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Invalidate auto-tags cache
+    await cacheInvalidate('autotags:*')
+
     return NextResponse.json({
       id: rule.id.toString(),
       tagId: rule.tagId.toString(),
@@ -166,6 +176,9 @@ export async function PUT(request: NextRequest) {
       },
     })
 
+    // Invalidate auto-tags cache
+    await cacheInvalidate('autotags:*')
+
     return NextResponse.json({
       id: rule.id.toString(),
       tagId: rule.tagId.toString(),
@@ -216,6 +229,9 @@ export async function DELETE(request: NextRequest) {
     await prisma.autoTagRule.delete({
       where: { id: parsedId },
     })
+
+    // Invalidate auto-tags cache
+    await cacheInvalidate('autotags:*')
 
     return NextResponse.json({ success: true })
   } catch (error) {

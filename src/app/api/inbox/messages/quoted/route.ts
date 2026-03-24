@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
  async function findQuotedMessage(referenceId: string, userId?: number) {
    const whereBase = {
@@ -99,22 +100,34 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const matchedMessage = await findQuotedMessage(quotedMessageId, parsedUserId)
+    const result = await cacheQuery(
+      `msg:quoted:${quotedMessageId}:${parsedUserId || 0}`,
+      async () => {
+        const matchedMessage = await findQuotedMessage(quotedMessageId, parsedUserId)
 
-    if (!matchedMessage) {
+        if (!matchedMessage) {
+          return null
+        }
+
+        return {
+          success: true,
+          content: matchedMessage.content,
+          messageType: matchedMessage.messageType,
+          direction: matchedMessage.direction,
+          messageId: matchedMessage.id.toString(),
+        }
+      },
+      CACHE_TTL.QUOTED_MSG  // 600s
+    )
+
+    if (!result) {
       return NextResponse.json({
         error: 'Message not found',
         content: null,
       }, { status: 404 })
     }
 
-    return NextResponse.json({
-      success: true,
-      content: matchedMessage.content,
-      messageType: matchedMessage.messageType,
-      direction: matchedMessage.direction,
-      messageId: matchedMessage.id.toString(),
-    })
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Error fetching quoted message:', error)
     return NextResponse.json(

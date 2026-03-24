@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { callPhpApi } from '@/lib/php-bridge'
+import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 /**
  * GET /api/inbox/customers/[id]/slips
@@ -39,9 +40,13 @@ export async function GET(
     }
 
     // Fetch slips from PHP backend
-    const result = await callPhpApi(
-      `/api/customer-slips.php?line_user_id=${encodeURIComponent(user.lineUserId)}`,
-      { method: 'GET' }
+    const result = await cacheQuery(
+      `customer:slips:${userId}`,
+      () => callPhpApi(
+        `/api/customer-slips.php?line_user_id=${encodeURIComponent(user.lineUserId)}`,
+        { method: 'GET' }
+      ),
+      CACHE_TTL.ORDERS  // 30s
     )
 
     if (!result.success) {

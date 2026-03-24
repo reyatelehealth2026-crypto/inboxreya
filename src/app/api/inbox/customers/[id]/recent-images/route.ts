@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 /**
  * GET /api/inbox/customers/[id]/recent-images
@@ -24,21 +25,25 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 })
     }
 
-    const messages = await prisma.message.findMany({
-      where: {
-        userId,
-        messageType: 'image',
-        direction: 'incoming',
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 8,
-      select: {
-        id: true,
-        content: true,
-        mediaUrl: true,
-        createdAt: true,
-      },
-    })
+    const messages = await cacheQuery(
+      `customer:recentimg:${userId}`,
+      () => prisma.message.findMany({
+        where: {
+          userId,
+          messageType: 'image',
+          direction: 'incoming',
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+        select: {
+          id: true,
+          content: true,
+          mediaUrl: true,
+          createdAt: true,
+        },
+      }),
+      CACHE_TTL.MESSAGES  // 15s
+    )
 
     const images = messages.map((msg) => ({
       id: msg.id,

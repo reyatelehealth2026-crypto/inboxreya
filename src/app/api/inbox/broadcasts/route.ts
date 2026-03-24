@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-middleware'
 import { z } from 'zod'
+import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
 const createBroadcastSchema = z.object({
   content: z.string().min(1).max(5000),
@@ -36,28 +37,33 @@ export async function GET(req: NextRequest) {
       where.status = status
     }
 
-    const [broadcasts, total] = await Promise.all([
-      prisma.broadcastMessageV2.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      prisma.broadcastMessageV2.count({ where }),
-    ])
+    const data = await cacheQuery(
+      `broadcasts:account:${session.user.lineAccountId}:${page}:${status || 'all'}`,
+      async () => {
+        const [broadcasts, total] = await Promise.all([
+          prisma.broadcastMessageV2.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            skip,
+            take: limit,
+          }),
+          prisma.broadcastMessageV2.count({ where }),
+        ])
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        broadcasts,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
+        return {
+          broadcasts,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+          },
+        }
       },
-    })
+      CACHE_TTL.BROADCASTS  // 30s
+    )
+
+    return NextResponse.json({ success: true, data })
   } catch (error: any) {
     console.error('Error fetching broadcasts:', error)
     return NextResponse.json(
@@ -117,6 +123,9 @@ export async function POST(req: NextRequest) {
         createdBy: parseInt(session.user.id),
       },
     })
+
+    // Invalidate broadcasts cache
+    await cacheInvalidate('broadcasts:*')
 
     // Store target customer IDs if provided
     if (body.targetCustomerIds && body.targetCustomerIds.length > 0) {

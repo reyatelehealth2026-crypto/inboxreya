@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import pool from '@/lib/db';
+import { cacheQuery, CACHE_TTL } from '@/lib/redis';
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,6 +16,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const days = parseInt(searchParams.get('days') || '7');
     const limit = Math.min(10, parseInt(searchParams.get('limit') || '5'));
+
+    const reportData = await cacheQuery(
+      `reports:salessummary:${days}:${limit}`,
+      async () => {
 
     // วันที่เริ่มต้น
     const startDate = new Date();
@@ -164,7 +169,7 @@ export async function GET(request: NextRequest) {
       orderStatus as any[]
     );
 
-    return NextResponse.json({
+    return {
       success: true,
       period: {
         days,
@@ -196,7 +201,13 @@ export async function GET(request: NextRequest) {
       })),
       dailyStats: dailyStats as any[],
       insights
-    });
+    };
+
+    },  // end cacheQuery fetcher
+      CACHE_TTL.CUSTOMER_PROFILE  // 120s
+    );
+
+    return NextResponse.json(reportData);
 
   } catch (error: any) {
     console.error('Error generating sales report:', error);

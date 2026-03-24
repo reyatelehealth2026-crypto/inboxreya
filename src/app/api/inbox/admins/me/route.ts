@@ -2,6 +2,7 @@
  import bcrypt from "bcryptjs"
  import { auth } from "@/lib/auth"
  import prisma from "@/lib/prisma"
+ import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
  
  async function resolveAdminId(session: { user?: { id?: string | null; email?: string | null } }) {
    const rawId = session.user?.id
@@ -30,19 +31,23 @@
      return NextResponse.json({ error: "Admin user not found" }, { status: 404 })
    }
  
-   const admin = await prisma.adminUser.findUnique({
-     where: { id: adminId },
-     select: {
-       id: true,
-       username: true,
-       email: true,
-       displayName: true,
-       avatarUrl: true,
-       role: true,
-       phone: true,
-       isActive: true,
-     },
-   })
+   const admin = await cacheQuery(
+     `admin:me:${adminId}`,
+     () => prisma.adminUser.findUnique({
+       where: { id: adminId },
+       select: {
+         id: true,
+         username: true,
+         email: true,
+         displayName: true,
+         avatarUrl: true,
+         role: true,
+         phone: true,
+         isActive: true,
+       },
+     }),
+     CACHE_TTL.HEALTH  // 60s
+   )
  
    if (!admin) {
      return NextResponse.json({ error: "Admin user not found" }, { status: 404 })
@@ -104,6 +109,10 @@
        isActive: true,
      },
    })
+
+   // Invalidate caches
+   cacheInvalidate(`admin:me:${adminId}`).catch(() => null)
+   cacheInvalidate(`admins:list:*`).catch(() => null)
  
    return NextResponse.json({ data: { ...updated, id: updated.id.toString() } })
  }

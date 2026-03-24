@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheInvalidate } from '@/lib/redis'
 
 type NoteRecord = {
   id: number | bigint
@@ -462,6 +463,7 @@ export async function POST(request: NextRequest) {
     }).catch(() => {})
     // #endregion agent log
 
+    await cacheInvalidate(`notes:user:${parsedUserId}`)
     return NextResponse.json(formatNote(note, admin))
   } catch (error) {
     console.error('Error creating note:', error)
@@ -560,6 +562,7 @@ export async function PUT(request: NextRequest) {
       // Continue without admin info
     }
 
+    await cacheInvalidate('notes:user:*')
     return NextResponse.json(formatNote(note, admin))
   } catch (error) {
     console.error('Error updating note:', error)
@@ -596,6 +599,7 @@ export async function DELETE(request: NextRequest) {
       throw deleteError
     }
 
+    await cacheInvalidate('notes:user:*')
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error deleting note:', error)

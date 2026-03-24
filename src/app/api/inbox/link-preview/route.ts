@@ -1,5 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
+import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
@@ -26,79 +27,83 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid hostname' }, { status: 400 })
         }
 
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 5000) // 5s timeout
+        const data = await cacheQuery(
+          `linkpreview:${encodeURIComponent(url).slice(0, 200)}`,
+          async () => {
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 5000) // 5s timeout
 
-        const response = await fetch(url, {
-            signal: controller.signal,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (compatible; InboxLinkPreview/1.0)',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            const response = await fetch(url, {
+                signal: controller.signal,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (compatible; InboxLinkPreview/1.0)',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                }
+            })
+
+            clearTimeout(timeoutId)
+
+            if (!response.ok) {
+                throw new Error(`Fetch failed: ${response.status}`)
             }
-        })
 
-        clearTimeout(timeoutId)
+            const contentType = response.headers.get('content-type')
+            if (!contentType || !contentType.includes('text/html')) {
+                throw new Error('Not HTML content')
+            }
 
-        if (!response.ok) {
-            return NextResponse.json({ error: 'Failed to fetch' }, { status: response.status })
-        }
+            const html = await response.text()
 
-        const contentType = response.headers.get('content-type')
-        if (!contentType || !contentType.includes('text/html')) {
-            return NextResponse.json({ error: 'Not HTML content' }, { status: 400 })
-        }
+            // Simple regex parser for basic OG tags
+            const getMetaContent = (prop: string) => {
+                const regex = new RegExp(`<meta\\s+(?:property|name)=["']${prop}["']\\s+content=["'](.*?)["']`, 'i')
+                const match = html.match(regex)
+                return match ? match[1] : null
+            }
 
-        const html = await response.text()
+            let title = getMetaContent('og:title')
+            if (!title) {
+                const titleMatch = html.match(/<title>(.*?)<\/title>/i)
+                title = titleMatch ? titleMatch[1] : ''
+            }
 
-        // Simple regex parser for basic OG tags
-        const getMetaContent = (prop: string) => {
-            const regex = new RegExp(`<meta\\s+(?:property|name)=["']${prop}["']\\s+content=["'](.*?)["']`, 'i')
-            const match = html.match(regex)
-            // Handle escaped quotes if necessary, simpler here
-            return match ? match[1] : null
-        }
+            let description = getMetaContent('og:description') || getMetaContent('description') || ''
 
-        let title = getMetaContent('og:title')
-        if (!title) {
-            const titleMatch = html.match(/<title>(.*?)<\/title>/i)
-            title = titleMatch ? titleMatch[1] : ''
-        }
-
-        let description = getMetaContent('og:description') || getMetaContent('description') || ''
-
-        let image = getMetaContent('og:image')
-        if (image && !image.startsWith('http')) {
-            try {
-                image = new URL(image, url).toString()
-            } catch { }
-        }
-
-        // Try to find favicon
-        let favicon = ''
-        const iconMatch = html.match(/<link\\s+rel=["'](?:shortcut )?icon["']\\s+href=["'](.*?)["']/)
-        if (iconMatch) {
-            let icon = iconMatch[1]
-            if (icon && !icon.startsWith('http')) {
+            let image = getMetaContent('og:image')
+            if (image && !image.startsWith('http')) {
                 try {
-                    favicon = new URL(icon, url).toString()
+                    image = new URL(image, url).toString()
                 } catch { }
-            } else {
-                favicon = icon
             }
-        } else {
-            try {
-                favicon = new URL('/favicon.ico', url).toString()
-            } catch { }
-        }
 
-        const data = {
-            title: title || '',
-            description: description || '',
-            image: image || '',
-            favicon: favicon || '',
-            url: url,
-            hostname: parsedUrl.hostname
-        }
+            let favicon = ''
+            const iconMatch = html.match(/<link\\s+rel=["'](?:shortcut )?icon["']\\s+href=["'](.*?)["']/)
+            if (iconMatch) {
+                let icon = iconMatch[1]
+                if (icon && !icon.startsWith('http')) {
+                    try {
+                        favicon = new URL(icon, url).toString()
+                    } catch { }
+                } else {
+                    favicon = icon
+                }
+            } else {
+                try {
+                    favicon = new URL('/favicon.ico', url).toString()
+                } catch { }
+            }
+
+            return {
+                title: title || '',
+                description: description || '',
+                image: image || '',
+                favicon: favicon || '',
+                url: url,
+                hostname: parsedUrl.hostname
+            }
+          },
+          CACHE_TTL.LINK_PREVIEW  // 3600s
+        )
 
         return NextResponse.json(data, {
             headers: {

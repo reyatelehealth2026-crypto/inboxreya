@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth-middleware';
+import { cacheQuery, CACHE_TTL } from '@/lib/redis';
 
 /**
  * GET /api/inbox/analytics/admins
@@ -40,6 +41,9 @@ export async function GET(request: NextRequest) {
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const lineAccountIdNum = parseInt(lineAccountId);
+
+    const cacheKey = `analytics:admins:${lineAccountIdNum}:${startDate.toISOString().slice(0,10)}:${endDate.toISOString().slice(0,10)}`;
+    const data = await cacheQuery(cacheKey, async () => {
 
     // Get all admins for this account
     const admins = await prisma.adminUser.findMany({
@@ -135,16 +139,16 @@ export async function GET(request: NextRequest) {
     // Sort by conversations handled (descending)
     adminMetrics.sort((a, b) => b.conversationsHandled - a.conversationsHandled);
 
-    return NextResponse.json({
-      success: true,
-      data: {
+    return {
         admins: adminMetrics,
         dateRange: {
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
         },
-      },
-    });
+      };
+    }, CACHE_TTL.HEALTH);  // 60s
+
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error('Admin analytics error:', error);
     return NextResponse.json(

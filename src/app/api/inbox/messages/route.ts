@@ -5,7 +5,7 @@ import prisma from '@/lib/prisma'
 import { sendPlatformMessage } from '@/lib/php-bridge'
 import { broadcastRealtimeEvent } from '@/lib/realtime'
 import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
-import { cacheInvalidate } from '@/lib/redis'
+import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
 const isInternalRequest = (request: NextRequest) =>
   request.headers.get('x-internal-request') === 'true'
@@ -107,18 +107,28 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const messages = await prisma.message.findMany({
-      where,
-      include: {
-        replyTo: true,
-      },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: limit,
-      skip,
-      ...(cursorId && { cursor: { id: cursorId } }),
-    })
+    // Cache default first page per userId (no date filters, no cursor)
+    const isDefaultPage = !fromDate && !toDate && !cursorId && page === 1
+    const msgCacheKey = `msg:user:${parsedUserId}:p1:l${limit}`
 
-    const total = await prisma.message.count({ where })
+    const [messages, total] = await cacheQuery(
+      isDefaultPage ? msgCacheKey : `nocache:msg:${Date.now()}`,
+      async () => {
+        const [msgs, cnt] = await Promise.all([
+          prisma.message.findMany({
+            where,
+            include: { replyTo: true },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: limit,
+            skip,
+            ...(cursorId && { cursor: { id: cursorId } }),
+          }),
+          prisma.message.count({ where }),
+        ])
+        return [msgs, cnt] as const
+      },
+      isDefaultPage ? CACHE_TTL.MESSAGES : 0
+    )
 
     const shouldMarkRead = markRead !== 'false' && markRead !== '0'
     if (shouldMarkRead) {
@@ -398,9 +408,13 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Invalidate conversation list cache — เพื่อให้ inbox แสดงข้อความล่าสุดใหม่
+    // Invalidate caches — ข้อความใหม่ต้อง invalidate ทั้ง message cache, conversation list, และ detail
     if (user.lineAccountId) {
-      cacheInvalidate(`conv:account:${user.lineAccountId}:*`).catch(() => null)
+      Promise.all([
+        cacheInvalidate(`conv:account:${user.lineAccountId}:*`),
+        cacheInvalidate(`msg:user:${parsedUserId}:*`),
+        cacheInvalidate(`conv:detail:${parsedUserId}`),
+      ]).catch(() => null)
     }
 
     return NextResponse.json(responsePayload)

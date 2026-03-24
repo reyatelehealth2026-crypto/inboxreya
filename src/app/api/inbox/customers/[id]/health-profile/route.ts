@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
 export async function GET(
   request: Request,
@@ -37,70 +38,73 @@ export async function GET(
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Get health profile from user_health_profiles table
-    const healthProfile = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT * FROM user_health_profiles WHERE line_user_id = ? AND line_account_id = ? LIMIT 1`,
-      user.lineUserId,
-      user.lineAccountId || 0
+    // Get health profile (cached 60s)
+    const data = await cacheQuery(
+      `customer:healthprofile:${parsedUserId}`,
+      async () => {
+        const [healthProfile, customerProfile] = await Promise.all([
+          prisma.$queryRawUnsafe<any[]>(
+            `SELECT * FROM user_health_profiles WHERE line_user_id = ? AND line_account_id = ? LIMIT 1`,
+            user.lineUserId,
+            user.lineAccountId || 0
+          ),
+          prisma.$queryRawUnsafe<any[]>(
+            `SELECT * FROM customer_health_profiles WHERE user_id = ? LIMIT 1`,
+            parsedUserId
+          ),
+        ])
+
+        const profile = healthProfile[0] || null
+        const customer = customerProfile[0] || null
+
+        let medicalConditions: string[] = []
+        if (profile?.medical_conditions) {
+          try {
+            const parsed = JSON.parse(profile.medical_conditions)
+            medicalConditions = Array.isArray(parsed) ? parsed : [profile.medical_conditions]
+          } catch {
+            medicalConditions = [profile.medical_conditions]
+          }
+        }
+
+        let chronicConditions: string[] = []
+        if (customer?.chronic_conditions) {
+          try {
+            const parsed = JSON.parse(customer.chronic_conditions)
+            chronicConditions = Array.isArray(parsed) ? parsed : [customer.chronic_conditions]
+          } catch {
+            chronicConditions = [customer.chronic_conditions]
+          }
+        }
+
+        const allConditions = [...new Set([...medicalConditions, ...chronicConditions])]
+
+        return {
+          id: profile?.id || null,
+          userId: parsedUserId,
+          age: profile?.age || null,
+          gender: profile?.gender || null,
+          weight: profile?.weight ? parseFloat(profile.weight) : null,
+          height: profile?.height ? parseFloat(profile.height) : null,
+          bloodType: profile?.blood_type || null,
+          medicalConditions: allConditions,
+          allergies: [],
+          currentMedications: [],
+          communicationType: customer?.communication_type || null,
+          confidence: customer?.confidence ? parseFloat(customer.confidence) : null,
+          completeness: calculateCompleteness({
+            age: profile?.age,
+            gender: profile?.gender,
+            weight: profile?.weight,
+            height: profile?.height,
+            bloodType: profile?.blood_type,
+            medicalConditions: allConditions,
+          }),
+          updatedAt: profile?.updated_at || profile?.created_at || null,
+        }
+      },
+      CACHE_TTL.PRESCRIPTIONS  // 60s
     )
-
-    // Get customer health profile (communication type)
-    const customerProfile = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT * FROM customer_health_profiles WHERE user_id = ? LIMIT 1`,
-      parsedUserId
-    )
-
-    const profile = healthProfile[0] || null
-    const customer = customerProfile[0] || null
-
-    // Parse medical conditions if stored as JSON
-    let medicalConditions: string[] = []
-    if (profile?.medical_conditions) {
-      try {
-        const parsed = JSON.parse(profile.medical_conditions)
-        medicalConditions = Array.isArray(parsed) ? parsed : [profile.medical_conditions]
-      } catch {
-        medicalConditions = [profile.medical_conditions]
-      }
-    }
-
-    // Parse chronic conditions from customer profile
-    let chronicConditions: string[] = []
-    if (customer?.chronic_conditions) {
-      try {
-        const parsed = JSON.parse(customer.chronic_conditions)
-        chronicConditions = Array.isArray(parsed) ? parsed : [customer.chronic_conditions]
-      } catch {
-        chronicConditions = [customer.chronic_conditions]
-      }
-    }
-
-    // Combine conditions
-    const allConditions = [...new Set([...medicalConditions, ...chronicConditions])]
-
-    const data = {
-      id: profile?.id || null,
-      userId: parsedUserId,
-      age: profile?.age || null,
-      gender: profile?.gender || null,
-      weight: profile?.weight ? parseFloat(profile.weight) : null,
-      height: profile?.height ? parseFloat(profile.height) : null,
-      bloodType: profile?.blood_type || null,
-      medicalConditions: allConditions,
-      allergies: [], // Will be populated from separate table if exists
-      currentMedications: [], // Will be populated from separate table if exists
-      communicationType: customer?.communication_type || null,
-      confidence: customer?.confidence ? parseFloat(customer.confidence) : null,
-      completeness: calculateCompleteness({
-        age: profile?.age,
-        gender: profile?.gender,
-        weight: profile?.weight,
-        height: profile?.height,
-        bloodType: profile?.blood_type,
-        medicalConditions: allConditions,
-      }),
-      updatedAt: profile?.updated_at || profile?.created_at || null,
-    }
 
     return NextResponse.json({ data })
   } catch (error) {
@@ -225,6 +229,10 @@ export async function PATCH(
         medicalConditionsJson
       )
     }
+
+    // Invalidate health profile cache
+    await cacheInvalidate(`customer:healthprofile:${parsedUserId}`)
+    await cacheInvalidate(`customer:profile:${parsedUserId}`)
 
     return NextResponse.json({ success: true })
   } catch (error) {

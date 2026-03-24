@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 const PHP_BASE = process.env.PHP_API_URL || process.env.NEXT_PUBLIC_PHP_API_URL || 'https://cny.re-ya.com'
 const DASHBOARD_API = `${PHP_BASE}/api/odoo-dashboard-api.php`
@@ -28,42 +29,47 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const res = await fetch(DASHBOARD_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'InboxReya-SlipCenter/1.0' },
-      body: JSON.stringify({
-        action: 'slip_center_customer_detail',
-        customer_ref: ref,
-        partner_id: partnerId,
-        line_user_id: lineUserId,
-        limit: 100,
-      }),
-      cache: 'no-store',
-      signal: AbortSignal.timeout(15000), // 15s timeout — fail fast before Vercel 30s
-    })
+    const data = await cacheQuery(
+      `slipcenter:custdetail:${ref || partnerId || lineUserId}`,
+      async () => {
+        const res = await fetch(DASHBOARD_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'User-Agent': 'InboxReya-SlipCenter/1.0' },
+          body: JSON.stringify({
+            action: 'slip_center_customer_detail',
+            customer_ref: ref,
+            partner_id: partnerId,
+            line_user_id: lineUserId,
+            limit: 100,
+          }),
+          cache: 'no-store',
+          signal: AbortSignal.timeout(15000),
+        })
 
-    const json = await res.json().catch(() => ({ success: false, error: 'Invalid JSON from PHP' }))
+        const json = await res.json().catch(() => ({ success: false, error: 'Invalid JSON from PHP' }))
 
-    if (!json.success) {
-      return NextResponse.json({ success: false, error: json.error || 'PHP error' }, { status: 502 })
-    }
+        if (!json.success) {
+          throw new Error(json.error || 'PHP error')
+        }
 
-    const d = json.data
-    return NextResponse.json({
-      success: true,
-      data: {
-        bdoOrders:    d.bdo_orders    ?? [],
-        pendingSlips: d.pending_slips ?? [],
-        allSlips:     d.all_slips     ?? [],
-        matchedToday: d.matched_today ?? [],
-        stats: {
-          totalBdos:          d.stats?.total_bdos          ?? (d.bdo_orders?.length    ?? 0),
-          totalPendingSlips:  d.stats?.total_pending_slips ?? (d.pending_slips?.length ?? 0),
-          totalMatchedToday:  d.stats?.total_matched_today ?? (d.matched_today?.length ?? 0),
-        },
-        _debug: d.errors?.length ? d.errors : undefined,
+        const d = json.data
+        return {
+          bdoOrders:    d.bdo_orders    ?? [],
+          pendingSlips: d.pending_slips ?? [],
+          allSlips:     d.all_slips     ?? [],
+          matchedToday: d.matched_today ?? [],
+          stats: {
+            totalBdos:          d.stats?.total_bdos          ?? (d.bdo_orders?.length    ?? 0),
+            totalPendingSlips:  d.stats?.total_pending_slips ?? (d.pending_slips?.length ?? 0),
+            totalMatchedToday:  d.stats?.total_matched_today ?? (d.matched_today?.length ?? 0),
+          },
+          _debug: d.errors?.length ? d.errors : undefined,
+        }
       },
-    })
+      CACHE_TTL.SLIP_CENTER  // 30s
+    )
+
+    return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('[slip-center/customer-detail] GET error:', error)
     return NextResponse.json(

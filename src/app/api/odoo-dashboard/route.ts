@@ -32,6 +32,22 @@ const ACTION_CACHE_TTL: Record<string, number> = {
   webhook_stats_mini:       30,
   dlq_stats:                30,
   activity_log_list:        30,
+  // ── เพิ่มเติม: cache actions ที่ JS เรียกบ่อย ──
+  overview_fast:            30,
+  odoo_bdo_detail_api:      30,
+  daily_summary_preview:    60,
+  search_orders:            30,
+  circuit_breaker_status:   30,
+  slip_center_customer_detail: 30,
+  slip_center_bdo_overview: 30,
+  health:                   60,
+  list:                     60,
+  detail:                   45,
+  dlq_list:                 30,
+  customer_lookup:          60,
+  invoice_lookup:           60,
+  order_timeline:           30,
+  odoo_bdos:                30,
 }
 
 // Actions ที่ write/mutate ข้อมูล — ห้าม cache เด็ดขาด

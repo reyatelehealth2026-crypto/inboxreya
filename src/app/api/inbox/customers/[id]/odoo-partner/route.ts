@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { callPhpApi } from '@/lib/php-bridge'
+import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
 /**
  * GET /api/inbox/customers/[id]/odoo-partner
