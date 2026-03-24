@@ -30,11 +30,12 @@ export function formatTimeAgo(date: Date | string): string {
   return formatDistanceToNow(d, { addSuffix: true, locale: th })
 }
 
-export function formatMessageTime(date: Date | string): string {
+export function formatMessageTime(date: Date | string | null | undefined): string {
+  if (date == null) return '-'
   const d = typeof date === 'string' ? new Date(date) : date
   
   // Guard: if date is invalid, return fallback
-  if (isNaN(d.getTime())) return '-'
+  if (!(d instanceof Date) || isNaN(d.getTime())) return '-'
   
   // Use Intl.DateTimeFormat for reliable Bangkok timezone extraction
   // This avoids the double-parse bug where toLocaleString → new Date() can produce Invalid Date

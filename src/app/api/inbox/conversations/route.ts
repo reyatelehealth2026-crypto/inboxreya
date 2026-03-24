@@ -20,16 +20,18 @@ const normalizePictureUrl = (value: string | null) => {
   return `https://${trimmed}`
 }
 
-const toBangkokWallTime = (date: Date | null | undefined) => {
+const toBangkokWallTime = (date: Date | string | null | undefined) => {
   if (!date) return null
+  const d = date instanceof Date ? date : new Date(date)
+  if (isNaN(d.getTime())) return null
   const pad = (value: number, size = 2) => String(value).padStart(size, '0')
-  const year = date.getUTCFullYear()
-  const month = pad(date.getUTCMonth() + 1)
-  const day = pad(date.getUTCDate())
-  const hours = pad(date.getUTCHours())
-  const minutes = pad(date.getUTCMinutes())
-  const seconds = pad(date.getUTCSeconds())
-  const millis = pad(date.getUTCMilliseconds(), 3)
+  const year = d.getUTCFullYear()
+  const month = pad(d.getUTCMonth() + 1)
+  const day = pad(d.getUTCDate())
+  const hours = pad(d.getUTCHours())
+  const minutes = pad(d.getUTCMinutes())
+  const seconds = pad(d.getUTCSeconds())
+  const millis = pad(d.getUTCMilliseconds(), 3)
   return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${millis}+07:00`
 }
 
