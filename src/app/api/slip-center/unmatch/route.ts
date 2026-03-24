@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { cacheInvalidate } from '@/lib/redis'
 
 const PHP_BASE = process.env.PHP_API_URL || process.env.NEXT_PUBLIC_PHP_API_URL || 'https://cny.re-ya.com'
 const DASHBOARD_API = `${PHP_BASE}/api/odoo-dashboard-api.php`
@@ -34,6 +35,9 @@ export async function POST(request: NextRequest) {
     })
 
     const json = await res.json().catch(() => ({ success: false, error: 'Invalid response' }))
+    if (json.success) {
+      await cacheInvalidate('slipcenter:*')
+    }
     return NextResponse.json(json)
   } catch (error) {
     console.error('[slip-center/unmatch] POST error:', error)

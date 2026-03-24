@@ -168,7 +168,7 @@ export const CACHE_TTL = {
   BROADCASTS:        30,   // 30 วิ
   GROUPS:            60,   // 1 นาที
   ORDERS:            30,   // 30 วิ
-  SLIP_CENTER:       30,   // 30 วิ
+  SLIP_CENTER:     1800,   // 30 นาที — cache นาน, invalidate หลัง match/unmatch/edit
   QUOTED_MSG:       600,   // 10 นาที — ข้อความ quote ไม่เปลี่ยน
   PRESCRIPTIONS:     60,   // 1 นาที
   CUSTOMER_360:      30,   // 30 วิ — from PHP

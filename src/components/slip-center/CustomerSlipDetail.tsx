@@ -2,11 +2,12 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import {
-  Receipt, FileCheck, Clock, CheckCircle2, Upload, XCircle, Eye,
+  Receipt, Clock, CheckCircle2, XCircle,
   ExternalLink, Truck, Calendar, Link2, AlertCircle, Loader2, RefreshCw,
-  ArrowLeftRight, Paperclip, X, ChevronDown,
+  ArrowLeftRight, X, ChevronDown, ChevronUp, MessageCircle, Pencil, Save,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -56,6 +57,7 @@ export function CustomerSlipDetail({
 }: CustomerSlipDetailProps) {
   const { toast } = useToast()
   const qc = useQueryClient()
+  const router = useRouter()
 
   const { data, isLoading, isFetching } = useQuery<CustomerDetailData>({
     queryKey: ['slip-center-detail', customerRef, partnerId],
@@ -70,6 +72,14 @@ export function CustomerSlipDetail({
   const [isMatching, setIsMatching] = useState(false)
   const [isUnmatching, setIsUnmatching] = useState<number | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+
+  // Inline slip edit state
+  const [editingSlipId, setEditingSlipId] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState<{ amount: string; transferDate: string; note: string }>({ amount: '', transferDate: '', note: '' })
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
+
+  // Paid BDO section toggle
+  const [showPaidBdos, setShowPaidBdos] = useState(false)
 
   const selectedSlip = useMemo(() =>
     data?.pendingSlips.find(s => s.id === selectedSlipId), [data, selectedSlipId])
@@ -148,6 +158,75 @@ export function CustomerSlipDetail({
   const refreshDetail = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['slip-center-detail', customerRef, partnerId] })
   }, [qc, customerRef, partnerId])
+
+  // Split BDOs into active (non-paid) and paid
+  const activeBdos = useMemo(() =>
+    (data?.bdoOrders || []).filter(b => {
+      const ps = normalizeBdoPaymentStatus(b)
+      return ps.key !== 'paid'
+    }), [data])
+
+  const paidBdos = useMemo(() =>
+    (data?.bdoOrders || []).filter(b => {
+      const ps = normalizeBdoPaymentStatus(b)
+      return ps.key === 'paid'
+    }), [data])
+
+  const handleOpenEdit = useCallback((slip: SlipCenterSlip) => {
+    setEditingSlipId(slip.id)
+    setEditForm({
+      amount: slip.amount != null ? String(slip.amount) : '',
+      transferDate: slip.transfer_date ? String(slip.transfer_date).slice(0, 10) : '',
+      note: slip.match_reason || '',
+    })
+  }, [])
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!editingSlipId) return
+    setIsSavingEdit(true)
+    try {
+      const res = await fetch('/api/slip-center/edit', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          localSlipId: editingSlipId,
+          amount: editForm.amount !== '' ? Number(editForm.amount) : undefined,
+          transferDate: editForm.transferDate || undefined,
+          note: editForm.note || undefined,
+        }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        toast({ title: 'บันทึกสำเร็จ', description: `อัปเดตสลิป #${editingSlipId}` })
+        setEditingSlipId(null)
+        // Optimistic update in cache
+        qc.setQueryData<CustomerDetailData>(
+          ['slip-center-detail', customerRef, partnerId],
+          old => {
+            if (!old) return old
+            const update = (slips: SlipCenterSlip[]) =>
+              slips.map(s => s.id === editingSlipId ? {
+                ...s,
+                amount: editForm.amount !== '' ? Number(editForm.amount) : s.amount,
+                transfer_date: editForm.transferDate || s.transfer_date,
+              } : s)
+            return {
+              ...old,
+              pendingSlips: update(old.pendingSlips),
+              allSlips: update(old.allSlips),
+            }
+          }
+        )
+        refreshDetail()
+      } else {
+        toast({ title: 'บันทึกไม่สำเร็จ', description: json.error || 'เกิดข้อผิดพลาด', variant: 'destructive' })
+      }
+    } catch (err) {
+      toast({ title: 'Network error', description: err instanceof Error ? err.message : '', variant: 'destructive' })
+    } finally {
+      setIsSavingEdit(false)
+    }
+  }, [editingSlipId, editForm, customerRef, partnerId, qc, refreshDetail, toast])
 
   const handleMatch = useCallback(async (slipId: number, bdoId: number, note?: string) => {
     setIsMatching(true)
@@ -236,7 +315,6 @@ export function CustomerSlipDetail({
     )
   }
 
-  const bdoOrders = data?.bdoOrders || []
   const pendingSlips = data?.pendingSlips || []
   const matchedToday = data?.matchedToday || []
 
@@ -244,28 +322,50 @@ export function CustomerSlipDetail({
     <div className="space-y-4">
       {/* Customer Header */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-bold text-base text-gray-900">{customerRef}</h2>
-            <p className="text-sm text-gray-500">{customerName}</p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="font-bold text-base text-gray-900 truncate">{customerRef}</h2>
+            <p className="text-sm text-gray-500 truncate">{customerName}</p>
           </div>
-          <div className="flex items-center gap-2 text-xs text-gray-400">
-            <Button variant="outline" size="sm" onClick={refreshDetail} disabled={isFetching} className="gap-1.5 text-xs">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Chat button */}
+            {lineUserId && (
+              <Button
+                size="sm"
+                onClick={() => router.push(`/inbox?userId=${encodeURIComponent(lineUserId)}`)}
+                className="h-8 gap-1.5 text-xs bg-green-600 hover:bg-green-700 text-white"
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                แชท
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={refreshDetail} disabled={isFetching} className="h-8 gap-1.5 text-xs">
               <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
               รีเฟรช
             </Button>
           </div>
         </div>
-        <div className="flex gap-2 mt-2">
-          <Badge variant="outline" className="text-[10px] gap-0.5 border-amber-300 text-amber-700 bg-amber-50">
-            <Receipt className="h-2.5 w-2.5" /> สลิปรอ {pendingSlips.length}
+        <div className="flex gap-1.5 mt-3 flex-wrap">
+          <Badge variant="outline" className={cn(
+            "text-[10px] gap-0.5 font-semibold",
+            pendingSlips.length > 0 ? "border-amber-300 text-amber-700 bg-amber-50" : "border-gray-200 text-gray-400"
+          )}>
+            <Receipt className="h-2.5 w-2.5" /> สลิปรอจับคู่ {pendingSlips.length}
           </Badge>
-          <Badge variant="outline" className="text-[10px] gap-0.5 border-violet-300 text-violet-700 bg-violet-50">
-            <FileCheck className="h-2.5 w-2.5" /> BDO รอ {bdoOrders.length}
+          <Badge variant="outline" className={cn(
+            "text-[10px] gap-0.5 font-semibold",
+            activeBdos.length > 0 ? "border-violet-300 text-violet-700 bg-violet-50" : "border-gray-200 text-gray-400"
+          )}>
+            <AlertCircle className="h-2.5 w-2.5" /> BDO ค้างชำระ {activeBdos.length}
           </Badge>
+          {paidBdos.length > 0 && (
+            <Badge variant="outline" className="text-[10px] gap-0.5 border-green-300 text-green-700 bg-green-50 font-semibold">
+              <CheckCircle2 className="h-2.5 w-2.5" /> BDO จ่ายแล้ว {paidBdos.length}
+            </Badge>
+          )}
           {matchedToday.length > 0 && (
-            <Badge variant="outline" className="text-[10px] gap-0.5 border-green-300 text-green-700 bg-green-50">
-              <CheckCircle2 className="h-2.5 w-2.5" /> จับคู่วันนี้ {matchedToday.length}
+            <Badge variant="outline" className="text-[10px] gap-0.5 border-blue-300 text-blue-700 bg-blue-50 font-semibold">
+              <Link2 className="h-2.5 w-2.5" /> จับคู่วันนี้ {matchedToday.length}
             </Badge>
           )}
         </div>
@@ -332,19 +432,24 @@ export function CustomerSlipDetail({
 
       {/* Split View: BDOs ↔ Slips */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Left: Pending BDOs */}
+        {/* Left: Active (non-paid) BDOs */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="p-3 border-b border-gray-100 bg-gray-50/50">
+          <div className="p-3 border-b border-gray-100 bg-violet-50/40">
             <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-              <FileCheck className="h-4 w-4 text-violet-500" />
-              BDO รอชำระ
-              <span className="text-xs text-gray-400 ml-auto">{bdoOrders.length} รายการ</span>
+              <AlertCircle className="h-4 w-4 text-violet-500" />
+              BDO ค้างชำระ
+              <span className="ml-auto flex items-center gap-1">
+                <span className={cn(
+                  "text-xs font-bold px-1.5 py-0.5 rounded-full",
+                  activeBdos.length > 0 ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-400"
+                )}>{activeBdos.length}</span>
+              </span>
             </h3>
           </div>
           <div className="max-h-[50vh] overflow-y-auto p-2 space-y-2">
-            {bdoOrders.length === 0 ? (
-              <p className="text-center py-6 text-sm text-gray-400">ไม่มี BDO รอชำระ</p>
-            ) : bdoOrders.map(bdo => {
+            {activeBdos.length === 0 ? (
+              <p className="text-center py-6 text-sm text-gray-400">ไม่มี BDO ค้างชำระ</p>
+            ) : activeBdos.map((bdo: SlipCenterBdo) => {
               const isSelected = selectedBdoId === bdo.bdo_id
               const ps = normalizeBdoPaymentStatus(bdo)
               const deliveryLabel = bdo.delivery_type === 'company' ? 'สายส่ง' : bdo.delivery_type === 'private' ? 'ขนส่งเอกชน' : null
@@ -357,15 +462,15 @@ export function CustomerSlipDetail({
                     "w-full text-left rounded-lg border p-2.5 transition-all",
                     isSelected
                       ? "border-violet-400 bg-violet-50 ring-1 ring-violet-200"
-                      : "border-gray-100 hover:border-gray-300 bg-white"
+                      : "border-gray-100 hover:border-violet-200 bg-white"
                   )}
                 >
                   <div className="flex items-start justify-between mb-1">
-                    <div>
-                      <p className="text-xs font-bold text-gray-900">{bdo.bdo_name || `BDO-${bdo.bdo_id}`}</p>
-                      {bdo.order_name && <p className="text-[10px] text-blue-600">{bdo.order_name}</p>}
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-gray-900 truncate">{bdo.bdo_name || `BDO-${bdo.bdo_id}`}</p>
+                      {bdo.order_name && <p className="text-[10px] text-blue-600 truncate">{bdo.order_name}</p>}
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 flex-shrink-0 ml-1">
                       {deliveryLabel && (
                         <Badge variant="outline" className="text-[9px] h-4 gap-0.5 px-1 border-sky-200 text-sky-600">
                           <Truck className="h-2 w-2" /> {deliveryLabel}
@@ -384,7 +489,8 @@ export function CustomerSlipDetail({
                       "text-[9px] h-4 px-1.5",
                       ps.key === 'pending' ? 'bg-amber-100 text-amber-700' :
                       ps.key === 'partial' ? 'bg-blue-100 text-blue-700' :
-                      'bg-green-100 text-green-700'
+                      ps.key === 'slip_uploaded' ? 'bg-sky-100 text-sky-700' :
+                      'bg-gray-100 text-gray-500'
                     )}>
                       {ps.label}
                     </Badge>
@@ -395,46 +501,90 @@ export function CustomerSlipDetail({
                       {new Date(bdo.bdo_date).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' })}
                     </p>
                   )}
+                  {isSelected && (
+                    <p className="text-[9px] text-violet-600 font-semibold mt-1">✓ เลือกแล้ว — เลือกสลิปเพื่อจับคู่</p>
+                  )}
                 </button>
               )
             })}
           </div>
+
+          {/* Paid BDOs collapsible */}
+          {paidBdos.length > 0 && (
+            <div className="border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setShowPaidBdos(v => !v)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-500 hover:bg-gray-50 transition-colors"
+              >
+                {showPaidBdos ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                <span className="font-medium">BDO จ่ายแล้ว</span>
+                <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1">{paidBdos.length}</span>
+              </button>
+              {showPaidBdos && (
+                <div className="px-2 pb-2 space-y-1.5 max-h-[30vh] overflow-y-auto bg-emerald-50/30">
+                  {paidBdos.map((bdo: SlipCenterBdo) => (
+                    <div key={bdo.bdo_id} className="rounded-lg border border-emerald-100 bg-white p-2">
+                      <div className="flex items-center justify-between">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-gray-700 truncate">{bdo.bdo_name || `BDO-${bdo.bdo_id}`}</p>
+                          {bdo.order_name && <p className="text-[10px] text-blue-500 truncate">{bdo.order_name}</p>}
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                          <span className="text-xs font-bold text-gray-800">฿{Number(bdo.amount_total || 0).toLocaleString()}</span>
+                          <Badge className="text-[9px] h-4 px-1.5 bg-emerald-100 text-emerald-700">จ่ายแล้ว</Badge>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Right: Pending Slips */}
+        {/* Right: Pending Slips with inline edit */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="p-3 border-b border-gray-100 bg-gray-50/50">
+          <div className="p-3 border-b border-gray-100 bg-amber-50/40">
             <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
               <Receipt className="h-4 w-4 text-amber-500" />
-              สลิปยังไม่จับคู่
-              <span className="text-xs text-gray-400 ml-auto">{pendingSlips.length} รายการ</span>
+              สลิปรอจับคู่
+              <span className="ml-auto flex items-center gap-1">
+                <span className={cn(
+                  "text-xs font-bold px-1.5 py-0.5 rounded-full",
+                  pendingSlips.length > 0 ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-400"
+                )}>{pendingSlips.length}</span>
+              </span>
             </h3>
           </div>
-          <div className="max-h-[50vh] overflow-y-auto p-2 space-y-2">
+          <div className="max-h-[60vh] overflow-y-auto p-2 space-y-2">
             {pendingSlips.length === 0 ? (
               <p className="text-center py-6 text-sm text-gray-400">ไม่มีสลิปรอจับคู่</p>
             ) : pendingSlips.map(slip => {
               const isSelected = selectedSlipId === slip.id
+              const isEditing = editingSlipId === slip.id
               return (
-                <button
+                <div
                   key={slip.id}
-                  type="button"
-                  onClick={() => setSelectedSlipId(isSelected ? null : slip.id)}
                   className={cn(
-                    "w-full text-left rounded-lg border p-2.5 transition-all",
+                    "rounded-lg border transition-all",
                     isSelected
                       ? "border-amber-400 bg-amber-50 ring-1 ring-amber-200"
-                      : "border-gray-100 hover:border-gray-300 bg-white"
+                      : isEditing
+                      ? "border-blue-300 bg-blue-50/40"
+                      : "border-gray-100 bg-white"
                   )}
                 >
-                  <div className="flex gap-2">
+                  {/* Main slip row */}
+                  <div className="flex gap-2 p-2.5">
                     {slip.image_full_url ? (
                       <button
                         type="button"
                         className="flex-shrink-0"
                         onClick={e => { e.stopPropagation(); setPreviewUrl(slip.image_full_url!) }}
                       >
-                        <Image src={slip.image_full_url} alt="" width={36} height={44} className="w-9 h-11 object-cover rounded border" unoptimized />
+                        <Image src={slip.image_full_url} alt="" width={36} height={44} className="w-9 h-11 object-cover rounded border hover:opacity-80 transition-opacity" unoptimized />
                       </button>
                     ) : (
                       <div className="w-9 h-11 bg-gray-100 rounded border flex items-center justify-center flex-shrink-0">
@@ -444,22 +594,122 @@ export function CustomerSlipDetail({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
                         <p className="text-xs font-semibold text-gray-800">สลิป #{slip.id}</p>
-                        <Badge className="text-[9px] h-4 px-1.5 bg-amber-100 text-amber-700">รอจับคู่</Badge>
+                        <div className="flex items-center gap-1">
+                          <Badge className="text-[9px] h-4 px-1.5 bg-amber-100 text-amber-700">รอจับคู่</Badge>
+                          {/* Edit toggle button */}
+                          <button
+                            type="button"
+                            title="แก้ไขสลิป"
+                            onClick={() => {
+                              if (isEditing) {
+                                setEditingSlipId(null)
+                              } else {
+                                handleOpenEdit(slip)
+                                setSelectedSlipId(null)
+                              }
+                            }}
+                            className={cn(
+                              "p-0.5 rounded transition-colors",
+                              isEditing ? "text-blue-600 bg-blue-100" : "text-gray-400 hover:text-blue-600 hover:bg-blue-50"
+                            )}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                        </div>
                       </div>
                       <p className="text-sm font-bold text-emerald-600">
                         ฿{Number(slip.amount || 0).toLocaleString()}
                       </p>
+                      {slip.transfer_date && (
+                        <p className="text-[10px] text-gray-400 flex items-center gap-0.5 mt-0.5">
+                          <Calendar className="h-2.5 w-2.5" />
+                          {String(slip.transfer_date).slice(0, 10)}
+                        </p>
+                      )}
                       {slip.uploaded_at && (
                         <p className="text-[10px] text-gray-400 flex items-center gap-0.5">
                           <Clock className="h-2.5 w-2.5" />
-                          {new Date(slip.uploaded_at).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })}
-                          {' '}
-                          {new Date(slip.uploaded_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
+                          อัพ: {new Date(slip.uploaded_at).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })}
+                          {' '}{new Date(slip.uploaded_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       )}
                     </div>
+                    {/* Select for matching button */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSlipId(isSelected ? null : slip.id)}
+                      className={cn(
+                        "self-center flex-shrink-0 px-2 py-1 rounded-lg text-[10px] font-medium border transition-all",
+                        isSelected
+                          ? "bg-amber-500 border-amber-500 text-white"
+                          : "bg-white border-gray-200 text-gray-500 hover:border-amber-300 hover:text-amber-700"
+                      )}
+                    >
+                      {isSelected ? '✓' : 'เลือก'}
+                    </button>
                   </div>
-                </button>
+
+                  {/* Inline edit panel */}
+                  {isEditing && (
+                    <div className="border-t border-blue-200 bg-blue-50/60 p-2.5 space-y-2">
+                      <p className="text-[10px] font-semibold text-blue-700 flex items-center gap-1">
+                        <Pencil className="h-3 w-3" /> แก้ไขสลิป #{slip.id}
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] text-gray-500 block mb-0.5">จำนวนเงิน (฿)</label>
+                          <Input
+                            type="number"
+                            value={editForm.amount}
+                            onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))}
+                            placeholder="0.00"
+                            className="h-7 text-xs"
+                            step="0.01"
+                            min="0"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 block mb-0.5">วันที่โอน</label>
+                          <Input
+                            type="date"
+                            value={editForm.transferDate}
+                            onChange={e => setEditForm(f => ({ ...f, transferDate: e.target.value }))}
+                            className="h-7 text-xs"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 block mb-0.5">หมายเหตุ</label>
+                        <Input
+                          type="text"
+                          value={editForm.note}
+                          onChange={e => setEditForm(f => ({ ...f, note: e.target.value }))}
+                          placeholder="หมายเหตุ..."
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                      <div className="flex gap-1.5">
+                        <Button
+                          size="sm"
+                          onClick={handleSaveEdit}
+                          disabled={isSavingEdit}
+                          className="h-7 text-xs gap-1 bg-blue-600 hover:bg-blue-700 flex-1"
+                        >
+                          {isSavingEdit ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                          บันทึก
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingSlipId(null)}
+                          className="h-7 text-xs"
+                        >
+                          ยกเลิก
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )
             })}
           </div>

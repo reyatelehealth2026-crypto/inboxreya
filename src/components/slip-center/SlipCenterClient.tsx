@@ -95,6 +95,7 @@ interface SlipCenterData {
     totalPendingSlips: number
     totalPendingBdos: number
     totalAllBdos: number
+    totalPaidBdos: number
   }
 }
 

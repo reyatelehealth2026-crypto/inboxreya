@@ -52,13 +52,21 @@ export async function GET(request: NextRequest) {
           ? slipRes.data.slips
           : []
 
-        const allBdos = bdoRes?.success && bdoRes?.data?.bdos
+        const rawBdos = bdoRes?.success && bdoRes?.data?.bdos
           ? bdoRes.data.bdos
           : []
 
-        const pendingBdos = allBdos.filter((b: any) => {
+        const isPaidStatus = (b: any) => {
           const status = String(b?.payment_status || b?.status || '').toLowerCase()
-          if (status === 'paid' || status === 'fully_paid' || status === 'done') return false
+          return status === 'paid' || status === 'fully_paid' || status === 'done'
+        }
+
+        const paidBdos = rawBdos.filter((b: any) => isPaidStatus(b))
+
+        const activeBdos = rawBdos.filter((b: any) => !isPaidStatus(b))
+
+        const pendingBdos = activeBdos.filter((b: any) => {
+          const status = String(b?.payment_status || b?.status || '').toLowerCase()
           if (status === 'matched' || status === 'reconciled') return false
           return true
         })
@@ -67,12 +75,13 @@ export async function GET(request: NextRequest) {
           customers,
           pendingSlips,
           pendingBdos,
-          allBdos,
+          allBdos: activeBdos,
           stats: {
             totalCustomers: customers.length,
             totalPendingSlips: pendingSlips.length,
             totalPendingBdos: pendingBdos.length,
-            totalAllBdos: allBdos.length,
+            totalAllBdos: activeBdos.length,
+            totalPaidBdos: paidBdos.length,
           },
         }
       },

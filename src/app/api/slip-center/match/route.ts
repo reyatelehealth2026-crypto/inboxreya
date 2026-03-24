@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { cacheInvalidate } from '@/lib/redis'
 
 const PHP_BASE = process.env.PHP_API_URL || process.env.NEXT_PUBLIC_PHP_API_URL || 'https://cny.re-ya.com'
 const SLIP_MATCH_API = `${PHP_BASE}/api/slip-match-orders.php`
@@ -55,6 +56,9 @@ export async function POST(request: NextRequest) {
     })
 
     const json = await res.json().catch(() => ({ success: false, error: 'Invalid response' }))
+    if (json.success) {
+      await cacheInvalidate('slipcenter:*')
+    }
     return NextResponse.json(json)
   } catch (error) {
     console.error('[slip-center/match] POST error:', error)
