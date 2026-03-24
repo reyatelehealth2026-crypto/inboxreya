@@ -20,19 +20,15 @@ const normalizePictureUrl = (value: string | null) => {
   return `https://${trimmed}`
 }
 
-const toBangkokWallTime = (date: Date | string | null | undefined) => {
+const toIsoStringSafe = (date: Date | string | null | undefined) => {
   if (!date) return null
   const d = date instanceof Date ? date : new Date(date)
   if (isNaN(d.getTime())) return null
-  const pad = (value: number, size = 2) => String(value).padStart(size, '0')
-  const year = d.getUTCFullYear()
-  const month = pad(d.getUTCMonth() + 1)
-  const day = pad(d.getUTCDate())
-  const hours = pad(d.getUTCHours())
-  const minutes = pad(d.getUTCMinutes())
-  const seconds = pad(d.getUTCSeconds())
-  const millis = pad(d.getUTCMilliseconds(), 3)
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${millis}+07:00`
+  try {
+    return d.toISOString()
+  } catch {
+    return null
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -365,13 +361,13 @@ export async function GET(request: NextRequest) {
         points: user.points,
         totalSpent: user.totalSpent,
         orderCount: user.orderCount,
-        lastInteraction: toBangkokWallTime(user.lastInteraction),
+        lastInteraction: toIsoStringSafe(user.lastInteraction),
         chatStatus: user.chatStatus,
         isBlocked: user.isBlocked,
         isRegistered: user.isRegistered,
         platform: (user.platform ?? 'line') as 'line' | 'facebook' | 'tiktok',
         platformUserId: user.platformUserId ?? null,
-        createdAt: user.createdAt.toISOString(),
+        createdAt: toIsoStringSafe(user.createdAt),
       },
       lastMessage: (() => {
         const msg = user.messages[0]
@@ -388,8 +384,8 @@ export async function GET(request: NextRequest) {
           sentBy: msg.sentBy,
           replyToId: msg.replyToId ? msg.replyToId.toString() : null,
           platform: (msg.platform ?? 'line') as 'line' | 'facebook' | 'tiktok',
-          createdAt: toBangkokWallTime(msg.createdAt),
-          updatedAt: toBangkokWallTime(msg.updatedAt),
+          createdAt: toIsoStringSafe(msg.createdAt),
+          updatedAt: toIsoStringSafe(msg.updatedAt),
         }
       })(),
       unreadCount: user._count.messages,
@@ -413,7 +409,7 @@ export async function GET(request: NextRequest) {
         isAuto: ta.tag.tagType !== 'manual',
         sortOrder: ta.tag.priority ?? 0,
       })),
-      updatedAt: toBangkokWallTime(user.lastInteraction) || toBangkokWallTime(user.updatedAt),
+      updatedAt: toIsoStringSafe(user.lastInteraction) || toIsoStringSafe(user.updatedAt),
     }))
 
     const nextCursor =

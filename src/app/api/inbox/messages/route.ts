@@ -10,16 +10,13 @@ import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 const isInternalRequest = (request: NextRequest) =>
   request.headers.get('x-internal-request') === 'true'
 
-// Helper to handle the timezone discrepancy between Next.js (UTC connection) and PHP (Local connection + DATETIME)
-// The DB stores literal Bangkok time (e.g. 17:00) but Prisma reads it as UTC (17:00Z).
-// We simply assert that the time read IS +07:00.
-const toBangkokWallTime = (date: Date | null | undefined) => {
+const toIsoStringSafe = (date: Date | string | null | undefined) => {
   if (!date) return null
+  const d = date instanceof Date ? date : new Date(date)
+  if (Number.isNaN(d.getTime())) return null
   try {
-    // Take the ISO string (e.g. "2024-01-30T17:00:00.000Z") and declare it as +07:00
-    // Result: "2024-01-30T17:00:00.000+07:00"
-    return date.toISOString().replace('Z', '+07:00')
-  } catch (e) {
+    return d.toISOString()
+  } catch {
     return null
   }
 }
@@ -161,8 +158,8 @@ export async function GET(request: NextRequest) {
         }
         : null,
       platform: (msg.platform ?? 'line') as 'line' | 'facebook' | 'tiktok',
-      createdAt: toBangkokWallTime(msg.createdAt),
-      updatedAt: toBangkokWallTime(msg.updatedAt),
+      createdAt: toIsoStringSafe(msg.createdAt),
+      updatedAt: toIsoStringSafe(msg.updatedAt),
     }))
 
     // Reverse to show oldest first
@@ -311,11 +308,6 @@ export async function POST(request: NextRequest) {
       console.warn('PHP_API_URL not configured, message will be saved but not sent to platform')
     }
 
-    // Manual Time override for Bangkok Time
-    const now = new Date()
-    // Add 7 hours to ensure DATETIME columns receive the Bangkok face-value time
-    const bangkokNow = new Date(now.getTime() + 7 * 60 * 60 * 1000)
-    
     // Build metadata including quoteToken and lineMessageId from LINE API response
     const messageMetadata: any = metadata || {}
     if (returnedQuoteToken) {
@@ -340,8 +332,6 @@ export async function POST(request: NextRequest) {
         replyToId: parsedReplyToId,
         isRead: true,
         platform: userPlatform,
-        createdAt: bangkokNow,
-        updatedAt: bangkokNow,
       },
       include: {
         replyTo: true,
@@ -374,8 +364,8 @@ export async function POST(request: NextRequest) {
         }
         : null,
       platform: userPlatform,
-      createdAt: toBangkokWallTime(message.createdAt),
-      updatedAt: toBangkokWallTime(message.updatedAt),
+      createdAt: toIsoStringSafe(message.createdAt),
+      updatedAt: toIsoStringSafe(message.updatedAt),
       platformSent: platformSendSuccess,
     }
 
