@@ -36,12 +36,12 @@ export async function GET(request: NextRequest) {
       `slipcenter:dashboard`,
       async () => {
         const [custRes, slipRes, bdoRes] = await Promise.all([
-          phpPost({ action: 'customer_list', limit: 100, offset: 0, fast: 1 }),
-          fetch(`${SLIPS_API}?status=pending&limit=1000&offset=0`, {
+          phpPost({ action: 'customer_list', limit: 9999, offset: 0, fast: 1 }),
+          fetch(`${SLIPS_API}?status=pending&limit=5000&offset=0`, {
             headers: { 'User-Agent': 'InboxReya-SlipCenter/1.0' },
             cache: 'no-store',
           }).then(r => r.json()).catch(() => ({ success: false })),
-          phpPost({ action: 'slip_center_bdo_overview', limit: 1000 }),
+          phpPost({ action: 'slip_center_bdo_overview', limit: 5000 }),
         ])
 
         const customers = custRes?.success && custRes?.data?.customers
