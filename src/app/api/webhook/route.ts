@@ -4,47 +4,63 @@ import prisma from '@/lib/prisma'
 import { createAutoTagManager } from '@/lib/services/auto-tag-manager'
 import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
 
- async function resolveReplyToId(userId: number, quotedMessageId: string) {
-   const exactMatch = await prisma.message.findFirst({
-     where: {
-       userId,
-       metadata: {
-         contains: `"lineMessageId":"${quotedMessageId}"`,
-       },
-     },
-     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-     select: { id: true },
-   })
+const toBangkokWallDate = (date: Date | number | string) => {
+  const baseDate = date instanceof Date ? date : new Date(date)
+  return new Date(baseDate.getTime() + 7 * 60 * 60 * 1000)
+}
 
-   if (exactMatch) {
-     return exactMatch.id
-   }
+const toIsoStringSafe = (date: Date | string | null | undefined) => {
+  if (!date) return null
+  const d = date instanceof Date ? date : new Date(date)
+  if (Number.isNaN(d.getTime())) return null
+  try {
+    return d.toISOString()
+  } catch {
+    return null
+  }
+}
 
-   const fallbackMessages = await prisma.message.findMany({
-     where: {
-       userId,
-       metadata: { not: null },
-     },
-     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-     take: 2000,
-     select: {
-       id: true,
-       metadata: true,
-     },
-   })
+async function resolveReplyToId(userId: number, quotedMessageId: string) {
+  const exactMatch = await prisma.message.findFirst({
+    where: {
+      userId,
+      metadata: {
+        contains: `"lineMessageId":"${quotedMessageId}"`,
+      },
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    select: { id: true },
+  })
 
-   for (const msg of fallbackMessages) {
-     try {
-       const parsed = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata
-       if (parsed?.lineMessageId === quotedMessageId) {
-         return msg.id
-       }
-     } catch {
-     }
-   }
+  if (exactMatch) {
+    return exactMatch.id
+  }
 
-   return null
- }
+  const fallbackMessages = await prisma.message.findMany({
+    where: {
+      userId,
+      metadata: { not: null },
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: 2000,
+    select: {
+      id: true,
+      metadata: true,
+    },
+  })
+
+  for (const msg of fallbackMessages) {
+    try {
+      const parsed = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata
+      if (parsed?.lineMessageId === quotedMessageId) {
+        return msg.id
+      }
+    } catch {
+    }
+  }
+
+  return null
+}
 
 // Verify LINE signature
 function verifySignature(body: string, signature: string): boolean {
@@ -89,6 +105,7 @@ export async function POST(request: NextRequest) {
 
 async function handleEvent(event: any) {
   const { type, source, message, timestamp } = event
+  const eventDate = timestamp ? toBangkokWallDate(Number(timestamp)) : toBangkokWallDate(new Date())
 
   // Get or create LINE user
   const lineUserId = source.userId
@@ -125,7 +142,7 @@ async function handleEvent(event: any) {
         lineUserId,
         lineAccountId: lineAccount.id,
         displayName: source.displayName || null,
-        lastInteraction: new Date(),
+        lastInteraction: eventDate,
       },
       select: {
         id: true,
@@ -142,7 +159,7 @@ async function handleEvent(event: any) {
     // Update last interaction
     await prisma.lineUser.update({
       where: { id: user.id },
-      data: { lastInteraction: new Date() },
+      data: { lastInteraction: eventDate },
       select: { id: true },
     })
   }
@@ -150,7 +167,7 @@ async function handleEvent(event: any) {
   // Handle different event types
   switch (type) {
     case 'message':
-      await handleMessage(user, lineAccount.id, message, event.replyToken)
+      await handleMessage(user, lineAccount.id, message, event.replyToken, eventDate)
       break
 
     case 'follow':
@@ -174,7 +191,8 @@ async function handleMessage(
   user: any,
   lineAccountId: number,
   message: any,
-  replyToken: string | null
+  replyToken: string | null,
+  eventDate: Date
 ) {
   // Save message to database
   const messageType = message.type
@@ -250,11 +268,13 @@ async function handleMessage(
       replyToken,
       isRead: false,
       replyToId,
+      createdAt: eventDate,
+      updatedAt: eventDate,
     },
   })
 
   // Update user's last interaction
-  await prisma.$executeRaw`UPDATE users SET last_interaction = NOW() WHERE id = ${user.id}`
+  await prisma.$executeRaw`UPDATE users SET last_interaction = ${eventDate} WHERE id = ${user.id}`
 
   // Trigger auto-tagging based on message
   if (content) {
@@ -263,6 +283,8 @@ async function handleMessage(
   }
 
   // Broadcast new message via Pusher for real-time updates
+  const createdAt = toIsoStringSafe(createdMessage.createdAt) ?? eventDate.toISOString()
+
   await broadcastNewMessage({
     conversationId: user.id.toString(),
     message: {
@@ -274,7 +296,7 @@ async function handleMessage(
       mediaUrl: mediaUrl,
       metadata: metadata ? JSON.parse(metadata) : null,
       replyToId: replyToId ? replyToId.toString() : null,
-      createdAt: createdMessage.createdAt.toISOString(),
+      createdAt,
       sentBy: null,
     },
   })

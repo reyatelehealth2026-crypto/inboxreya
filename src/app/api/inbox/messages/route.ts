@@ -10,12 +10,12 @@ import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 const isInternalRequest = (request: NextRequest) =>
   request.headers.get('x-internal-request') === 'true'
 
-const toIsoStringSafe = (date: Date | string | null | undefined) => {
+const toBangkokWallTimeSafe = (date: Date | string | null | undefined) => {
   if (!date) return null
   const d = date instanceof Date ? date : new Date(date)
   if (Number.isNaN(d.getTime())) return null
   try {
-    return d.toISOString()
+    return d.toISOString().replace('Z', '+07:00')
   } catch {
     return null
   }
@@ -158,8 +158,8 @@ export async function GET(request: NextRequest) {
         }
         : null,
       platform: (msg.platform ?? 'line') as 'line' | 'facebook' | 'tiktok',
-      createdAt: toIsoStringSafe(msg.createdAt),
-      updatedAt: toIsoStringSafe(msg.updatedAt),
+      createdAt: toBangkokWallTimeSafe(msg.createdAt),
+      updatedAt: toBangkokWallTimeSafe(msg.updatedAt),
     }))
 
     // Reverse to show oldest first
@@ -318,6 +318,8 @@ export async function POST(request: NextRequest) {
       messageMetadata.lineMessageId = returnedLineMessageId
     }
 
+    const bangkokNow = new Date(Date.now() + 7 * 60 * 60 * 1000)
+
     // Save to Prisma database (PHP no longer saves to avoid duplicates)
     const message = await prisma.message.create({
       data: {
@@ -332,6 +334,8 @@ export async function POST(request: NextRequest) {
         replyToId: parsedReplyToId,
         isRead: true,
         platform: userPlatform,
+        createdAt: bangkokNow,
+        updatedAt: bangkokNow,
       },
       include: {
         replyTo: true,
@@ -341,7 +345,7 @@ export async function POST(request: NextRequest) {
     // Update user's last interaction
     await prisma.lineUser.update({
       where: { id: parsedUserId },
-      data: { lastInteraction: new Date() }, // lastInteraction might be TIMESTAMP or DATETIME? Usually datetime. Should probably apply same logic but usually less critical.
+      data: { lastInteraction: bangkokNow },
       select: { id: true },
     })
 
@@ -364,8 +368,8 @@ export async function POST(request: NextRequest) {
         }
         : null,
       platform: userPlatform,
-      createdAt: toIsoStringSafe(message.createdAt),
-      updatedAt: toIsoStringSafe(message.updatedAt),
+      createdAt: toBangkokWallTimeSafe(message.createdAt),
+      updatedAt: toBangkokWallTimeSafe(message.updatedAt),
       platformSent: platformSendSuccess,
     }
 

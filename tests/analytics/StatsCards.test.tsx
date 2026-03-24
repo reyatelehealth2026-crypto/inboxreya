@@ -13,7 +13,7 @@ describe('StatsCards', () => {
     render(<StatsCards stats={mockStats} />);
     expect(screen.getByText(/รายได้รวม/i)).toBeInTheDocument();
     expect(screen.getByText(/จำนวนลูกค้า/i)).toBeInTheDocument();
-    expect(screen.getByText(/มูลค่าออเดอร์เฉลี่ย/i)).toBeInTheDocument();
+    expect(screen.getByText(/คะแนนความพึงพอใจ/i)).toBeInTheDocument();
     expect(screen.getByText(/จำนวนออเดอร์/i)).toBeInTheDocument();
   });
 
