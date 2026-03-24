@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 export async function GET() {
   try {
@@ -13,39 +14,30 @@ export async function GET() {
       )
     }
 
-    // Get total messages count
-    const totalMessages = await prisma.message.count()
+    const data = await cacheQuery(
+      'dashboard:stats:global',
+      async () => {
+        // Get total messages + customers พร้อมกัน
+        const [totalMessages, totalCustomers, sentMessages, receivedMessages] =
+          await Promise.all([
+            prisma.message.count(),
+            prisma.lineUser.count(),
+            prisma.message.count({ where: { direction: 'outgoing' } }),
+            prisma.message.count({ where: { direction: 'incoming' } }),
+          ])
 
-    // Get total customers count
-    const totalCustomers = await prisma.lineUser.count()
+        const responseRate = receivedMessages > 0
+          ? Math.round((sentMessages / receivedMessages) * 100)
+          : 0
 
-    // Calculate response rate (messages sent by admins vs received)
-    const sentMessages = await prisma.message.count({
-      where: { direction: 'outgoing' }
-    })
-    const receivedMessages = await prisma.message.count({
-      where: { direction: 'incoming' }
-    })
-    const responseRate = receivedMessages > 0
-      ? Math.round((sentMessages / receivedMessages) * 100)
-      : 0
+        const avgResponseTime = await getAverageResponseTime()
 
-    /*
-      Logic: Average time between a customer's message (incoming) and the *next* admin response (outgoing).
-      We join messages on user_id, looking for the first outgoing message that appears AFTER an incoming message.
-      We limit the search window to 24 hours to avoid skewing data with long-unanswered threads that were later revived.
-    */
-    const avgResponseTime = await getAverageResponseTime()
+        return { totalMessages, totalCustomers, responseRate, avgResponseTime }
+      },
+      CACHE_TTL.DASHBOARD_STATS
+    )
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        totalMessages,
-        totalCustomers,
-        responseRate,
-        avgResponseTime
-      }
-    })
+    return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('Failed to fetch dashboard stats:', error)
     return NextResponse.json(

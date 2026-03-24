@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { withAuth } from '@/lib/auth-middleware'
 import { handleAPIError } from '@/lib/api-utils'
+import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
 // Validation schemas
 const createTemplateSchema = z.object({
@@ -60,37 +61,44 @@ export const GET = withAuth(async (
 
     console.log('[Templates GET] Where clause:', JSON.stringify(where, null, 2))
 
-    // Get templates with pagination
-    const [templates, total] = await Promise.all([
-      prisma.quick_reply_templates.findMany({
-        where,
-        orderBy: [
-          { usage_count: 'desc' },
-          { name: 'asc' },
-        ],
-        skip,
-        take: limit,
-      }),
-      prisma.quick_reply_templates.count({ where }),
-    ])
+    // Cache เฉพาะ default list (ไม่มี search/filter) เพื่อความเร็ว
+    const isDefaultList = !search && !category && page === 1
+    const cacheKey = `templates:account:${user.lineAccountId}:p${page}:l${limit}`
 
-    console.log('[Templates GET] Found templates:', templates.length, 'Total:', total)
+    const result = await cacheQuery(
+      isDefaultList ? cacheKey : `nocache:${Date.now()}`,
+      async () => {
+        const [templates, total] = await Promise.all([
+          prisma.quick_reply_templates.findMany({
+            where,
+            orderBy: [{ usage_count: 'desc' }, { name: 'asc' }],
+            skip,
+            take: limit,
+          }),
+          prisma.quick_reply_templates.count({ where }),
+        ])
 
-    // Parse JSON fields
-    const parsedTemplates = templates.map(template => ({
-      ...template,
-      shortcuts: template.shortcuts ? JSON.parse(template.shortcuts) : [],
-      variables: template.variables ? JSON.parse(template.variables) : [],
-    }))
+        const parsedTemplates = templates.map(template => ({
+          ...template,
+          shortcuts: template.shortcuts ? JSON.parse(template.shortcuts) : [],
+          variables: template.variables ? JSON.parse(template.variables) : [],
+        }))
+
+        return { data: parsedTemplates, total }
+      },
+      isDefaultList ? CACHE_TTL.TEMPLATES : 0
+    )
+
+    console.log('[Templates GET] Found templates:', result.data.length, 'Total:', result.total)
 
     return NextResponse.json({
       success: true,
-      data: parsedTemplates,
+      data: result.data,
       pagination: {
         page,
         limit,
-        total,
-        totalPages: Math.ceil(total / limit),
+        total: result.total,
+        totalPages: Math.ceil(result.total / limit),
       },
     })
   } catch (error: any) {
@@ -140,6 +148,9 @@ export const POST = withAuth(async (
       shortcuts: template.shortcuts ? JSON.parse(template.shortcuts) : [],
       variables: template.variables ? JSON.parse(template.variables) : [],
     }
+
+    // Invalidate templates cache หลัง create
+    await cacheInvalidate(`templates:account:${user.lineAccountId}:*`)
 
     return NextResponse.json({
       success: true,

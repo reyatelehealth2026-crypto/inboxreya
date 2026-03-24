@@ -1,5 +1,8 @@
 import Redis from 'ioredis'
 
+// Key prefix แยกของ inboxreya จาก odoo (ที่ใช้ prefix 'cny:')
+const KEY_PREFIX = 'inbox:'
+
 let redis: Redis | null = null
 
 export function getRedis(): Redis {
@@ -30,7 +33,7 @@ export function getRedis(): Redis {
 
 export async function redisGet(key: string): Promise<string | null> {
   try {
-    return await getRedis().get(key)
+    return await getRedis().get(KEY_PREFIX + key)
   } catch {
     console.error('[Redis] GET failed for key:', key)
     return null
@@ -44,9 +47,9 @@ export async function redisSet(
 ): Promise<void> {
   try {
     if (ttlSeconds) {
-      await getRedis().set(key, value, 'EX', ttlSeconds)
+      await getRedis().set(KEY_PREFIX + key, value, 'EX', ttlSeconds)
     } else {
-      await getRedis().set(key, value)
+      await getRedis().set(KEY_PREFIX + key, value)
     }
   } catch {
     console.error('[Redis] SET failed for key:', key)
@@ -55,7 +58,7 @@ export async function redisSet(
 
 export async function redisDel(key: string): Promise<void> {
   try {
-    await getRedis().del(key)
+    await getRedis().del(KEY_PREFIX + key)
   } catch {
     console.error('[Redis] DEL failed for key:', key)
   }
@@ -69,3 +72,93 @@ export async function redisHealthCheck(): Promise<boolean> {
     return false
   }
 }
+
+/**
+ * Cache-aside helper สำหรับ DB queries
+ *
+ * ถ้า cache มี → คืนค่าจาก Redis (เร็ว)
+ * ถ้าไม่มี    → รัน fetcher() แล้ว save ลง Redis + คืนค่า
+ * ถ้า Redis พัง → fallback ไปรัน fetcher() ตรงๆ โดยไม่ error
+ *
+ * @example
+ * const tags = await cacheQuery(
+ *   `tags:account:${accountId}`,
+ *   () => prisma.userTag.findMany({ where: { lineAccountId: accountId } }),
+ *   300  // cache 5 นาที
+ * )
+ */
+export async function cacheQuery<T>(
+  key: string,
+  fetcher: () => Promise<T>,
+  ttlSeconds = 60
+): Promise<T> {
+  // 1. ลอง hit cache ก่อน
+  try {
+    const cached = await getRedis().get(KEY_PREFIX + key)
+    if (cached !== null) {
+      return JSON.parse(cached) as T
+    }
+  } catch {
+    // Redis ไม่พร้อม → ข้ามไป fetch DB ตรงๆ
+  }
+
+  // 2. Cache miss → ดึงจาก DB
+  const data = await fetcher()
+
+  // 3. บันทึก cache (ไม่ block response)
+  try {
+    await getRedis().set(
+      KEY_PREFIX + key,
+      JSON.stringify(data),
+      'EX',
+      ttlSeconds
+    )
+  } catch {
+    // ไม่ต้อง throw — cache fail ไม่กระทบ business logic
+  }
+
+  return data
+}
+
+/**
+ * Invalidate cache key หรือ pattern
+ * ใช้หลัง write/update ข้อมูล
+ *
+ * @example
+ * await cacheInvalidate(`tags:account:${accountId}`)         // ลบ key เดียว
+ * await cacheInvalidate(`templates:account:${accountId}:*`)  // ลบตาม pattern
+ */
+export async function cacheInvalidate(pattern: string): Promise<void> {
+  try {
+    const r = getRedis()
+    const fullPattern = KEY_PREFIX + pattern
+
+    if (fullPattern.includes('*')) {
+      // SCAN-based delete เพื่อไม่ block server
+      let cursor = '0'
+      do {
+        const [nextCursor, keys] = await r.scan(cursor, 'MATCH', fullPattern, 'COUNT', 100)
+        cursor = nextCursor
+        if (keys.length > 0) {
+          await r.del(...keys)
+        }
+      } while (cursor !== '0')
+    } else {
+      await r.del(fullPattern)
+    }
+  } catch {
+    console.error('[Redis] Invalidate failed for pattern:', pattern)
+  }
+}
+
+/** TTL constants (วินาที) — ใช้ร่วมกันทั้งโปรเจกต์ */
+export const CACHE_TTL = {
+  DASHBOARD_STATS:  120,   // 2 นาที — aggregate ช้า
+  TAGS:             300,   // 5 นาที — เปลี่ยนนาน
+  TEMPLATES:        300,   // 5 นาที
+  CONVERSATIONS:     30,   // 30 วิ — เปลี่ยนบ่อย
+  CUSTOMER_PROFILE: 120,   // 2 นาที
+  ANALYTICS:        300,   // 5 นาที
+  HEALTH:            60,   // 1 นาที
+} as const
+

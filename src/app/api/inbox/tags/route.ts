@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { callPhpApi } from '@/lib/php-bridge'
+import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
 // Get all tags
 export async function GET(request: NextRequest) {
@@ -11,29 +12,33 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const tags = await prisma.userTag.findMany({
-      where: session.user.lineAccountId
-        ? { lineAccountId: session.user.lineAccountId }
-        : {},
-      orderBy: [{ priority: 'asc' }, { name: 'asc' }],
-      include: {
-        _count: {
-          select: { assignments: true },
-        },
-      },
-    })
+    const accountId = session.user.lineAccountId ?? 'all'
+    const cacheKey = `tags:account:${accountId}`
 
-    return NextResponse.json({
-      data: tags.map((tag) => ({
-        id: tag.id.toString(),
-        name: tag.name,
-        color: tag.color ?? '#3B82F6',
-        description: tag.description,
-        isAuto: tag.tagType !== 'manual',
-        sortOrder: tag.priority ?? 0,
-        usageCount: tag._count.assignments,
-      })),
-    })
+    const data = await cacheQuery(
+      cacheKey,
+      async () => {
+        const tags = await prisma.userTag.findMany({
+          where: session.user.lineAccountId
+            ? { lineAccountId: session.user.lineAccountId }
+            : {},
+          orderBy: [{ priority: 'asc' }, { name: 'asc' }],
+          include: { _count: { select: { assignments: true } } },
+        })
+        return tags.map((tag) => ({
+          id: tag.id.toString(),
+          name: tag.name,
+          color: tag.color ?? '#3B82F6',
+          description: tag.description,
+          isAuto: tag.tagType !== 'manual',
+          sortOrder: tag.priority ?? 0,
+          usageCount: tag._count.assignments,
+        }))
+      },
+      CACHE_TTL.TAGS
+    )
+
+    return NextResponse.json({ data })
   } catch (error) {
     console.error('Error fetching tags:', error)
     return NextResponse.json({ error: 'Failed to fetch tags' }, { status: 500 })
@@ -65,6 +70,9 @@ export async function POST(request: NextRequest) {
         lineAccountId: session.user.lineAccountId,
       },
     })
+
+    // Invalidate tags cache หลัง create
+    await cacheInvalidate(`tags:account:${session.user.lineAccountId ?? 'all'}`)
 
     return NextResponse.json({
       id: tag.id.toString(),
