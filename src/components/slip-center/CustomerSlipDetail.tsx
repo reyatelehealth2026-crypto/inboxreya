@@ -30,12 +30,14 @@ interface CustomerSlipDetailProps {
 }
 
 interface CustomerDetailData {
-  bdoOrders: SlipCenterBdo[]
+  bdoOrders: SlipCenterBdo[]    // active (non-paid) BDOs
+  paidBdos: SlipCenterBdo[]     // paid BDOs (filtered by API)
   pendingSlips: SlipCenterSlip[]
   allSlips: SlipCenterSlip[]
   matchedToday: SlipCenterSlip[]
   stats: {
     totalBdos: number
+    totalPaidBdos: number
     totalPendingSlips: number
     totalMatchedToday: number
   }
@@ -159,18 +161,9 @@ export function CustomerSlipDetail({
     qc.invalidateQueries({ queryKey: ['slip-center-detail', customerRef, partnerId] })
   }, [qc, customerRef, partnerId])
 
-  // Split BDOs into active (non-paid) and paid
-  const activeBdos = useMemo(() =>
-    (data?.bdoOrders || []).filter(b => {
-      const ps = normalizeBdoPaymentStatus(b)
-      return ps.key !== 'paid'
-    }), [data])
-
-  const paidBdos = useMemo(() =>
-    (data?.bdoOrders || []).filter(b => {
-      const ps = normalizeBdoPaymentStatus(b)
-      return ps.key === 'paid'
-    }), [data])
+  // Use API-filtered lists directly (customer-detail route already splits them)
+  const activeBdos = data?.bdoOrders ?? []
+  const paidBdos   = data?.paidBdos  ?? []
 
   const handleOpenEdit = useCallback((slip: SlipCenterSlip) => {
     setEditingSlipId(slip.id)

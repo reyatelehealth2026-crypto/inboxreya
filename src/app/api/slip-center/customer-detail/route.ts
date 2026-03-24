@@ -53,13 +53,25 @@ export async function GET(request: NextRequest) {
         }
 
         const d = json.data
+        const rawBdos: any[] = d.bdo_orders ?? []
+
+        const isPaid = (b: any) => {
+          const s = String(b?.payment_status || b?.status || '').toLowerCase().trim()
+          return s === 'paid' || s === 'fully_paid' || s === 'done'
+        }
+
+        const activeBdos = rawBdos.filter(b => !isPaid(b))
+        const paidBdos   = rawBdos.filter(b => isPaid(b))
+
         return {
-          bdoOrders:    d.bdo_orders    ?? [],
+          bdoOrders:    activeBdos,
+          paidBdos,
           pendingSlips: d.pending_slips ?? [],
           allSlips:     d.all_slips     ?? [],
           matchedToday: d.matched_today ?? [],
           stats: {
-            totalBdos:          d.stats?.total_bdos          ?? (d.bdo_orders?.length    ?? 0),
+            totalBdos:          activeBdos.length,
+            totalPaidBdos:      paidBdos.length,
             totalPendingSlips:  d.stats?.total_pending_slips ?? (d.pending_slips?.length ?? 0),
             totalMatchedToday:  d.stats?.total_matched_today ?? (d.matched_today?.length ?? 0),
           },

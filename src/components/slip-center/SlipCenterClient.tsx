@@ -187,12 +187,10 @@ function SlipCenterInner() {
   const bdoCountByRef = useMemo<Record<string, number>>(() => {
     const map: Record<string, number> = {}
     if (!data) return map
-    data.pendingBdos.forEach(b => {
-      const ps = normalizeBdoPaymentStatus(b)
-      if (ps.key === 'pending' || ps.key === 'partial') {
-        const ref = getBdoCustomerRef(b)
-        if (ref) map[ref] = (map[ref] || 0) + 1
-      }
+    // Count ALL non-paid BDOs (allBdos = activeBdos already excludes paid)
+    data.allBdos.forEach(b => {
+      const ref = getBdoCustomerRef(b)
+      if (ref) map[ref] = (map[ref] || 0) + 1
     })
     return map
   }, [data])

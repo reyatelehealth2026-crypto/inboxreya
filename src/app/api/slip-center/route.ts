@@ -37,11 +37,11 @@ export async function GET(request: NextRequest) {
       async () => {
         const [custRes, slipRes, bdoRes] = await Promise.all([
           phpPost({ action: 'customer_list', limit: 100, offset: 0, fast: 1 }),
-          fetch(`${SLIPS_API}?status=pending&limit=200&offset=0`, {
+          fetch(`${SLIPS_API}?status=pending&limit=1000&offset=0`, {
             headers: { 'User-Agent': 'InboxReya-SlipCenter/1.0' },
             cache: 'no-store',
           }).then(r => r.json()).catch(() => ({ success: false })),
-          phpPost({ action: 'slip_center_bdo_overview', limit: 200 }),
+          phpPost({ action: 'slip_center_bdo_overview', limit: 1000 }),
         ])
 
         const customers = custRes?.success && custRes?.data?.customers
@@ -51,6 +51,10 @@ export async function GET(request: NextRequest) {
         const pendingSlips = slipRes?.success && slipRes?.data?.slips
           ? slipRes.data.slips
           : []
+
+        // Use PHP-reported total for KPI (slips-list.php returns data.total)
+        const totalPendingSlipsKPI: number =
+          slipRes?.data?.total ?? pendingSlips.length
 
         const rawBdos = bdoRes?.success && bdoRes?.data?.bdos
           ? bdoRes.data.bdos
@@ -78,7 +82,7 @@ export async function GET(request: NextRequest) {
           allBdos: activeBdos,
           stats: {
             totalCustomers: customers.length,
-            totalPendingSlips: pendingSlips.length,
+            totalPendingSlips: totalPendingSlipsKPI,
             totalPendingBdos: pendingBdos.length,
             totalAllBdos: activeBdos.length,
             totalPaidBdos: paidBdos.length,
