@@ -24,6 +24,7 @@ const spacingMap: Record<string, number> = {
 }
 
 const textSizeMap: Record<string, number> = {
+  xxs: 9,
   xs: 10,
   sm: 12,
   md: 14,
