@@ -32,6 +32,7 @@ export interface BdoOrderRecord {
   order_id: number
   order_name: string | null
   amount_total: number | null
+  amount_net_to_pay: number | null
   payment_reference: string | null
   partner_id: number | null
   customer_name: string | null
@@ -445,7 +446,7 @@ function BdoCard({
       {/* Row 3: Amount + Action */}
       <div className="flex items-center justify-between">
         <span className="font-bold text-base text-gray-900">
-          ฿{bdo.amount_total?.toLocaleString('th-TH', { minimumFractionDigits: 0 }) || '0'}
+          ฿{(bdo.amount_net_to_pay ?? bdo.amount_total)?.toLocaleString('th-TH', { minimumFractionDigits: 0 }) || '0'}
         </span>
         <div className="flex gap-1.5">
           {isPending && (
