@@ -44,6 +44,7 @@ function formatCurrency(amount: number | null) {
 function formatDate(dateStr: string | null) {
   if (!dateStr) return '—'
   return new Date(dateStr).toLocaleDateString('th-TH', {
+    timeZone: 'Asia/Bangkok',
     day: '2-digit',
     month: 'short',
     year: 'numeric',

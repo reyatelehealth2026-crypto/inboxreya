@@ -354,7 +354,7 @@ function BdoCard({
 
   const bdoDate = bdo.bdo_date || bdo.created_at
   const dateStr = bdoDate ? new Date(bdoDate).toLocaleDateString('th-TH', {
-    day: '2-digit', month: 'short', year: 'numeric',
+    timeZone: 'Asia/Bangkok', day: '2-digit', month: 'short', year: 'numeric',
   }) : '-'
 
   const paymentLabel = bdo.payment_method === 'promptpay' ? 'พร้อมเพย์' :

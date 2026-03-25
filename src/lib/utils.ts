@@ -77,8 +77,15 @@ export function formatMessageTime(date: Date | string | null | undefined): strin
     return `เมื่อวาน ${timeStr}`
   }
 
-  const localDate = new Date(msgYear, msgMonth - 1, msgDay, parseInt(msgHour), parseInt(msgMin))
-  return format(localDate, 'd MMM HH:mm', { locale: th })
+  const thaiFormatter = new Intl.DateTimeFormat('th-TH', {
+    timeZone: 'Asia/Bangkok',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+  return thaiFormatter.format(d)
 }
 
 export function formatDate(date: Date | string): string {

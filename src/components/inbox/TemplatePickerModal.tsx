@@ -200,7 +200,7 @@ export function TemplatePickerModal({
     if (diffMins < 60) return `${diffMins} นาทีที่แล้ว`
     if (diffHours < 24) return `${diffHours} ชั่วโมงที่แล้ว`
     if (diffDays < 7) return `${diffDays} วันที่แล้ว`
-    return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+    return d.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short' })
   }
 
   return (

@@ -151,6 +151,7 @@ export function GroupChat({ groupId, groupName, messages, members, onRefresh }: 
                     </span>
                     <span className="text-xs text-gray-400">
                       {new Date(msg.createdAt).toLocaleString('th-TH', {
+                        timeZone: 'Asia/Bangkok',
                         month: 'short',
                         day: 'numeric',
                         hour: '2-digit',

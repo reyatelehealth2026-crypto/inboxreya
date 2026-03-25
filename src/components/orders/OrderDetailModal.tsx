@@ -107,6 +107,7 @@ export function OrderDetailModal({
     if (!dateString) return '-';
     try {
       return new Date(dateString).toLocaleDateString('th-TH', {
+        timeZone: 'Asia/Bangkok',
         year: 'numeric',
         month: 'long',
         day: 'numeric',

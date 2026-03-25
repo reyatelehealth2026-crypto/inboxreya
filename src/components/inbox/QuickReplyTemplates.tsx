@@ -148,7 +148,7 @@ export function QuickReplyTemplates() {
     if (diffMins < 60) return `${diffMins} นาที`
     if (diffHours < 24) return `${diffHours} ชม.`
     if (diffDays < 7) return `${diffDays} วัน`
-    return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+    return d.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short' })
   }
 
   return (

@@ -497,7 +497,7 @@ export function CustomerSlipDetail({
               const fmtDate = (raw?: string | null) => {
                 if (!raw) return '-'
                 const dt = new Date(raw)
-                return isNaN(dt.getTime()) ? String(raw).slice(0, 10) : dt.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' })
+                return isNaN(dt.getTime()) ? String(raw).slice(0, 10) : dt.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', day: '2-digit', month: 'short', year: '2-digit' })
               }
               const payMethodLabel = bdo.payment_method === 'promptpay' ? 'พร้อมเพย์' : bdo.payment_method === 'bank_transfer' ? 'โอนเงิน' : bdo.payment_method || ''
               const linkedSlip = data?.allSlips?.find(s => s.bdo_id && String(s.bdo_id) === String(bdo.bdo_id))
@@ -749,8 +749,8 @@ export function CustomerSlipDetail({
                       {slip.uploaded_at && (
                         <p className="text-[10px] text-gray-400 flex items-center gap-0.5">
                           <Clock className="h-2.5 w-2.5" />
-                          อัพ: {new Date(slip.uploaded_at).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })}
-                          {' '}{new Date(slip.uploaded_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
+                          อัพ: {new Date(slip.uploaded_at).toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', day: '2-digit', month: 'short' })}
+                          {' '}{new Date(slip.uploaded_at).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit' })}
                         </p>
                       )}
                     </div>
