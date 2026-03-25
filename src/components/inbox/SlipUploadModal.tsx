@@ -315,7 +315,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
           </Label>
           {loadingImages ? (
             <div className="grid grid-cols-3 gap-1.5">
-              {[1,2,3,4,5,6].map(i => <Skeleton key={i} className="aspect-square rounded-lg" />)}
+              {[1,2,3,4,5,6].map(i => <Skeleton key={i} className="w-full aspect-square rounded-lg" />)}
             </div>
           ) : recentImages.length > 0 ? (
             <div className="grid grid-cols-3 gap-1.5">
@@ -329,7 +329,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
                     type="button"
                     onClick={() => selectInboxImage(img)}
                     className={cn(
-                      "relative aspect-square rounded-lg overflow-hidden border-2 transition-all",
+                      "relative w-full aspect-square rounded-lg overflow-hidden border-2 transition-all",
                       isSelected ? "border-teal-500 ring-2 ring-teal-200" : "border-gray-200 hover:border-gray-400"
                     )}
                   >
