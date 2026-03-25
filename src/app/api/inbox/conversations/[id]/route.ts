@@ -95,7 +95,7 @@ export async function GET(
         points: 0,
         totalSpent: 0,
         orderCount: 0,
-        lastInteraction: user.lastInteraction?.toISOString() || null,
+        lastInteraction: user.lastInteraction ? new Date(user.lastInteraction).toISOString() : null,
         chatStatus: user.chatStatus,
         isBlocked: user.isBlocked,
         isRegistered: user.isRegistered,
@@ -136,7 +136,7 @@ export async function GET(
         isAuto: ta.tag.tagType !== 'manual',
         sortOrder: ta.tag.priority ?? 0,
       })),
-      updatedAt: user.lastInteraction?.toISOString() || user.updatedAt.toISOString(),
+      updatedAt: user.lastInteraction ? new Date(user.lastInteraction).toISOString() : user.updatedAt.toISOString(),
     }
 
     return NextResponse.json({ data: conversation })

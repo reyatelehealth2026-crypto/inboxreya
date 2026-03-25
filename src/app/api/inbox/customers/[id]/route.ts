@@ -304,7 +304,7 @@ export async function GET(
           loyaltyPoints: user.loyaltyPoints,
           totalSpent: user.totalSpent,
           orderCount: user.orderCount,
-          lastInteraction: user.lastInteraction?.toISOString() || null,
+          lastInteraction: user.lastInteraction ? new Date(user.lastInteraction).toISOString() : null,
           chatStatus: user.chatStatus,
           isBlocked: user.isBlocked,
           isRegistered: user.isRegistered,

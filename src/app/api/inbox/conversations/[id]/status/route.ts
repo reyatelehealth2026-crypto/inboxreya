@@ -104,7 +104,7 @@ export async function PATCH(
       data: {
         id: updatedConversation.id.toString(),
         status: updatedConversation.chatStatus,
-        lastInteraction: updatedConversation.lastInteraction?.toISOString(),
+        lastInteraction: updatedConversation.lastInteraction ? new Date(updatedConversation.lastInteraction).toISOString() : null,
       },
     })
   } catch (error) {
