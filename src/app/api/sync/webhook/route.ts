@@ -135,10 +135,8 @@ async function handleSyncMessage(data: any) {
   const resolvedLineMessageId = lineMessageId ?? parsedMetadata?.lineMessageId
   const resolvedQuotedMessageId = quotedMessageId ?? parsedMetadata?.quotedMessageId
 
-  // PHP stores DATETIME as Bangkok wall-clock time (no timezone).
-  // Prisma reads it as UTC. To keep consistency, we add +7h so the stored
-  // face-value matches what PHP would have written directly.
-  const bangkokCreatedAt = new Date(createdAt.getTime() + 7 * 60 * 60 * 1000)
+  // Use the true instant from timestamp (ms) or "now". Prisma + MySQL session timezone handles storage.
+  // Do not add +7h — Date is UTC instant; adding hours shifts the event incorrectly.
 
   // 1. Resolve LineAccount
   // Convert lineAccountId to integer if provided (it comes as string from JSON)
@@ -272,8 +270,8 @@ async function handleSyncMessage(data: any) {
     }
   } else {
     // Fallback: same content + direction within a 10-second window
-    const windowStart = new Date(bangkokCreatedAt.getTime() - 10000)
-    const windowEnd = new Date(bangkokCreatedAt.getTime() + 10000)
+    const windowStart = new Date(createdAt.getTime() - 10000)
+    const windowEnd = new Date(createdAt.getTime() + 10000)
     const existingMessage = await prisma.message.findFirst({
       where: {
         userId: user.id,
@@ -303,8 +301,8 @@ async function handleSyncMessage(data: any) {
       content: content || null,
       mediaUrl: mediaUrl || null,
       metadata: metadataValue,
-      createdAt: bangkokCreatedAt,
-      updatedAt: bangkokCreatedAt,
+      createdAt,
+      updatedAt: createdAt,
       isRead: direction === 'outgoing' ? true : false,
       replyToId,
     },

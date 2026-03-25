@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
-import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns"
+import { formatDistanceToNow, format } from "date-fns"
 import { th } from "date-fns/locale"
 
 export function cn(...inputs: ClassValue[]) {
@@ -8,9 +8,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Note: MySQL in PHP backend is configured with timezone +07:00
- * So dates from database are already in Bangkok time, not UTC
- * We should NOT add 7 hours again
+ * Message timestamps from the API are RFC 3339 UTC (`...Z`). `formatMessageTime` displays them in Asia/Bangkok.
  */
 
 export function formatTimeAgo(date: Date | string): string {
@@ -50,34 +48,31 @@ export function formatMessageTime(date: Date | string | null | undefined): strin
   })
   
   const parts = formatter.formatToParts(d)
-  const getPart = (type: string) => parts.find(p => p.type === type)?.value || '0'
-  
-  const msgYear = parseInt(getPart('year'))
-  const msgMonth = parseInt(getPart('month'))
-  const msgDay = parseInt(getPart('day'))
-  const msgHour = getPart('hour').padStart(2, '0')
-  const msgMin = getPart('minute').padStart(2, '0')
+  const getPart = (p: Intl.DateTimeFormatPart[], type: string) =>
+    p.find((x) => x.type === type)?.value ?? '0'
+
+  const msgYear = parseInt(getPart(parts, 'year'))
+  const msgMonth = parseInt(getPart(parts, 'month'))
+  const msgDay = parseInt(getPart(parts, 'day'))
+  const msgHour = getPart(parts, 'hour').padStart(2, '0')
+  const msgMin = getPart(parts, 'minute').padStart(2, '0')
   const timeStr = `${msgHour}:${msgMin}`
 
-  // Get current time in Bangkok
   const nowParts = formatter.formatToParts(new Date())
-  const getNowPart = (type: string) => nowParts.find(p => p.type === type)?.value || '0'
-  
-  const nowYear = parseInt(getNowPart('year'))
-  const nowMonth = parseInt(getNowPart('month'))
-  const nowDay = parseInt(getNowPart('day'))
+  const nowYear = parseInt(getPart(nowParts, 'year'))
+  const nowMonth = parseInt(getPart(nowParts, 'month'))
+  const nowDay = parseInt(getPart(nowParts, 'day'))
 
   if (nowYear === msgYear && nowMonth === msgMonth && nowDay === msgDay) {
     return timeStr
   }
 
-  // Calculate yesterday in Bangkok
-  const yesterday = new Date(d.getTime() - 86400000)
-  const yestParts = formatter.formatToParts(yesterday)
-  const yestYear = parseInt(getPart('year'))
-  const yestMonth = parseInt(getPart('month'))
-  const yestDay = parseInt(getPart('day'))
-  
+  // "Yesterday" in Asia/Bangkok (Thailand has no DST; ~24h back is sufficient)
+  const yestParts = formatter.formatToParts(new Date(Date.now() - 86400000))
+  const yestYear = parseInt(getPart(yestParts, 'year'))
+  const yestMonth = parseInt(getPart(yestParts, 'month'))
+  const yestDay = parseInt(getPart(yestParts, 'day'))
+
   if (yestYear === msgYear && yestMonth === msgMonth && yestDay === msgDay) {
     return `เมื่อวาน ${timeStr}`
   }
@@ -86,20 +81,16 @@ export function formatMessageTime(date: Date | string | null | undefined): strin
   return format(localDate, 'd MMM HH:mm', { locale: th })
 }
 
-/**
- * Convert date to Bangkok timezone (GMT+7)
- * Use this for displaying dates from Next.js API
- */
-export function toBangkokTime(date: Date | string): Date {
-  const d = typeof date === 'string' ? new Date(date) : date
-  // Convert to Bangkok timezone
-  return new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
-}
-
 export function formatDate(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date
-  const bangkokDate = toBangkokTime(d)
-  return format(bangkokDate, 'd MMMM yyyy', { locale: th })
+  if (isNaN(d.getTime())) return '-'
+  return new Intl.DateTimeFormat('th-TH', {
+    timeZone: 'Asia/Bangkok',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    calendar: 'gregory',
+  }).format(d)
 }
 
 export function truncate(str: string, length: number): string {

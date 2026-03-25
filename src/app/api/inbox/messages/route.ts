@@ -6,20 +6,10 @@ import { sendPlatformMessage } from '@/lib/php-bridge'
 import { broadcastRealtimeEvent } from '@/lib/realtime'
 import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
 import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
+import { toUtcIsoString } from '@/lib/datetime-api'
 
 const isInternalRequest = (request: NextRequest) =>
   request.headers.get('x-internal-request') === 'true'
-
-const toBangkokWallTimeSafe = (date: Date | string | null | undefined) => {
-  if (!date) return null
-  const d = date instanceof Date ? date : new Date(date)
-  if (Number.isNaN(d.getTime())) return null
-  try {
-    return d.toISOString().replace('Z', '+07:00')
-  } catch {
-    return null
-  }
-}
 
 const parseMetadata = (value: string | null) => {
   if (!value) return null
@@ -158,8 +148,8 @@ export async function GET(request: NextRequest) {
         }
         : null,
       platform: (msg.platform ?? 'line') as 'line' | 'facebook' | 'tiktok',
-      createdAt: toBangkokWallTimeSafe(msg.createdAt),
-      updatedAt: toBangkokWallTimeSafe(msg.updatedAt),
+      createdAt: toUtcIsoString(msg.createdAt),
+      updatedAt: toUtcIsoString(msg.updatedAt),
     }))
 
     // Reverse to show oldest first
@@ -318,7 +308,7 @@ export async function POST(request: NextRequest) {
       messageMetadata.lineMessageId = returnedLineMessageId
     }
 
-    const bangkokNow = new Date(Date.now() + 7 * 60 * 60 * 1000)
+    const now = new Date()
 
     // Save to Prisma database (PHP no longer saves to avoid duplicates)
     const message = await prisma.message.create({
@@ -334,8 +324,8 @@ export async function POST(request: NextRequest) {
         replyToId: parsedReplyToId,
         isRead: true,
         platform: userPlatform,
-        createdAt: bangkokNow,
-        updatedAt: bangkokNow,
+        createdAt: now,
+        updatedAt: now,
       },
       include: {
         replyTo: true,
@@ -345,7 +335,7 @@ export async function POST(request: NextRequest) {
     // Update user's last interaction
     await prisma.lineUser.update({
       where: { id: parsedUserId },
-      data: { lastInteraction: bangkokNow },
+      data: { lastInteraction: now },
       select: { id: true },
     })
 
@@ -368,8 +358,8 @@ export async function POST(request: NextRequest) {
         }
         : null,
       platform: userPlatform,
-      createdAt: toBangkokWallTimeSafe(message.createdAt),
-      updatedAt: toBangkokWallTimeSafe(message.updatedAt),
+      createdAt: toUtcIsoString(message.createdAt),
+      updatedAt: toUtcIsoString(message.updatedAt),
       platformSent: platformSendSuccess,
     }
 

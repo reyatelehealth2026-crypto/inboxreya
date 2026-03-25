@@ -292,9 +292,7 @@ export async function POST(request: NextRequest) {
           })
 
           if (user) {
-            // Manual Time override for Bangkok Time (same as messages route)
             const now = new Date()
-            const bangkokNow = new Date(now.getTime() + 7 * 60 * 60 * 1000)
 
             savedMessage = await prisma.message.create({
               data: {
@@ -306,8 +304,8 @@ export async function POST(request: NextRequest) {
                 mediaUrl: finalMediaUrl,
                 sentBy: session.user.id ?? null,
                 isRead: true,
-                createdAt: bangkokNow,
-                updatedAt: bangkokNow,
+                createdAt: now,
+                updatedAt: now,
               }
             })
 
