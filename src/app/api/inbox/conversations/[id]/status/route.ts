@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { broadcastConversationUpdate } from '@/lib/pusher'
+import { toUtcIsoString } from '@/lib/datetime-api'
 
 const VALID_STATUSES = ['new', 'in_progress', 'waiting', 'resolved'] as const
 type ConversationStatus = typeof VALID_STATUSES[number]
@@ -104,7 +105,7 @@ export async function PATCH(
       data: {
         id: updatedConversation.id.toString(),
         status: updatedConversation.chatStatus,
-        lastInteraction: updatedConversation.lastInteraction ? new Date(updatedConversation.lastInteraction).toISOString() : null,
+        lastInteraction: toUtcIsoString(updatedConversation.lastInteraction),
       },
     })
   } catch (error) {

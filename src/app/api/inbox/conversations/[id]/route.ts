@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { broadcastRealtimeEvent } from '@/lib/realtime'
 import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
+import { toUtcIsoString } from '@/lib/datetime-api'
 
 export async function GET(
   request: NextRequest,
@@ -95,11 +96,11 @@ export async function GET(
         points: 0,
         totalSpent: 0,
         orderCount: 0,
-        lastInteraction: user.lastInteraction ? new Date(user.lastInteraction).toISOString() : null,
+        lastInteraction: toUtcIsoString(user.lastInteraction),
         chatStatus: user.chatStatus,
         isBlocked: user.isBlocked,
         isRegistered: user.isRegistered,
-        createdAt: user.createdAt.toISOString(),
+        createdAt: toUtcIsoString(user.createdAt) ?? new Date().toISOString(),
       },
       lastMessage: (() => {
         const msg = user.messages[0]
@@ -115,8 +116,8 @@ export async function GET(
           isRead: msg.isRead,
           sentBy: msg.sentBy,
           replyToId: msg.replyToId ? msg.replyToId.toString() : null,
-          createdAt: msg.createdAt.toISOString(),
-          updatedAt: msg.updatedAt.toISOString(),
+          createdAt: toUtcIsoString(msg.createdAt) ?? new Date().toISOString(),
+          updatedAt: toUtcIsoString(msg.updatedAt) ?? new Date().toISOString(),
         }
       })(),
       unreadCount: user._count.messages,
@@ -136,7 +137,7 @@ export async function GET(
         isAuto: ta.tag.tagType !== 'manual',
         sortOrder: ta.tag.priority ?? 0,
       })),
-      updatedAt: user.lastInteraction ? new Date(user.lastInteraction).toISOString() : user.updatedAt.toISOString(),
+      updatedAt: toUtcIsoString(user.lastInteraction) ?? toUtcIsoString(user.updatedAt) ?? new Date().toISOString(),
     }
 
     return NextResponse.json({ data: conversation })
@@ -209,7 +210,7 @@ export async function PATCH(
         id: updated.id.toString(),
         chatStatus: updated.chatStatus,
         isBlocked: updated.isBlocked,
-        updatedAt: updated.updatedAt.toISOString(),
+        updatedAt: toUtcIsoString(updated.updatedAt) ?? new Date().toISOString(),
       },
     })
   } catch (error) {

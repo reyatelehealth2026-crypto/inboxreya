@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma'
 import { updateCustomerInfoField } from '@/lib/php-bridge'
 import { Prisma, users_gender } from '@prisma/client'
 import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
+import { toUtcIsoString } from '@/lib/datetime-api'
 
 // Helper function to get order days for a user
 async function getOrderDays(userId: number): Promise<string[]> {
@@ -304,12 +305,12 @@ export async function GET(
           loyaltyPoints: user.loyaltyPoints,
           totalSpent: user.totalSpent,
           orderCount: user.orderCount,
-          lastInteraction: user.lastInteraction ? new Date(user.lastInteraction).toISOString() : null,
+          lastInteraction: toUtcIsoString(user.lastInteraction),
           chatStatus: user.chatStatus,
           isBlocked: user.isBlocked,
           isRegistered: user.isRegistered,
-          createdAt: user.createdAt.toISOString(),
-          updatedAt: user.updatedAt.toISOString(),
+          createdAt: toUtcIsoString(user.createdAt) ?? new Date().toISOString(),
+          updatedAt: toUtcIsoString(user.updatedAt) ?? new Date().toISOString(),
           orderDays: orderDays,
           odooPartnerId: odooLinkData.partnerId,
           odooPartnerName: odooLinkData.partnerName,
