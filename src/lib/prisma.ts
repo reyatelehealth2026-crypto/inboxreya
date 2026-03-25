@@ -5,50 +5,64 @@ const globalForPrisma = globalThis as unknown as {
 }
 
 /**
- * MySQL DATETIME is naive (no TZ info).
- *
- * PHP uses SET time_zone = '+07:00' when writing, so naive DATETIME values
- * stored in MySQL represent Bangkok local time (+07:00).
- *
- * Prisma/mysql2 reads naive DATETIME as UTC (session_tz = SYSTEM = UTC+8 on
- * this server, but mysql2 ignores session_tz and treats the raw bytes as UTC).
- * Result: a value stored as "10:56" comes back as Date("10:56Z") — 7 hours ahead.
- *
- * Fix: use $extends to shift every Date in query results back by the stored
- * timezone offset (+07:00 = +7h), converting the wrongly-UTC-labeled value
- * to the correct UTC instant.
- *
- * Example: stored "10:56" (Bangkok) → Prisma returns Date("10:56Z") →
- *          we subtract 7h → Date("03:56Z") → frontend shows "10:56 AM Bangkok" ✓
+ * DATETIME NORMALIZATION HACK FOR PRISMA + MYSQL
+ * 
+ * Context:
+ * - Odoo PHP uses Naive DATETIME columns and stores Asia/Bangkok (+07:00) local time.
+ * - Prisma Rust Engine ALWAYS sends UTC strings when saving Date objects, and 
+ *   ALWAYS assumes retrieved DATETIME strings are UTC.
+ * 
+ * Problem:
+ * If Next.js saves a message at 10:00 BKK (03:00 UTC), Prisma stores "03:00".
+ * Odoo PHP reads "03:00" and displays it wrong.
+ * If Odoo PHP saves a message at 10:00 BKK, it stores "10:00".
+ * Prisma reads "10:00", assumes it is "10:00 UTC", and Next.js shows 17:00 BKK.
+ * 
+ * Solution:
+ * 1. On WRITE (create/update): Intercept all Date objects and ADD 7 hours 
+ *    before passing them to Prisma. So "03:00 UTC" becomes "10:00 UTC", which 
+ *    Prisma writes as "10:00". Odoo PHP reads "10:00" correctly!
+ * 2. On READ (findMany/etc): Intercept all returned Date objects and SUBTRACT 7 hours.
+ *    Prisma reads "10:00" and returns "10:00 UTC". We subtract 7h -> "03:00 UTC".
+ *    Next.js sends "03:00 UTC" to browser, browser adds 7h -> "10:00 BKK" correctly!
  */
 
-const STORED_TZ_OFFSET_MS = (() => {
-  const raw = process.env.DATABASE_MYSQL_TIMEZONE?.trim() || '+07:00'
-  // Parse "+07:00" or "-05:30" → offset in milliseconds
-  const m = raw.match(/^([+-])(\d{2}):(\d{2})$/)
-  if (!m) return 7 * 60 * 60 * 1000 // default +07:00
-  const sign = m[1] === '+' ? 1 : -1
-  return sign * (parseInt(m[2]) * 60 + parseInt(m[3])) * 60 * 1000
-})()
+const OFFSET_MS = 7 * 60 * 60 * 1000 // 7 hours for Asia/Bangkok
 
-function shiftDate(d: unknown): unknown {
-  if (d instanceof Date && !isNaN(d.getTime())) {
-    return new Date(d.getTime() - STORED_TZ_OFFSET_MS)
+function shiftDatesForward(obj: any): any {
+  if (obj === null || obj === undefined) return obj
+  if (obj instanceof Date && !isNaN(obj.getTime())) {
+    return new Date(obj.getTime() + OFFSET_MS)
   }
-  return d
-}
-
-function shiftDatesInResult(result: unknown): unknown {
-  if (result instanceof Date) return shiftDate(result)
-  if (Array.isArray(result)) return result.map(shiftDatesInResult)
-  if (result !== null && typeof result === 'object') {
-    const out: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(result as Record<string, unknown>)) {
-      out[k] = shiftDatesInResult(v)
+  if (Array.isArray(obj)) {
+    return obj.map(shiftDatesForward)
+  }
+  if (typeof obj === 'object') {
+    const out: any = {}
+    for (const [k, v] of Object.entries(obj)) {
+      out[k] = shiftDatesForward(v)
     }
     return out
   }
-  return result
+  return obj
+}
+
+function shiftDatesBackward(obj: any): any {
+  if (obj === null || obj === undefined) return obj
+  if (obj instanceof Date && !isNaN(obj.getTime())) {
+    return new Date(obj.getTime() - OFFSET_MS)
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(shiftDatesBackward)
+  }
+  if (typeof obj === 'object') {
+    const out: any = {}
+    for (const [k, v] of Object.entries(obj)) {
+      out[k] = shiftDatesBackward(v)
+    }
+    return out
+  }
+  return obj
 }
 
 function createPrismaClient(): PrismaClient {
@@ -56,18 +70,25 @@ function createPrismaClient(): PrismaClient {
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
   })
 
-  const extended = client.$extends({
+  return client.$extends({
     query: {
       $allModels: {
         async $allOperations({ args, query }) {
-          const result = await query(args)
-          return shiftDatesInResult(result)
+          // 1. Shift ANY Date in the query arguments FORWARD (+7h)
+          // This includes `data`, `where`, `create`, etc.
+          // So "03:00 UTC" -> "10:00 UTC" which Prisma writes as "10:00".
+          const shiftedArgs = shiftDatesForward(args)
+
+          // 2. Execute query
+          const result = await query(shiftedArgs)
+
+          // 3. Shift ANY returned Date BACKWARD (-7h)
+          // Prisma reads "10:00" -> "10:00 UTC" -> we shift to "03:00 UTC"
+          return shiftDatesBackward(result)
         },
       },
     },
-  })
-
-  return extended as unknown as PrismaClient
+  }) as unknown as PrismaClient
 }
 
 export const prisma =
