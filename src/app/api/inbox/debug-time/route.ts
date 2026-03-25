@@ -19,11 +19,20 @@ export async function GET(request: NextRequest) {
             take: 1
         })
 
+        const dbUrl = process.env.DATABASE_URL ?? ''
+        const hasTimezone = /[?&]timezone=/.test(dbUrl)
+        const timezoneMatch = dbUrl.match(/[?&]timezone=([^&]*)/)
+
         return NextResponse.json({
             system: {
                 iso: systemTimeISO,
                 bangkok: systemTimeBangkok,
                 timezoneOffset: systemDate.getTimezoneOffset()
+            },
+            db_url_debug: {
+                has_timezone_param: hasTimezone,
+                timezone_value: timezoneMatch ? decodeURIComponent(timezoneMatch[1]) : null,
+                DATABASE_MYSQL_TIMEZONE_env: process.env.DATABASE_MYSQL_TIMEZONE ?? '(not set)',
             },
             db_status: dbTimeResult,
             latest_message: latestMessage ? {

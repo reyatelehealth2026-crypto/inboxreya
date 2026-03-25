@@ -8,22 +8,19 @@ const globalForPrisma = globalThis as unknown as {
  * MySQL DATETIME is naive (no TZ info). mysql2 needs a session timezone so it
  * can convert between JS Date (UTC internally) and the naive value stored in MySQL.
  *
- * PHP uses date_default_timezone_set('Asia/Bangkok') and writes naive
- * DATETIME values in +07:00 (Bangkok time). Prisma/mysql2 must use the same
- * offset so it can correctly convert between JS Date (UTC) and the naive
- * value stored in MySQL.
+ * PHP uses SET time_zone = '+07:00' when writing, so Prisma/mysql2 must use the
+ * same offset to correctly interpret the naive DATETIME values stored in MySQL.
  *
- * Priority:
- *   1. Explicit `?timezone=` already on DATABASE_URL  → use as-is
- *   2. DATABASE_MYSQL_TIMEZONE env var                 → append to URL
- *   3. Fallback "+07:00" (matches PHP date_default_timezone_set('Asia/Bangkok'))
+ * We always force-set timezone to DATABASE_MYSQL_TIMEZONE (default +07:00),
+ * replacing any existing timezone param in the URL to ensure correctness.
  */
 function withMysqlSessionTimezone(url: string | undefined): string | undefined {
   if (!url || !/^mysql/i.test(url)) return url
-  if (/[?&]timezone=/.test(url)) return url
   const tz = process.env.DATABASE_MYSQL_TIMEZONE?.trim() || '+07:00'
-  const joiner = url.includes('?') ? '&' : '?'
-  return `${url}${joiner}timezone=${encodeURIComponent(tz)}`
+  // Remove any existing timezone param, then append the correct one
+  const cleaned = url.replace(/([?&])timezone=[^&]*/g, '$1').replace(/[?&]$/, '')
+  const joiner = cleaned.includes('?') ? '&' : '?'
+  return `${cleaned}${joiner}timezone=${encodeURIComponent(tz)}`
 }
 
 export const prisma =
