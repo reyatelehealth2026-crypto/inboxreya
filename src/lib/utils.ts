@@ -37,31 +37,48 @@ export function formatMessageTime(date: Date | string | null | undefined): strin
   // Guard: if date is invalid, return fallback
   if (!(d instanceof Date) || isNaN(d.getTime())) return '-'
 
-  // Convert UTC → Bangkok (+7) before extracting date/time parts
-  const bkk = new Date(d.getTime() + 7 * 3600_000)
+  // Convert to Bangkok timezone properly using Intl.DateTimeFormat
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric',
+    hour12: false,
+  })
+  
+  const parts = formatter.formatToParts(d)
+  const getPart = (type: string) => parts.find(p => p.type === type)?.value || '0'
+  
+  const msgYear = parseInt(getPart('year'))
+  const msgMonth = parseInt(getPart('month'))
+  const msgDay = parseInt(getPart('day'))
+  const msgHour = getPart('hour').padStart(2, '0')
+  const msgMin = getPart('minute').padStart(2, '0')
+  const timeStr = `${msgHour}:${msgMin}`
 
-  const msgYear  = bkk.getUTCFullYear()
-  const msgMonth = bkk.getUTCMonth() + 1
-  const msgDay   = bkk.getUTCDate()
-  const msgHour  = String(bkk.getUTCHours()).padStart(2, '0')
-  const msgMin   = String(bkk.getUTCMinutes()).padStart(2, '0')
-  const timeStr  = `${msgHour}:${msgMin}`
-
-  const bkkNow = new Date(new Date().getTime() + 7 * 3600_000)
-  const nowYear  = bkkNow.getUTCFullYear()
-  const nowMonth = bkkNow.getUTCMonth() + 1
-  const nowDay   = bkkNow.getUTCDate()
+  // Get current time in Bangkok
+  const nowParts = formatter.formatToParts(new Date())
+  const getNowPart = (type: string) => nowParts.find(p => p.type === type)?.value || '0'
+  
+  const nowYear = parseInt(getNowPart('year'))
+  const nowMonth = parseInt(getNowPart('month'))
+  const nowDay = parseInt(getNowPart('day'))
 
   if (nowYear === msgYear && nowMonth === msgMonth && nowDay === msgDay) {
     return timeStr
   }
 
-  const bkkYesterday = new Date(bkkNow.getTime() - 86_400_000)
-  if (
-    bkkYesterday.getUTCFullYear() === msgYear &&
-    bkkYesterday.getUTCMonth() + 1 === msgMonth &&
-    bkkYesterday.getUTCDate() === msgDay
-  ) {
+  // Calculate yesterday in Bangkok
+  const yesterday = new Date(d.getTime() - 86400000)
+  const yestParts = formatter.formatToParts(yesterday)
+  const yestYear = parseInt(getPart('year'))
+  const yestMonth = parseInt(getPart('month'))
+  const yestDay = parseInt(getPart('day'))
+  
+  if (yestYear === msgYear && yestMonth === msgMonth && yestDay === msgDay) {
     return `เมื่อวาน ${timeStr}`
   }
 
