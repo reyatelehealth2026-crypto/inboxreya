@@ -6,7 +6,7 @@ import { sendPlatformMessage } from '@/lib/php-bridge'
 import { broadcastRealtimeEvent } from '@/lib/realtime'
 import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
 import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
-import { toUtcIsoString, toUtcIsoStringAdjusted } from '@/lib/datetime-api'
+import { toUtcIsoString } from '@/lib/datetime-api'
 
 const isInternalRequest = (request: NextRequest) =>
   request.headers.get('x-internal-request') === 'true'
@@ -148,8 +148,8 @@ export async function GET(request: NextRequest) {
         }
         : null,
       platform: (msg.platform ?? 'line') as 'line' | 'facebook' | 'tiktok',
-      createdAt: toUtcIsoStringAdjusted(msg.createdAt, msg.direction),
-      updatedAt: toUtcIsoStringAdjusted(msg.updatedAt, msg.direction),
+      createdAt: toUtcIsoString(msg.createdAt),
+      updatedAt: toUtcIsoString(msg.updatedAt),
     }))
 
     // Reverse to show oldest first
@@ -358,8 +358,8 @@ export async function POST(request: NextRequest) {
         }
         : null,
       platform: userPlatform,
-      createdAt: toUtcIsoStringAdjusted(message.createdAt, message.direction),
-      updatedAt: toUtcIsoStringAdjusted(message.updatedAt, message.direction),
+      createdAt: toUtcIsoString(message.createdAt),
+      updatedAt: toUtcIsoString(message.updatedAt),
       platformSent: platformSendSuccess,
     }
 

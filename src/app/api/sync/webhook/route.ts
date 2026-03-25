@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { broadcastRealtimeEvent } from '@/lib/realtime'
 import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
-import { toUtcIsoString, toUtcIsoStringAdjusted } from '@/lib/datetime-api'
+import { toUtcIsoString } from '@/lib/datetime-api'
 
  async function resolveReplyToId(userId: number, quotedMessageId: string) {
    const exactMatch = await prisma.message.findFirst({
@@ -340,8 +340,8 @@ async function handleSyncMessage(data: any) {
               messageType: createdMessage.replyTo.messageType,
             }
           : null,
-        createdAt: toUtcIsoStringAdjusted(createdMessage.createdAt, createdMessage.direction) ?? new Date().toISOString(),
-        updatedAt: toUtcIsoStringAdjusted(createdMessage.updatedAt, createdMessage.direction) ?? new Date().toISOString()
+        createdAt: toUtcIsoString(createdMessage.createdAt) ?? new Date().toISOString(),
+        updatedAt: toUtcIsoString(createdMessage.updatedAt) ?? new Date().toISOString()
       }
     }
   })
@@ -365,7 +365,7 @@ async function handleSyncMessage(data: any) {
             messageType: createdMessage.replyTo.messageType,
           }
         : null,
-      createdAt: toUtcIsoStringAdjusted(createdMessage.createdAt, createdMessage.direction) ?? new Date().toISOString(),
+      createdAt: toUtcIsoString(createdMessage.createdAt) ?? new Date().toISOString(),
       sentBy: createdMessage.sentBy?.toString() || null,
     },
   })
