@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 const PHP_BASE = process.env.PHP_API_URL || process.env.NEXT_PUBLIC_PHP_API_URL || 'https://cny.re-ya.com'
-const BDO_API  = `${PHP_BASE}/api/bdo-inbox-api.php`
+const BDO_API  = `${PHP_BASE}/api/odoo-dashboard-api.php`
 const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || ''
 
 /**
@@ -47,8 +47,6 @@ export async function GET(request: NextRequest) {
         })
 
         const rawText = await res.text()
-        console.error(`[bdo-detail] PHP HTTP ${res.status} — raw:`, rawText.slice(0, 500))
-
         let json: any
         try {
           json = JSON.parse(rawText)
