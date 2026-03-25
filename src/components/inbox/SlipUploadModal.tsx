@@ -43,6 +43,7 @@ interface BdoRecord {
   order_id: number
   order_name: string | null
   amount_total: number | null
+  amount_net_to_pay?: number | null
   payment_method: string | null
   payment_reference: string | null
   qr_data?: string | null
@@ -73,7 +74,8 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
   const [manualFile, setManualFile] = useState<File | null>(null)
   const [manualPreview, setManualPreview] = useState<string | null>(null)
-  const [amount, setAmount] = useState(bdo.amount_total?.toString() || '')
+  const displayBdoAmount = bdo.amount_net_to_pay ?? bdo.amount_total
+  const [amount, setAmount] = useState(displayBdoAmount?.toString() || '')
   const [transferDate, setTransferDate] = useState(new Date().toISOString().slice(0, 10))
   const [uploading, setUploading] = useState(false)
   const [verifying, setVerifying] = useState(false)
@@ -86,7 +88,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
     setSelectedImageUrl(null)
     setManualFile(null)
     setManualPreview(null)
-    setAmount(bdo.amount_total?.toString() || '')
+    setAmount((bdo.amount_net_to_pay ?? bdo.amount_total)?.toString() || '')
     setTransferDate(new Date().toISOString().slice(0, 10))
     setVerifyResult(null)
 
@@ -100,7 +102,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
       })
       .catch(() => {})
       .finally(() => setLoadingImages(false))
-  }, [open, userId, bdo.amount_total])
+  }, [open, userId, bdo.amount_net_to_pay, bdo.amount_total])
 
   const hasSelection = !!selectedImageId || !!manualFile
 
@@ -301,7 +303,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
             <p className="text-xs text-blue-600">{bdo.order_name}</p>
           )}
           <p className="text-lg font-bold text-teal-700">
-            ฿{bdo.amount_total?.toLocaleString('th-TH', { minimumFractionDigits: 0 }) || '0'}
+            ฿{(bdo.amount_net_to_pay ?? bdo.amount_total)?.toLocaleString('th-TH', { minimumFractionDigits: 0 }) || '0'}
           </p>
         </div>
 
@@ -312,11 +314,11 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
             เลือกรูปจากแชทล่าสุด
           </Label>
           {loadingImages ? (
-            <div className="grid grid-cols-4 gap-2">
-              {[1,2,3,4].map(i => <Skeleton key={i} className="aspect-[3/4] rounded-lg" />)}
+            <div className="grid grid-cols-3 gap-1.5">
+              {[1,2,3,4,5,6].map(i => <Skeleton key={i} className="aspect-square rounded-lg" />)}
             </div>
           ) : recentImages.length > 0 ? (
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
               {recentImages.map((img) => {
                 const isSelected = selectedImageId === img.id
                 const imgUrl = img.url
@@ -327,7 +329,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, onSuccess }: SlipU
                     type="button"
                     onClick={() => selectInboxImage(img)}
                     className={cn(
-                      "relative aspect-[3/4] rounded-lg overflow-hidden border-2 transition-all",
+                      "relative aspect-square rounded-lg overflow-hidden border-2 transition-all",
                       isSelected ? "border-teal-500 ring-2 ring-teal-200" : "border-gray-200 hover:border-gray-400"
                     )}
                   >

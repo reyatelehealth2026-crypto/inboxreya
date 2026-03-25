@@ -219,7 +219,7 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
             bdo={bdo}
             lineUserId={userId}
             onViewDetail={() => setDetailBdo({ bdoId: bdo.bdo_id, bdoName: bdo.bdo_name, lineUserId: bdo.line_user_id })}
-            onAttachSlip={() => setSelectedBdo(bdo)}
+            onAttachSlip={(liveNetToPay) => setSelectedBdo({ ...bdo, amount_net_to_pay: liveNetToPay ?? bdo.amount_net_to_pay })}
             onUnmatch={handleUnmatch}
             unmatchingId={unmatchingId}
             onPreviewSlip={setPreviewUrl}
@@ -361,7 +361,7 @@ function BdoCard({
   bdo: BdoOrderRecord
   lineUserId: string
   onViewDetail: () => void
-  onAttachSlip: () => void
+  onAttachSlip: (liveNetToPay?: number | null) => void
   onUnmatch: (slipUploadId: number, bdoId: number) => void
   unmatchingId: number | null
   onPreviewSlip: (url: string) => void
@@ -512,7 +512,7 @@ function BdoCard({
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs gap-1 border-teal-300 text-teal-700 hover:bg-teal-50"
-                onClick={onAttachSlip}
+                onClick={() => onAttachSlip(netToPay)}
               >
                 <Paperclip className="h-3 w-3" />
                 แนบสลิป
