@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
 
 /** MySQL DATETIME without TZ: align session with Thailand (+07) so reads match PHP/MySQL `SET time_zone = '+07:00'`. */
 function withMysqlTimezoneBangkok(url: string | undefined): string | undefined {
-  if (!url) return url
+  if (!url || !/^mysql/i.test(url)) return url
   if (/[?&]timezone=/.test(url)) return url
   const joiner = url.includes('?') ? '&' : '?'
   return `${url}${joiner}timezone=${encodeURIComponent('+07:00')}`
