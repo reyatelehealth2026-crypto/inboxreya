@@ -54,21 +54,24 @@ export async function GET(request: NextRequest) {
             } : null,
             diagnosis: latestMessage && rawRow ? (() => {
                 const naked = rawRow.created_at_raw  // e.g. "2026-03-25T10:51:08Z"
-                const prismaUTC = latestMessage.createdAt.toISOString()  // what Prisma thinks
+                const prismaUTC = latestMessage.createdAt.toISOString()  // what Prisma returns (after shift)
                 const nakedHour = parseInt(naked.slice(11, 13))
                 const prismaHour = parseInt(prismaUTC.slice(11, 13))
                 const diff = prismaHour - nakedHour
+                // After our +07:00 shift fix: naked=10:xx → prisma should return 03:xx (diff = -7)
+                const bangkokFromPrisma = latestMessage.createdAt.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' })
                 return {
                     naked_mysql_value: naked,
-                    prisma_interpreted_as_utc: prismaUTC,
+                    prisma_after_shift: prismaUTC,
+                    bangkok_from_prisma: bangkokFromPrisma,
                     hour_diff_prisma_minus_naked: diff,
-                    meaning: diff === 0
-                        ? 'Prisma treats naked value as UTC (timezone param NOT working or +00:00)'
-                        : diff === -7
-                        ? 'Prisma correctly subtracts 7h (timezone=+07:00 working)'
+                    meaning: diff === -7
+                        ? '✅ CORRECT: Prisma shifted -7h (Bangkok time stored, UTC returned)'
+                        : diff === 0
+                        ? '❌ No shift applied — dates still wrong'
                         : diff === -8
-                        ? 'Prisma subtracts 8h (timezone=+08:00)'
-                        : `Prisma offset = ${diff}h from naked value`
+                        ? '⚠️ Shifted -8h (check DATABASE_MYSQL_TIMEZONE)'
+                        : `ℹ️ Offset = ${diff}h`
                 }
             })() : null
         })
