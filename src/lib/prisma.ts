@@ -37,7 +37,7 @@ function shiftDatesForward(obj: any): any {
   if (Array.isArray(obj)) {
     return obj.map(shiftDatesForward)
   }
-  if (typeof obj === 'object') {
+  if (typeof obj === 'object' && obj.constructor?.name === 'Object') {
     const out: any = {}
     for (const [k, v] of Object.entries(obj)) {
       out[k] = shiftDatesForward(v)
@@ -55,7 +55,7 @@ function shiftDatesBackward(obj: any): any {
   if (Array.isArray(obj)) {
     return obj.map(shiftDatesBackward)
   }
-  if (typeof obj === 'object') {
+  if (typeof obj === 'object' && obj.constructor?.name === 'Object') {
     const out: any = {}
     for (const [k, v] of Object.entries(obj)) {
       out[k] = shiftDatesBackward(v)
