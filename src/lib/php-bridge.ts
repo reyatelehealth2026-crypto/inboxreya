@@ -87,8 +87,18 @@ export async function callPhpApi<T = any>(
         )
       }
 
-      const data = await response.json()
-      
+      const rawText = await response.text()
+      let data: any
+      try {
+        data = JSON.parse(rawText)
+      } catch {
+        console.error('[PHP Bridge] Non-JSON response from', url, '\n---\n', rawText.slice(0, 500), '\n---')
+        throw new PhpBridgeError(
+          `PHP returned non-JSON response: ${rawText.slice(0, 200)}`,
+          response.status
+        )
+      }
+
       // Handle PHP error responses
       if (data.success === false && data.error) {
         throw new PhpBridgeError(data.error, response.status, data)
