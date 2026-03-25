@@ -76,6 +76,101 @@ async function fetchCustomerDetail(ref: string, partnerId: string, lineUserId: s
   return json.data
 }
 
+/** Compact inline summary for each BDO card — auto-fetches from Odoo API */
+function BdoCardInlineSummary({ bdoId, lineUserId, localSummary }: {
+  bdoId: number
+  lineUserId: string
+  localSummary?: SlipCenterBdo['financial_summary']
+}) {
+  const { data, isLoading } = useQuery<BdoDetailData>({
+    queryKey: ['bdo-detail', bdoId, lineUserId],
+    queryFn: () => fetchBdoDetail(bdoId, lineUserId),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  })
+
+  // Use local financial_summary from DB context if API hasn't loaded yet
+  const summary = data?.summary || localSummary
+  const bdo = data?.bdo
+  const soCount = data?.sale_orders?.length ?? 0
+  const invCount = data?.outstanding_invoices?.length ?? 0
+  const cnCount = data?.credit_notes?.length ?? 0
+
+  if (isLoading) {
+    return (
+      <div className="mt-1.5 space-y-1">
+        <div className="grid grid-cols-3 gap-1">
+          <Skeleton className="h-9 rounded" />
+          <Skeleton className="h-9 rounded" />
+          <Skeleton className="h-9 rounded" />
+        </div>
+      </div>
+    )
+  }
+
+  if (!summary && !bdo) return null
+
+  const fmtBaht = (val?: number | null) =>
+    val != null && !isNaN(Number(val)) ? `฿${Number(val).toLocaleString()}` : '-'
+
+  return (
+    <div className="mt-1.5 space-y-1.5">
+      {/* BDO enriched info from Odoo */}
+      {bdo && (
+        <div className="flex items-center gap-1.5 text-[10px] text-gray-500 flex-wrap">
+          {bdo.delivery_type && (
+            <span className={cn(
+              "px-1.5 py-0.5 rounded border text-[9px] font-medium",
+              bdo.delivery_type === 'company' ? 'bg-sky-50 text-sky-600 border-sky-200' : 'bg-orange-50 text-orange-600 border-orange-200'
+            )}>
+              <Truck className="inline h-2 w-2 mr-0.5" />
+              {bdo.delivery_type === 'company' ? 'สายส่ง' : bdo.delivery_type === 'private' ? 'ขนส่งเอกชน' : bdo.delivery_type}
+            </span>
+          )}
+          {bdo.state_display && (
+            <span className="text-[9px] text-gray-400">{bdo.state_display}</span>
+          )}
+        </div>
+      )}
+
+      {/* Financial Summary — compact grid */}
+      {summary && (
+        <div className="grid grid-cols-3 gap-1">
+          <div className="bg-blue-50/70 rounded px-1.5 py-1 text-center border border-blue-100">
+            <div className="text-[8px] text-blue-400 leading-tight">SO รอบนี้</div>
+            <div className="text-[10px] font-bold text-blue-700">{fmtBaht(summary.so_amount)}</div>
+          </div>
+          {(summary.outstanding_amount ?? 0) > 0 ? (
+            <div className="bg-amber-50/70 rounded px-1.5 py-1 text-center border border-amber-100">
+              <div className="text-[8px] text-amber-400 leading-tight">ค้างชำระ</div>
+              <div className="text-[10px] font-bold text-amber-700">{fmtBaht(summary.outstanding_amount)}</div>
+            </div>
+          ) : (
+            <div className="bg-gray-50/70 rounded px-1.5 py-1 text-center border border-gray-100">
+              <div className="text-[8px] text-gray-400 leading-tight">ค้างชำระ</div>
+              <div className="text-[10px] font-semibold text-gray-500">-</div>
+            </div>
+          )}
+          <div className="bg-emerald-50/70 rounded px-1.5 py-1 text-center border border-emerald-200">
+            <div className="text-[8px] text-emerald-400 leading-tight">Net to Pay</div>
+            <div className="text-[10px] font-bold text-emerald-700">{fmtBaht(summary.net_to_pay)}</div>
+          </div>
+        </div>
+      )}
+
+      {/* SO / Invoice / CN counts */}
+      {(soCount > 0 || invCount > 0 || cnCount > 0) && (
+        <div className="flex items-center gap-2 text-[9px] text-gray-400">
+          {soCount > 0 && <span>📦 {soCount} SO</span>}
+          {invCount > 0 && <span>📄 {invCount} INV ค้าง</span>}
+          {cnCount > 0 && <span>💳 {cnCount} CN</span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function CustomerSlipDetail({
   customerRef, customerName, partnerId, lineUserId, onBack, onRefreshParent,
 }: CustomerSlipDetailProps) {
@@ -113,18 +208,27 @@ export function CustomerSlipDetail({
 
   const openBdoDetail = useCallback(async (bdoId: number) => {
     setBdoDetailId(bdoId)
-    setBdoDetailData(null)
     setBdoDetailError(null)
+    // Check if inline summary already cached this data
+    const cached = qc.getQueryData<BdoDetailData>(['bdo-detail', bdoId, lineUserId])
+    if (cached) {
+      setBdoDetailData(cached)
+      setBdoDetailLoading(false)
+      return
+    }
+    setBdoDetailData(null)
     setBdoDetailLoading(true)
     try {
       const d = await fetchBdoDetail(bdoId, lineUserId)
       setBdoDetailData(d)
+      // Also populate the cache for inline summary
+      qc.setQueryData(['bdo-detail', bdoId, lineUserId], d)
     } catch (e) {
       setBdoDetailError(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
     } finally {
       setBdoDetailLoading(false)
     }
-  }, [lineUserId])
+  }, [lineUserId, qc])
 
   const selectedSlip = useMemo(() =>
     data?.pendingSlips.find(s => s.id === selectedSlipId), [data, selectedSlipId])
@@ -583,6 +687,13 @@ export function CustomerSlipDetail({
                     </span>
                     {payMethodLabel && <span>ชำระ: {payMethodLabel}</span>}
                   </div>
+
+                  {/* Row 2.5: Inline financial summary from Odoo */}
+                  <BdoCardInlineSummary
+                    bdoId={bdo.bdo_id}
+                    lineUserId={lineUserId}
+                    localSummary={bdo.financial_summary}
+                  />
 
                   {/* Row 3: Amount + action buttons */}
                   <div className="flex items-center justify-between mt-1">

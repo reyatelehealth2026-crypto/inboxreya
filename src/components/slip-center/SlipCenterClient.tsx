@@ -83,6 +83,17 @@ export interface SlipCenterBdo {
   slip_image_url?: string | null
   slip_amount?: number | null
   slip_transfer_date?: string | null
+  // Enriched fields from odoo_bdos + context
+  salesperson_name?: string | null
+  bdo_payment_state?: string | null
+  due_date?: string | null
+  financial_summary?: {
+    so_amount?: number
+    outstanding_amount?: number
+    credit_note_amount?: number
+    deposit_amount?: number
+    net_to_pay?: number
+  } | null
 }
 
 interface SlipCenterData {
