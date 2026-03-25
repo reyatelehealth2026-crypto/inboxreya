@@ -72,3 +72,11 @@ export interface ConversationUpdatedEvent {
     tags?: any[]
   }
 }
+
+export interface MessageReadEvent {
+  conversationId: string
+  messageIds: string[]
+  readBy: string | null
+  readAt: string
+  scope?: 'conversation' | 'account'
+}

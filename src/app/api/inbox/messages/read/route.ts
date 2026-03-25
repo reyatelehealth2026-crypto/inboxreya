@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { broadcastRealtimeEvent } from '@/lib/realtime'
+import { broadcastMessageRead } from '@/lib/pusher'
 
 export async function PUT(request: NextRequest) {
   try {
@@ -45,17 +46,20 @@ export async function PUT(request: NextRequest) {
     })
 
     const messageIds = unreadMessages.map((msg) => msg.id.toString())
+    const readPayload = {
+      conversationId: parsedUserId.toString(),
+      messageIds,
+      readBy: session.user.id ?? null,
+      readAt: new Date().toISOString(),
+      scope: 'conversation' as const,
+    }
 
     broadcastRealtimeEvent({
       type: 'read_receipt',
-      data: {
-        conversationId: parsedUserId.toString(),
-        messageIds,
-        readBy: session.user.id,
-        readAt: new Date().toISOString(),
-      },
+      data: readPayload,
       timestamp: Date.now(),
     })
+    await broadcastMessageRead(readPayload)
 
     return NextResponse.json({ success: true, updated: messageIds.length, messageIds })
   } catch (error) {

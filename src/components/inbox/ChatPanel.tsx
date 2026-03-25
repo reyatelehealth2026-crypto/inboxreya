@@ -1461,7 +1461,6 @@ export function ChatPanel() {
 
   const { data: conversation } = useConversation(selectedConversationId)
   const { data: messagesData, isLoading } = useMessages(selectedConversationId)
-
   const messages = useMemo(() => messagesData?.data || [], [messagesData])
   useNewMessageAnnouncement(messages)
 

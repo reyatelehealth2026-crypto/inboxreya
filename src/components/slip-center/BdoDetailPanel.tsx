@@ -18,6 +18,7 @@ interface BdoDetailPanelProps {
   bdoId: number | null
   bdoName?: string | null
   partnerId?: number | null
+  lineUserId?: string | null
   onClose: () => void
 }
 
@@ -77,9 +78,10 @@ interface BdoDetailData {
   pdf_url?: string | null
 }
 
-async function fetchBdoDetail(bdoId: number, partnerId?: number | null): Promise<BdoDetailData> {
+async function fetchBdoDetail(bdoId: number, partnerId?: number | null, lineUserId?: string | null): Promise<BdoDetailData> {
   const params = new URLSearchParams({ bdoId: String(bdoId) })
   if (partnerId) params.set('partnerId', String(partnerId))
+  if (lineUserId) params.set('lineUserId', lineUserId)
   const res = await fetch(`/api/slip-center/bdo-detail?${params}`)
   const json = await res.json()
   if (!res.ok || !json.success) throw new Error(json.error || 'Failed to load BDO detail')
@@ -107,21 +109,21 @@ function SectionTitle({ icon: Icon, color, label }: { icon: React.ElementType; c
   )
 }
 
-export function BdoDetailPanel({ bdoId, bdoName, partnerId, onClose }: BdoDetailPanelProps) {
+export function BdoDetailPanel({ bdoId, bdoName, partnerId, lineUserId, onClose }: BdoDetailPanelProps) {
   const qc = useQueryClient()
   const [pdfOpen, setPdfOpen] = useState(false)
 
   const { data, isLoading, error, isFetching } = useQuery<BdoDetailData>({
-    queryKey: ['bdo-detail', bdoId, partnerId],
-    queryFn: () => fetchBdoDetail(bdoId!, partnerId),
+    queryKey: ['bdo-detail', bdoId, lineUserId ?? partnerId],
+    queryFn: () => fetchBdoDetail(bdoId!, partnerId, lineUserId),
     enabled: bdoId != null,
-    staleTime: 300000, // 5 min — BDO detail rarely changes
+    staleTime: 30000, // 30s — live from Odoo
     refetchOnWindowFocus: false,
   })
 
   const handleRefresh = useCallback(() => {
-    qc.invalidateQueries({ queryKey: ['bdo-detail', bdoId, partnerId] })
-  }, [qc, bdoId, partnerId])
+    qc.invalidateQueries({ queryKey: ['bdo-detail', bdoId, lineUserId ?? partnerId] })
+  }, [qc, bdoId, partnerId, lineUserId])
 
   if (bdoId == null) return null
 

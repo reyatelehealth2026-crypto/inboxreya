@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { SlipUploadModal } from './SlipUploadModal'
 import { FlexPreview } from './FlexPreview'
+import { BdoDetailPanel } from '@/components/slip-center/BdoDetailPanel'
 
 const ODOO_BASE = 'https://erp.cnyrxapp.com'
 const PAGE_SIZE = 5
@@ -84,6 +85,7 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
   })
 
   const [selectedBdo, setSelectedBdo] = useState<BdoOrderRecord | null>(null)
+  const [detailBdo, setDetailBdo] = useState<{ bdoId: number; bdoName: string | null } | null>(null)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [unmatchingId, setUnmatchingId] = useState<number | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -216,6 +218,7 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
             key={bdo.id}
             bdo={bdo}
             lineUserId={userId}
+            onViewDetail={() => setDetailBdo({ bdoId: bdo.bdo_id, bdoName: bdo.bdo_name })}
             onAttachSlip={() => setSelectedBdo(bdo)}
             onUnmatch={handleUnmatch}
             unmatchingId={unmatchingId}
@@ -339,15 +342,25 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {detailBdo && (
+        <BdoDetailPanel
+          bdoId={detailBdo.bdoId}
+          bdoName={detailBdo.bdoName}
+          lineUserId={userId}
+          onClose={() => setDetailBdo(null)}
+        />
+      )}
     </>
   )
 }
 
 function BdoCard({
-  bdo, lineUserId, onAttachSlip, onUnmatch, unmatchingId, onPreviewSlip, onSendNotification, sendingBdoId,
+  bdo, lineUserId, onViewDetail, onAttachSlip, onUnmatch, unmatchingId, onPreviewSlip, onSendNotification, sendingBdoId,
 }: {
   bdo: BdoOrderRecord
   lineUserId: string
+  onViewDetail: () => void
   onAttachSlip: () => void
   onUnmatch: (slipUploadId: number, bdoId: number) => void
   unmatchingId: number | null
@@ -399,12 +412,15 @@ function BdoCard({
       : null
 
   return (
-    <div className={cn(
-      "border rounded-xl p-3 transition-colors",
-      isPending && "border-amber-200 bg-amber-50/30",
-      isMatched && "border-green-200 bg-green-50/20",
-      !isPending && !isMatched && "bg-white",
-    )}>
+    <div
+      className={cn(
+        "border rounded-xl p-3 transition-colors cursor-pointer hover:shadow-sm",
+        isPending && "border-amber-200 bg-amber-50/30 hover:border-amber-300",
+        isMatched && "border-green-200 bg-green-50/20 hover:border-green-300",
+        !isPending && !isMatched && "bg-white hover:border-gray-300",
+      )}
+      onClick={onViewDetail}
+    >
       {/* Row 1: Name + Badge + BDO ID + Odoo link */}
       <div className="flex items-start justify-between mb-1.5">
         <div className="flex-1 min-w-0">
@@ -477,7 +493,7 @@ function BdoCard({
             <>฿{displayAmount?.toLocaleString('th-TH', { minimumFractionDigits: 0 }) || '0'}</>
           )}
         </span>
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
           {isPending && (
             <>
               <Button
