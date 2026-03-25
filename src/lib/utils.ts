@@ -36,19 +36,21 @@ export function formatMessageTime(date: Date | string | null | undefined): strin
   
   // Guard: if date is invalid, return fallback
   if (!(d instanceof Date) || isNaN(d.getTime())) return '-'
-  
-  const msgYear  = d.getUTCFullYear()
-  const msgMonth = d.getUTCMonth() + 1
-  const msgDay   = d.getUTCDate()
-  const msgHour  = String(d.getUTCHours()).padStart(2, '0')
-  const msgMin   = String(d.getUTCMinutes()).padStart(2, '0')
+
+  // Convert UTC → Bangkok (+7) before extracting date/time parts
+  const bkk = new Date(d.getTime() + 7 * 3600_000)
+
+  const msgYear  = bkk.getUTCFullYear()
+  const msgMonth = bkk.getUTCMonth() + 1
+  const msgDay   = bkk.getUTCDate()
+  const msgHour  = String(bkk.getUTCHours()).padStart(2, '0')
+  const msgMin   = String(bkk.getUTCMinutes()).padStart(2, '0')
   const timeStr  = `${msgHour}:${msgMin}`
 
-  const nowUtc = new Date()
-  const bkkNow = new Date(nowUtc.getTime() + 7 * 3600_000)
-  const nowYear = bkkNow.getUTCFullYear()
+  const bkkNow = new Date(new Date().getTime() + 7 * 3600_000)
+  const nowYear  = bkkNow.getUTCFullYear()
   const nowMonth = bkkNow.getUTCMonth() + 1
-  const nowDay = bkkNow.getUTCDate()
+  const nowDay   = bkkNow.getUTCDate()
 
   if (nowYear === msgYear && nowMonth === msgMonth && nowDay === msgDay) {
     return timeStr
