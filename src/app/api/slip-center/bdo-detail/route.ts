@@ -46,7 +46,15 @@ export async function GET(request: NextRequest) {
           signal: AbortSignal.timeout(20000),
         })
 
-        const json = await res.json().catch(() => ({ success: false, error: 'Invalid JSON from PHP' }))
+        const rawText = await res.text()
+        console.error(`[bdo-detail] PHP HTTP ${res.status} — raw:`, rawText.slice(0, 500))
+
+        let json: any
+        try {
+          json = JSON.parse(rawText)
+        } catch {
+          throw new Error(`PHP returned non-JSON (HTTP ${res.status}): ${rawText.slice(0, 200)}`)
+        }
 
         if (!json.success) {
           throw new Error(json.error || 'PHP error')
