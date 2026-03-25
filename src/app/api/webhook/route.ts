@@ -6,7 +6,7 @@ import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
 
 const toBangkokWallDate = (date: Date | number | string) => {
   const baseDate = date instanceof Date ? date : new Date(date)
-  return new Date(baseDate.getTime() + 7 * 60 * 60 * 1000)
+  return baseDate
 }
 
 const toIsoStringSafe = (date: Date | string | null | undefined) => {
