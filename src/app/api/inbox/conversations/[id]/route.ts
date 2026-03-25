@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { broadcastRealtimeEvent } from '@/lib/realtime'
 import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
-import { toUtcIsoString } from '@/lib/datetime-api'
+import { toUtcIsoString, toUtcIsoStringAdjusted } from '@/lib/datetime-api'
 
 export async function GET(
   request: NextRequest,
@@ -96,11 +96,11 @@ export async function GET(
         points: 0,
         totalSpent: 0,
         orderCount: 0,
-        lastInteraction: toUtcIsoString(user.lastInteraction),
+        lastInteraction: toUtcIsoStringAdjusted(user.lastInteraction, 'incoming'), // Assume last interaction was driven by incoming
         chatStatus: user.chatStatus,
         isBlocked: user.isBlocked,
         isRegistered: user.isRegistered,
-        createdAt: toUtcIsoString(user.createdAt) ?? new Date().toISOString(),
+        createdAt: toUtcIsoStringAdjusted(user.createdAt, 'incoming') ?? new Date().toISOString(),
       },
       lastMessage: (() => {
         const msg = user.messages[0]
@@ -116,8 +116,8 @@ export async function GET(
           isRead: msg.isRead,
           sentBy: msg.sentBy,
           replyToId: msg.replyToId ? msg.replyToId.toString() : null,
-          createdAt: toUtcIsoString(msg.createdAt) ?? new Date().toISOString(),
-          updatedAt: toUtcIsoString(msg.updatedAt) ?? new Date().toISOString(),
+          createdAt: toUtcIsoStringAdjusted(msg.createdAt, msg.direction) ?? new Date().toISOString(),
+          updatedAt: toUtcIsoStringAdjusted(msg.updatedAt, msg.direction) ?? new Date().toISOString(),
         }
       })(),
       unreadCount: user._count.messages,
@@ -137,7 +137,7 @@ export async function GET(
         isAuto: ta.tag.tagType !== 'manual',
         sortOrder: ta.tag.priority ?? 0,
       })),
-      updatedAt: toUtcIsoString(user.lastInteraction) ?? toUtcIsoString(user.updatedAt) ?? new Date().toISOString(),
+      updatedAt: toUtcIsoStringAdjusted(user.lastInteraction, 'incoming') ?? toUtcIsoStringAdjusted(user.updatedAt, 'incoming') ?? new Date().toISOString(),
     }
 
     return NextResponse.json({ data: conversation })

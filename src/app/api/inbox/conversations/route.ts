@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
+import { toUtcIsoStringAdjusted } from '@/lib/datetime-api'
 
 // TTL สั้นมาก เพราะ conversation เปลี่ยนบ่อย (ข้อความใหม่เข้าตลอด)
 const CONV_TTL = 20   // วินาที
@@ -18,17 +19,6 @@ const normalizePictureUrl = (value: string | null) => {
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed
   if (trimmed.startsWith('//')) return `https:${trimmed}`
   return `https://${trimmed}`
-}
-
-const toIsoStringSafe = (date: Date | string | null | undefined) => {
-  if (!date) return null
-  const d = date instanceof Date ? date : new Date(date)
-  if (isNaN(d.getTime())) return null
-  try {
-    return d.toISOString()
-  } catch {
-    return null
-  }
 }
 
 export async function GET(request: NextRequest) {
@@ -361,13 +351,13 @@ export async function GET(request: NextRequest) {
         points: user.points,
         totalSpent: user.totalSpent,
         orderCount: user.orderCount,
-        lastInteraction: toIsoStringSafe(user.lastInteraction),
+        lastInteraction: toUtcIsoStringAdjusted(user.lastInteraction, 'incoming'),
         chatStatus: user.chatStatus,
         isBlocked: user.isBlocked,
         isRegistered: user.isRegistered,
         platform: (user.platform ?? 'line') as 'line' | 'facebook' | 'tiktok',
         platformUserId: user.platformUserId ?? null,
-        createdAt: toIsoStringSafe(user.createdAt),
+        createdAt: toUtcIsoStringAdjusted(user.createdAt, 'incoming'),
       },
       lastMessage: (() => {
         const msg = user.messages[0]
@@ -384,8 +374,8 @@ export async function GET(request: NextRequest) {
           sentBy: msg.sentBy,
           replyToId: msg.replyToId ? msg.replyToId.toString() : null,
           platform: (msg.platform ?? 'line') as 'line' | 'facebook' | 'tiktok',
-          createdAt: toIsoStringSafe(msg.createdAt),
-          updatedAt: toIsoStringSafe(msg.updatedAt),
+          createdAt: toUtcIsoStringAdjusted(msg.createdAt, msg.direction),
+          updatedAt: toUtcIsoStringAdjusted(msg.updatedAt, msg.direction),
         }
       })(),
       unreadCount: user._count.messages,
@@ -409,7 +399,7 @@ export async function GET(request: NextRequest) {
         isAuto: ta.tag.tagType !== 'manual',
         sortOrder: ta.tag.priority ?? 0,
       })),
-      updatedAt: toIsoStringSafe(user.lastInteraction) || toIsoStringSafe(user.updatedAt),
+      updatedAt: toUtcIsoStringAdjusted(user.lastInteraction, 'incoming') || toUtcIsoStringAdjusted(user.updatedAt, 'incoming'),
     }))
 
     const nextCursor =
