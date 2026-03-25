@@ -20,6 +20,18 @@ import { FlexPreview } from './FlexPreview'
 const ODOO_BASE = 'https://erp.cnyrxapp.com'
 const PAGE_SIZE = 5
 
+async function fetchBdoNetToPay(bdoId: number, lineUserId: string): Promise<number | null> {
+  try {
+    const params = new URLSearchParams({ bdoId: String(bdoId), lineUserId })
+    const res = await fetch(`/api/slip-center/bdo-detail?${params}`)
+    const json = await res.json()
+    if (!res.ok || !json.success) return null
+    return json.data?.summary?.net_to_pay ?? null
+  } catch {
+    return null
+  }
+}
+
 interface OdooBdoSectionProps {
   userId: string
   memberId: string | null | undefined
@@ -203,6 +215,7 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
           <BdoCard
             key={bdo.id}
             bdo={bdo}
+            lineUserId={userId}
             onAttachSlip={() => setSelectedBdo(bdo)}
             onUnmatch={handleUnmatch}
             unmatchingId={unmatchingId}
@@ -331,9 +344,10 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
 }
 
 function BdoCard({
-  bdo, onAttachSlip, onUnmatch, unmatchingId, onPreviewSlip, onSendNotification, sendingBdoId,
+  bdo, lineUserId, onAttachSlip, onUnmatch, unmatchingId, onPreviewSlip, onSendNotification, sendingBdoId,
 }: {
   bdo: BdoOrderRecord
+  lineUserId: string
   onAttachSlip: () => void
   onUnmatch: (slipUploadId: number, bdoId: number) => void
   unmatchingId: number | null
@@ -347,6 +361,17 @@ function BdoCard({
     matched: { color: 'bg-green-100 text-green-700', label: 'จับคู่แล้ว', icon: CheckCircle2 },
     paid: { color: 'bg-green-100 text-green-700', label: 'ชำระแล้ว', icon: CheckCircle2 },
   }
+
+  // Auto-fetch net_to_pay from PHP financial calculation (same data as LINE notification)
+  const { data: netToPay, isLoading: netToPayLoading } = useQuery<number | null>({
+    queryKey: ['bdo-net-to-pay', bdo.bdo_id, lineUserId],
+    queryFn: () => fetchBdoNetToPay(bdo.bdo_id, lineUserId),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  })
+
+  const displayAmount = netToPay ?? bdo.amount_net_to_pay ?? bdo.amount_total
 
   const config = statusConfig[bdo.payment_status] || statusConfig.pending
   const StatusIcon = config.icon
@@ -446,7 +471,11 @@ function BdoCard({
       {/* Row 3: Amount + Action */}
       <div className="flex items-center justify-between">
         <span className="font-bold text-base text-gray-900">
-          ฿{(bdo.amount_net_to_pay ?? bdo.amount_total)?.toLocaleString('th-TH', { minimumFractionDigits: 0 }) || '0'}
+          {netToPayLoading ? (
+            <Skeleton className="h-5 w-20 inline-block" />
+          ) : (
+            <>฿{displayAmount?.toLocaleString('th-TH', { minimumFractionDigits: 0 }) || '0'}</>
+          )}
         </span>
         <div className="flex gap-1.5">
           {isPending && (
