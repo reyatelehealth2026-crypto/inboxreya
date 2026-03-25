@@ -85,7 +85,7 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
   })
 
   const [selectedBdo, setSelectedBdo] = useState<BdoOrderRecord | null>(null)
-  const [detailBdo, setDetailBdo] = useState<{ bdoId: number; bdoName: string | null } | null>(null)
+  const [detailBdo, setDetailBdo] = useState<{ bdoId: number; bdoName: string | null; lineUserId: string | null } | null>(null)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [unmatchingId, setUnmatchingId] = useState<number | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -218,7 +218,7 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
             key={bdo.id}
             bdo={bdo}
             lineUserId={userId}
-            onViewDetail={() => setDetailBdo({ bdoId: bdo.bdo_id, bdoName: bdo.bdo_name })}
+            onViewDetail={() => setDetailBdo({ bdoId: bdo.bdo_id, bdoName: bdo.bdo_name, lineUserId: bdo.line_user_id })}
             onAttachSlip={() => setSelectedBdo(bdo)}
             onUnmatch={handleUnmatch}
             unmatchingId={unmatchingId}
@@ -347,7 +347,7 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
         <BdoDetailPanel
           bdoId={detailBdo.bdoId}
           bdoName={detailBdo.bdoName}
-          lineUserId={userId}
+          lineUserId={detailBdo.lineUserId}
           onClose={() => setDetailBdo(null)}
         />
       )}
@@ -375,10 +375,13 @@ function BdoCard({
     paid: { color: 'bg-green-100 text-green-700', label: 'ชำระแล้ว', icon: CheckCircle2 },
   }
 
+  // Use bdo.line_user_id (real LINE ID e.g. Uxxxxx) not the DB integer userId
+  const bdoLineUserId = bdo.line_user_id ?? lineUserId
+
   // Auto-fetch net_to_pay from PHP financial calculation (same data as LINE notification)
   const { data: netToPay, isLoading: netToPayLoading } = useQuery<number | null>({
-    queryKey: ['bdo-net-to-pay', bdo.bdo_id, lineUserId],
-    queryFn: () => fetchBdoNetToPay(bdo.bdo_id, lineUserId),
+    queryKey: ['bdo-net-to-pay', bdo.bdo_id, bdoLineUserId],
+    queryFn: () => fetchBdoNetToPay(bdo.bdo_id, bdoLineUserId),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     retry: 1,
