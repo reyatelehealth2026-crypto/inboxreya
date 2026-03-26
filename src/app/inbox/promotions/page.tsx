@@ -4,6 +4,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import {
   Upload, FileJson, Search, Package, X, Send, Check, RefreshCw,
   ShoppingBag, Zap, Tag, Sparkles, TrendingUp, Loader2,
+  LayoutGrid, List,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +26,7 @@ import type { CsvProduct } from '@/lib/csv-product';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type SourceTab = 'csv' | 'json';
+type ViewMode = 'grid' | 'list';
 type FilterType = 'all' | 'flashsale' | 'promotion' | 'new' | 'bestseller';
 
 const CATALOG_FILTERS: { key: FilterType; label: string; icon: React.ElementType; color: string; bg: string }[] = [
@@ -35,11 +37,107 @@ const CATALOG_FILTERS: { key: FilterType; label: string; icon: React.ElementType
   { key: 'bestseller', label: 'ขายดี', icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50' },
 ];
 
+// ─── View Toggle ─────────────────────────────────────────────────────────────
+function ViewToggle({ viewMode, onChange }: { viewMode: ViewMode; onChange: (v: ViewMode) => void }) {
+  return (
+    <div className="flex rounded-lg border bg-gray-50 p-0.5 gap-0.5">
+      <button
+        onClick={() => onChange('grid')}
+        className={cn(
+          'flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all',
+          viewMode === 'grid' ? 'bg-white shadow text-green-700 border border-green-200' : 'text-gray-500 hover:text-gray-700'
+        )}
+        title="มุมมองตาราง"
+      >
+        <LayoutGrid className="w-3.5 h-3.5" />
+        <span className="hidden sm:inline">Grid</span>
+      </button>
+      <button
+        onClick={() => onChange('list')}
+        className={cn(
+          'flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all',
+          viewMode === 'list' ? 'bg-white shadow text-green-700 border border-green-200' : 'text-gray-500 hover:text-gray-700'
+        )}
+        title="มุมมองรายการ"
+      >
+        <List className="w-3.5 h-3.5" />
+        <span className="hidden sm:inline">List</span>
+      </button>
+    </div>
+  );
+}
+
+// ─── CSV Product List Row ─────────────────────────────────────────────────────
+function CsvProductListRow({
+  product,
+  selected,
+  onToggle,
+}: {
+  product: CsvProduct;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <tr
+      onClick={onToggle}
+      className={cn(
+        'cursor-pointer transition-colors hover:bg-gray-50',
+        selected ? 'bg-green-50' : ''
+      )}
+    >
+      <td className="px-3 py-2">
+        <div className={cn(
+          'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors',
+          selected ? 'bg-green-500 border-green-500' : 'border-gray-300'
+        )}>
+          {selected && <Check className="w-3 h-3 text-white" />}
+        </div>
+      </td>
+      <td className="px-2 py-1.5">
+        {product.imageUrl ? (
+          <img
+            src={product.imageUrl}
+            alt={product.productName}
+            className="w-10 h-10 object-contain rounded border border-gray-100 bg-gray-50"
+            loading="lazy"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
+        ) : (
+          <div className="w-10 h-10 rounded border border-gray-100 bg-gray-50 flex items-center justify-center text-gray-300">
+            <Package className="w-4 h-4" />
+          </div>
+        )}
+      </td>
+      <td className="px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap">{product.sku}</td>
+      <td className="px-3 py-2">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs font-medium text-blue-700 line-clamp-2 leading-snug">{product.productName}</span>
+          {product.specName && <span className="text-[10px] text-gray-400">{product.specName}</span>}
+          {product.offerHeader && (
+            <span className="inline-flex w-fit text-[9px] bg-red-100 text-red-600 rounded px-1 font-bold">{product.offerHeader}</span>
+          )}
+        </div>
+      </td>
+      <td className="px-3 py-2 text-xs text-gray-400 text-center">—</td>
+      <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+        <span className="inline-flex items-center gap-1">
+          <span>{product.priceUnit || '—'}</span>
+          <span className="text-red-600 font-semibold">{product.pricePerUnit}</span>
+        </span>
+      </td>
+      <td className="px-3 py-2 text-xs text-gray-400 text-center">—</td>
+      <td className="px-3 py-2 text-xs text-gray-400 text-center">—</td>
+    </tr>
+  );
+}
+
 // ─── CSV Product Grid ─────────────────────────────────────────────────────────
 function CsvProductGrid({
   onSelectionChange,
+  viewMode,
 }: {
   onSelectionChange: (products: ExportPreviewProduct[]) => void;
+  viewMode: ViewMode;
 }) {
   const { products, loading, error } = useCsvProducts();
   const [search, setSearch] = useState('');
@@ -106,25 +204,171 @@ function CsvProductGrid({
           </span>
         )}
       </p>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-        {filtered.map((product) => (
-          <ProductCard
-            key={product.sku}
-            product={product}
-            selected={selectedSkus.has(product.sku)}
-            onToggle={() => toggle(product.sku, product)}
-          />
-        ))}
-      </div>
+
+      {viewMode === 'grid' ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+          {filtered.map((product) => (
+            <ProductCard
+              key={product.sku}
+              product={product}
+              selected={selectedSkus.has(product.sku)}
+              onToggle={() => toggle(product.sku, product)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="w-10 px-3 py-2 text-left">
+                  <button
+                    onClick={() => {
+                      const allSkus = new Set(filtered.map(p => p.sku));
+                      const allSelected = filtered.every(p => selectedSkus.has(p.sku));
+                      setSelectedSkus(prev => {
+                        const next = new Set(prev);
+                        if (allSelected) filtered.forEach(p => next.delete(p.sku));
+                        else filtered.forEach(p => next.add(p.sku));
+                        onSelectionChange(products.filter(p => next.has(p.sku)).map(csvProductToPreviewProduct));
+                        return next;
+                      });
+                    }}
+                    className="text-gray-400 hover:text-green-600 transition-colors"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                  </button>
+                </th>
+                <th className="w-14 px-2 py-2"></th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-600">รหัสสินค้า</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-600">ชื่อสินค้า</th>
+                <th className="px-3 py-2 text-center text-[11px] font-semibold text-gray-600">คงคลัง</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-600">หน่วย 1</th>
+                <th className="px-3 py-2 text-center text-[11px] font-semibold text-gray-600">หน่วย 2</th>
+                <th className="px-3 py-2 text-center text-[11px] font-semibold text-gray-600">หน่วย 3</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filtered.map((product) => (
+                <CsvProductListRow
+                  key={product.sku}
+                  product={product}
+                  selected={selectedSkus.has(product.sku)}
+                  onToggle={() => toggle(product.sku, product)}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
+  );
+}
+
+// ─── JSON Product List Row ────────────────────────────────────────────────────
+function JsonProductListRow({
+  product,
+  selected,
+  onToggle,
+}: {
+  product: Product;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const data = product.product_data?.[0];
+  if (!data) return null;
+  const photo = product.product_photo?.[0];
+  const imageUrl = photo ? `https://www.cnypharmacy.com/${photo.photo_path}` : '';
+  const units = product.product_unit ?? [];
+  const totalStock = (product.product_stock ?? []).reduce(
+    (sum, s) => sum + (parseFloat(s.stock_num) || 0), 0
+  );
+  const price = product.product_price?.[0]?.product_price?.[0];
+  const displayPrice = price?.promotion_price !== '0.00' ? parseFloat(price?.promotion_price ?? '0') : parseFloat(price?.price ?? '0');
+
+  return (
+    <tr
+      onClick={onToggle}
+      className={cn('cursor-pointer transition-colors hover:bg-gray-50', selected ? 'bg-green-50' : '')}
+    >
+      <td className="px-3 py-2">
+        <div className={cn(
+          'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors',
+          selected ? 'bg-green-500 border-green-500' : 'border-gray-300'
+        )}>
+          {selected && <Check className="w-3 h-3 text-white" />}
+        </div>
+      </td>
+      <td className="px-2 py-1.5">
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={data.name}
+            className="w-10 h-10 object-contain rounded border border-gray-100 bg-gray-50"
+            loading="lazy"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
+        ) : (
+          <div className="w-10 h-10 rounded border border-gray-100 bg-gray-50 flex items-center justify-center text-gray-300">
+            <Package className="w-4 h-4" />
+          </div>
+        )}
+      </td>
+      <td className="px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap">{data.sku}</td>
+      <td className="px-3 py-2">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs font-medium text-blue-700 line-clamp-2 leading-snug">{data.name}</span>
+          {data.spec_name && <span className="text-[10px] text-gray-400">{data.spec_name}</span>}
+          <div className="flex gap-1 flex-wrap">
+            {data.is_promotion === 1 && <span className="text-[9px] bg-orange-100 text-orange-600 rounded px-1 font-bold">โปรโมชัน</span>}
+            {product.product_is_flashSale === 1 && <span className="text-[9px] bg-red-100 text-red-600 rounded px-1 font-bold">Flash Sale</span>}
+            {data.is_bestseller === 1 && <span className="text-[9px] bg-green-100 text-green-700 rounded px-1 font-bold">ขายดี</span>}
+          </div>
+        </div>
+      </td>
+      <td className="px-3 py-2 text-xs text-center">
+        <span className={cn(
+          'font-semibold',
+          totalStock <= 0 ? 'text-red-500' : totalStock < 10 ? 'text-orange-500' : 'text-gray-700'
+        )}>
+          {totalStock > 0 ? totalStock.toLocaleString() : '0'}
+        </span>
+      </td>
+      <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+        {units[0] ? (
+          <div className="flex flex-col">
+            <span className="font-medium">{units[0].unit}</span>
+            {displayPrice > 0 && <span className="text-red-600 text-[10px]">฿{displayPrice.toLocaleString()}</span>}
+          </div>
+        ) : '—'}
+      </td>
+      <td className="px-3 py-2 text-xs text-gray-600 text-center whitespace-nowrap">
+        {units[1] ? (
+          <div className="flex flex-col items-center">
+            <span className="font-medium">{units[1].unit}</span>
+            {units[1].contain && <span className="text-[10px] text-gray-400">{units[1].contain}</span>}
+          </div>
+        ) : '—'}
+      </td>
+      <td className="px-3 py-2 text-xs text-gray-600 text-center whitespace-nowrap">
+        {units[2] ? (
+          <div className="flex flex-col items-center">
+            <span className="font-medium">{units[2].unit}</span>
+            {units[2].contain && <span className="text-[10px] text-gray-400">{units[2].contain}</span>}
+          </div>
+        ) : '—'}
+      </td>
+    </tr>
   );
 }
 
 // ─── JSON Catalog Grid ────────────────────────────────────────────────────────
 function JsonCatalogGrid({
   onSelectionChange,
+  viewMode,
 }: {
   onSelectionChange: (products: ExportPreviewProduct[]) => void;
+  viewMode: ViewMode;
 }) {
   const [jsonInput, setJsonInput] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
@@ -274,51 +518,93 @@ function JsonCatalogGrid({
             )}
           </p>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-            {filtered.map((product) => {
-              const data = product.product_data?.[0];
-              if (!data) return null;
-              const price = product.product_price?.[0]?.product_price?.[0];
-              const photo = product.product_photo?.[0];
-              const selected = selectedIds.has(data.id);
-              const displayPrice = price?.promotion_price !== '0.00' ? parseFloat(price?.promotion_price ?? '0') : parseFloat(price?.price ?? '0');
-              const originalPrice = parseFloat(price?.price ?? '0');
-              const hasDiscount = displayPrice < originalPrice && originalPrice > 0;
+          {viewMode === 'grid' ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              {filtered.map((product) => {
+                const data = product.product_data?.[0];
+                if (!data) return null;
+                const price = product.product_price?.[0]?.product_price?.[0];
+                const photo = product.product_photo?.[0];
+                const selected = selectedIds.has(data.id);
+                const displayPrice = price?.promotion_price !== '0.00' ? parseFloat(price?.promotion_price ?? '0') : parseFloat(price?.price ?? '0');
+                const originalPrice = parseFloat(price?.price ?? '0');
+                const hasDiscount = displayPrice < originalPrice && originalPrice > 0;
 
-              // Build a CsvProduct-compatible shape for ProductCard
-              const csvShape: CsvProduct = {
-                productUrl: `https://www.cnypharmacy.com/product/${data.sku}`,
-                imageUrl: photo ? `https://www.cnypharmacy.com/${photo.photo_path}` : '',
-                offerHeader: product.product_is_flashSale === 1 ? 'FLASH SALE' : data.is_promotion === 1 ? 'PROMOTION' : '',
-                offerStart: '',
-                offerEnd: '',
-                skuLabel: 'SKU',
-                sku: data.sku,
-                productName: data.name,
-                promoCond1: '',
-                promoCond2: '',
-                priceUnit: product.product_unit?.[0]?.unit ?? '',
-                pricePerUnit: `฿${displayPrice.toLocaleString()}`,
-                btnLabel: 'ดูรายละเอียด',
-                priceAfterDiscount: hasDiscount ? `ราคาเดิม ฿${originalPrice.toLocaleString()}` : '',
-                minQtyLabel: '',
-                maxQtyLabel: '',
-                priceNumber: String(displayPrice),
-                specName: data.spec_name ?? '',
-                bulkPrice: '',
-                bulkUnit: '',
-              };
+                const csvShape: CsvProduct = {
+                  productUrl: `https://www.cnypharmacy.com/product/${data.sku}`,
+                  imageUrl: photo ? `https://www.cnypharmacy.com/${photo.photo_path}` : '',
+                  offerHeader: product.product_is_flashSale === 1 ? 'FLASH SALE' : data.is_promotion === 1 ? 'PROMOTION' : '',
+                  offerStart: '', offerEnd: '', skuLabel: 'SKU',
+                  sku: data.sku, productName: data.name,
+                  promoCond1: '', promoCond2: '',
+                  priceUnit: product.product_unit?.[0]?.unit ?? '',
+                  pricePerUnit: `฿${displayPrice.toLocaleString()}`,
+                  btnLabel: 'ดูรายละเอียด',
+                  priceAfterDiscount: hasDiscount ? `ราคาเดิม ฿${originalPrice.toLocaleString()}` : '',
+                  minQtyLabel: '', maxQtyLabel: '',
+                  priceNumber: String(displayPrice),
+                  specName: data.spec_name ?? '',
+                  bulkPrice: '', bulkUnit: '',
+                };
 
-              return (
-                <ProductCard
-                  key={data.id}
-                  product={csvShape}
-                  selected={selected}
-                  onToggle={() => toggleProduct(product)}
-                />
-              );
-            })}
-          </div>
+                return (
+                  <ProductCard
+                    key={data.id}
+                    product={csvShape}
+                    selected={selected}
+                    onToggle={() => toggleProduct(product)}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="w-10 px-3 py-2 text-left">
+                      <button
+                        onClick={() => {
+                          const allSelected = filtered.every(p => selectedIds.has(p.product_data?.[0]?.id ?? -1));
+                          setSelectedIds(prev => {
+                            const next = new Set(prev);
+                            if (allSelected) filtered.forEach(p => { const id = p.product_data?.[0]?.id; if (id) next.delete(id); });
+                            else filtered.forEach(p => { const id = p.product_data?.[0]?.id; if (id) next.add(id); });
+                            onSelectionChange(products.filter(p => next.has(p.product_data?.[0]?.id ?? -1)).map(p => selectedProductToPreviewProduct(p, 1, p.product_unit?.[0])));
+                            return next;
+                          });
+                        }}
+                        className="text-gray-400 hover:text-green-600 transition-colors"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                    </th>
+                    <th className="w-14 px-2 py-2"></th>
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-600">รหัสสินค้า</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-600">ชื่อสินค้า</th>
+                    <th className="px-3 py-2 text-center text-[11px] font-semibold text-gray-600">คงคลัง</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-600">หน่วย 1</th>
+                    <th className="px-3 py-2 text-center text-[11px] font-semibold text-gray-600">หน่วย 2</th>
+                    <th className="px-3 py-2 text-center text-[11px] font-semibold text-gray-600">หน่วย 3</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filtered.map((product) => {
+                    const data = product.product_data?.[0];
+                    if (!data) return null;
+                    return (
+                      <JsonProductListRow
+                        key={data.id}
+                        product={product}
+                        selected={selectedIds.has(data.id)}
+                        onToggle={() => toggleProduct(product)}
+                      />
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
 
@@ -335,6 +621,7 @@ function JsonCatalogGrid({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function PromotionsPage() {
   const [sourceTab, setSourceTab] = useState<SourceTab>('csv');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [csvSelected, setCsvSelected] = useState<ExportPreviewProduct[]>([]);
   const [jsonSelected, setJsonSelected] = useState<ExportPreviewProduct[]>([]);
   const [showSendDialog, setShowSendDialog] = useState(false);
@@ -359,26 +646,29 @@ export default function PromotionsPage() {
             <h1 className="text-base font-bold text-gray-900 leading-none">แคตตาล็อค & โปรโมชัน</h1>
             <p className="text-xs text-gray-500 mt-0.5">เลือกสินค้าแล้วส่ง Flex Message ไปยัง LINE</p>
           </div>
-          {/* Tab selector in header */}
-          <div className="flex rounded-lg border bg-gray-50 p-0.5 gap-0.5">
-            {([
-              { key: 'csv' as const, label: 'โปรโมชัน CSV', icon: Tag },
-              { key: 'json' as const, label: 'แคตตาล็อค JSON', icon: FileJson },
-            ] as const).map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                onClick={() => setSourceTab(key)}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
-                  sourceTab === key
-                    ? 'bg-white shadow text-green-700 border border-green-200'
-                    : 'text-gray-500 hover:text-gray-700'
-                )}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {label}
-              </button>
-            ))}
+          {/* Tab selector + View toggle */}
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-lg border bg-gray-50 p-0.5 gap-0.5">
+              {([
+                { key: 'csv' as const, label: 'โปรโมชัน CSV', icon: Tag },
+                { key: 'json' as const, label: 'แคตตาล็อค JSON', icon: FileJson },
+              ] as const).map(({ key, label, icon: Icon }) => (
+                <button
+                  key={key}
+                  onClick={() => setSourceTab(key)}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+                    sourceTab === key
+                      ? 'bg-white shadow text-green-700 border border-green-200'
+                      : 'text-gray-500 hover:text-gray-700'
+                  )}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <ViewToggle viewMode={viewMode} onChange={setViewMode} />
           </div>
         </div>
       </header>
@@ -386,10 +676,10 @@ export default function PromotionsPage() {
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 py-4 pb-24">
         {sourceTab === 'csv' && (
-          <CsvProductGrid onSelectionChange={setCsvSelected} />
+          <CsvProductGrid onSelectionChange={setCsvSelected} viewMode={viewMode} />
         )}
         {sourceTab === 'json' && (
-          <JsonCatalogGrid onSelectionChange={setJsonSelected} />
+          <JsonCatalogGrid onSelectionChange={setJsonSelected} viewMode={viewMode} />
         )}
       </div>
 
