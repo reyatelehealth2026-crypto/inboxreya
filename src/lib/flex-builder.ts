@@ -43,6 +43,9 @@ export type ExportPreviewProduct = {
 
 const MAX_CAROUSEL_BUBBLES = 12;
 
+export type BubbleSizeKey = 'nano' | 'micro' | 'deca' | 'kilo' | 'mega' | 'giga';
+export const BUBBLE_SIZES: BubbleSizeKey[] = ['nano', 'micro', 'deca', 'kilo', 'mega', 'giga'];
+
 const THEME_COLORS: Record<ExportThemeKey, string> = {
   rose: '#E53E3E',
   violet: '#805AD5',
@@ -536,7 +539,8 @@ function buildPromoMiniCard(product: ExportPreviewProduct, themeColor: string): 
 function buildPromoGridBubble(
   products: ExportPreviewProduct[],
   themeColor: string,
-  bubbleNum: number
+  bubbleNum: number,
+  size: BubbleSizeKey = 'giga'
 ): object {
   const capped = products.slice(0, MAX_PRODUCTS_PER_GRID_BUBBLE);
   const rows: object[] = [];
@@ -561,7 +565,7 @@ function buildPromoGridBubble(
 
   return {
     type: 'bubble',
-    size: PROMO_BUBBLE_SIZE,
+    size,
     header: {
       type: 'box',
       layout: 'vertical',
@@ -600,7 +604,8 @@ function buildPromoGridBubble(
 function buildPromoCoverBubble(
   config: Required<ExportGlobalConfig>,
   themeColor: string,
-  totalProductCount: number
+  totalProductCount: number,
+  size: BubbleSizeKey = 'giga'
 ): object {
   const hasHero = Boolean(config.heroImageUrl);
   const bodyTextColor = hasHero ? themeColor : '#FFFFFF';
@@ -611,7 +616,7 @@ function buildPromoCoverBubble(
 
   return {
     type: 'bubble',
-    size: PROMO_BUBBLE_SIZE,
+    size,
     // hero image (optional — requires a public HTTPS URL)
     ...(hasHero
       ? {
@@ -724,13 +729,14 @@ export function buildPromoCarouselContents(
     totalProducts?: number;
     /** Override hero image URL (takes precedence over config.heroImageUrl) */
     heroImageUrl?: string;
+    bubbleSize?: BubbleSizeKey;
   } = {}
 ): object {
   const resolvedConfig = getResolvedConfig(config);
   // Allow per-call heroImageUrl override (used in preview when URL changes live)
   if (options.heroImageUrl !== undefined) resolvedConfig.heroImageUrl = options.heroImageUrl;
   const themeColor = resolvedConfig.accentColor || THEME_COLORS[resolvedConfig.theme];
-  const { includeCover = true, productsPerBubble = 6, startBubbleNum = 1, totalProducts } = options;
+  const { includeCover = true, productsPerBubble = 6, startBubbleNum = 1, totalProducts, bubbleSize = 'giga' } = options;
 
   const perBubble = Math.min(Math.max(1, productsPerBubble), MAX_PRODUCTS_PER_GRID_BUBBLE);
   const maxGridSlots = MAX_CAROUSEL_BUBBLES - (includeCover ? 1 : 0);
@@ -739,13 +745,13 @@ export function buildPromoCarouselContents(
   const bubbles: object[] = [];
 
   if (includeCover) {
-    bubbles.push(buildPromoCoverBubble(resolvedConfig, themeColor, totalProducts ?? products.length));
+    bubbles.push(buildPromoCoverBubble(resolvedConfig, themeColor, totalProducts ?? products.length, bubbleSize));
   }
 
   let bubbleNum = startBubbleNum;
   for (let i = 0; i < capped.length; i += perBubble) {
     const chunk = capped.slice(i, i + perBubble);
-    bubbles.push(buildPromoGridBubble(chunk, themeColor, bubbleNum++));
+    bubbles.push(buildPromoGridBubble(chunk, themeColor, bubbleNum++, bubbleSize));
   }
 
   return { type: 'carousel', contents: bubbles };
@@ -765,10 +771,11 @@ export function buildPromoMessages(
     productsPerBubble?: number;
     closingText?: string;
     maxCarousels?: number;
+    bubbleSize?: BubbleSizeKey;
   } = {}
 ): object[] {
   const resolvedConfig = getResolvedConfig(config);
-  const { productsPerBubble = 6, closingText, maxCarousels = 3 } = options;
+  const { productsPerBubble = 6, closingText, maxCarousels = 3, bubbleSize = 'giga' } = options;
 
   const perBubble = Math.min(Math.max(1, productsPerBubble), MAX_PRODUCTS_PER_GRID_BUBBLE);
   // Reserve 1 slot for closing text if provided; total max = 5
@@ -790,6 +797,7 @@ export function buildPromoMessages(
       productsPerBubble: perBubble,
       startBubbleNum: bubbleNum,
       totalProducts: products.length,
+      bubbleSize,
     });
 
     messages.push({
@@ -828,7 +836,8 @@ export const DETAIL_BUBBLE_SIZE = 'kilo';
 function buildDetailProductBubble(
   product: ExportPreviewProduct,
   config: Required<ExportGlobalConfig>,
-  themeColor: string
+  themeColor: string,
+  size: BubbleSizeKey = 'kilo'
 ): object {
   const productUrl = product.productUrl || getProductUrlFromSku(product.sku);
   const salePrice = product.promotionPrice ?? product.basePrice;
@@ -840,7 +849,7 @@ function buildDetailProductBubble(
 
   return {
     type: 'bubble',
-    size: DETAIL_BUBBLE_SIZE,
+    size,
     hero: {
       type: 'image',
       url:
@@ -988,7 +997,8 @@ function buildDetailProductBubble(
 function buildDetailCoverBubble(
   config: Required<ExportGlobalConfig>,
   themeColor: string,
-  totalProductCount: number
+  totalProductCount: number,
+  size: BubbleSizeKey = 'kilo'
 ): object {
   const hasHero = Boolean(config.heroImageUrl);
   const bodyTextColor = hasHero ? themeColor : '#FFFFFF';
@@ -997,7 +1007,7 @@ function buildDetailCoverBubble(
 
   return {
     type: 'bubble',
-    size: DETAIL_BUBBLE_SIZE,
+    size,
     ...(hasHero
       ? {
           hero: {
@@ -1096,21 +1106,22 @@ export function buildDetailCarouselContents(
     includeCover?: boolean;
     totalProducts?: number;
     heroImageUrl?: string;
+    bubbleSize?: BubbleSizeKey;
   } = {}
 ): object {
   const resolvedConfig = getResolvedConfig(config);
   if (options.heroImageUrl !== undefined) resolvedConfig.heroImageUrl = options.heroImageUrl;
   const themeColor = resolvedConfig.accentColor || THEME_COLORS[resolvedConfig.theme];
-  const { includeCover = true, totalProducts } = options;
+  const { includeCover = true, totalProducts, bubbleSize = 'kilo' } = options;
 
   const maxSlots = MAX_CAROUSEL_BUBBLES - (includeCover ? 1 : 0);
   const capped = products.slice(0, maxSlots);
 
   const bubbles: object[] = [];
   if (includeCover) {
-    bubbles.push(buildDetailCoverBubble(resolvedConfig, themeColor, totalProducts ?? products.length));
+    bubbles.push(buildDetailCoverBubble(resolvedConfig, themeColor, totalProducts ?? products.length, bubbleSize));
   }
-  capped.forEach((p) => bubbles.push(buildDetailProductBubble(p, resolvedConfig, themeColor)));
+  capped.forEach((p) => bubbles.push(buildDetailProductBubble(p, resolvedConfig, themeColor, bubbleSize)));
 
   return { type: 'carousel', contents: bubbles };
 }
@@ -1125,10 +1136,11 @@ export function buildDetailMessages(
   options: {
     closingText?: string;
     maxCarousels?: number;
+    bubbleSize?: BubbleSizeKey;
   } = {}
 ): object[] {
   const resolvedConfig = getResolvedConfig(config);
-  const { closingText, maxCarousels = 4 } = options;
+  const { closingText, maxCarousels = 4, bubbleSize = 'kilo' } = options;
 
   const maxFlexMessages = closingText?.trim()
     ? Math.min(maxCarousels, 4)
@@ -1147,6 +1159,7 @@ export function buildDetailMessages(
       includeCover: isFirst,
       totalProducts: products.length,
       heroImageUrl: resolvedConfig.heroImageUrl || undefined,
+      bubbleSize,
     });
 
     messages.push({

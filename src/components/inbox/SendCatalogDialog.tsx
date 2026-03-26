@@ -39,6 +39,11 @@ import {
   Code2,
   LayoutGrid,
   FileText,
+  PlusCircle,
+  Trash2,
+  UploadCloud,
+  Link,
+  XCircle,
 } from 'lucide-react';
 import { FlexPreview } from './FlexPreview';
 import {
@@ -47,6 +52,8 @@ import {
   buildDetailCarouselContents,
   buildDetailMessages,
   getTemplateDefaults,
+  BUBBLE_SIZES,
+  type BubbleSizeKey,
   type ExportPreviewProduct,
   type ExportGlobalConfig,
   type ExportThemeKey,
@@ -63,6 +70,27 @@ interface TagInfo {
 }
 
 type Step = 'flex-settings' | 'preview' | 'select-tags' | 'confirm';
+
+type ExtraItemKind = 'text' | 'image';
+interface ExtraItem {
+  id: string;
+  kind: ExtraItemKind;
+  afterFlexIndex: number; // -1 = before first flex; 0 = after first flex; etc.
+  text: string;
+  imageUrl: string;
+  imageFile: File | null;
+  uploadState: 'idle' | 'uploading' | 'done' | 'error';
+  uploadError: string;
+}
+
+const BUBBLE_SIZE_LABELS: Record<BubbleSizeKey, string> = {
+  nano: 'Nano (เล็กสุด)',
+  micro: 'Micro',
+  deca: 'Deca',
+  kilo: 'Kilo (detail default)',
+  mega: 'Mega',
+  giga: 'Giga (grid default)',
+};
 
 const STEPS: { key: Step; label: string; icon: React.ElementType }[] = [
   { key: 'flex-settings', label: 'ตั้งค่า', icon: Settings2 },
@@ -94,6 +122,143 @@ interface SendCatalogDialogProps {
   onOpenChange: (open: boolean) => void;
   products: ExportPreviewProduct[];
   defaultConfig?: Partial<ExportGlobalConfig>;
+}
+
+// ─── InsertSlot ───────────────────────────────────────────────────────────────
+function InsertSlot({ onAdd }: { onAdd: (kind: 'text' | 'image') => void }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <div className="flex items-center gap-2 py-1">
+        <div className="flex-1 border-t border-dashed border-gray-200" />
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-green-600 border border-dashed border-gray-200 rounded px-2 py-0.5 hover:border-green-400 transition-colors"
+        >
+          <PlusCircle className="w-3 h-3" /> แทรก
+        </button>
+        <div className="flex-1 border-t border-dashed border-gray-200" />
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 justify-center py-1">
+      <button type="button" onClick={() => { onAdd('image'); setOpen(false); }}
+        className="flex items-center gap-1 text-xs text-blue-700 border border-blue-200 rounded px-3 py-1 hover:bg-blue-50 transition-colors">
+        <ImageIcon className="w-3 h-3" /> รูปภาพ Rich
+      </button>
+      <button type="button" onClick={() => { onAdd('text'); setOpen(false); }}
+        className="flex items-center gap-1 text-xs text-gray-700 border border-gray-200 rounded px-3 py-1 hover:bg-gray-50 transition-colors">
+        <MessageSquareText className="w-3 h-3" /> ข้อความ
+      </button>
+      <button type="button" onClick={() => setOpen(false)}
+        className="text-xs text-gray-400 hover:text-gray-600 px-1">
+        ยกเลิก
+      </button>
+    </div>
+  );
+}
+
+// ─── ExtraItemCard ─────────────────────────────────────────────────────────────
+function ExtraItemCard({
+  item,
+  onRemove,
+  onUpdate,
+  onUpload,
+}: {
+  item: ExtraItem;
+  onRemove: () => void;
+  onUpdate: (patch: Partial<ExtraItem>) => void;
+  onUpload: (file: File) => void;
+}) {
+  const fileRef = React.useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="rounded-lg border-2 border-dashed border-blue-200 bg-blue-50/50 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <Badge className="text-[10px] bg-blue-100 text-blue-700 border-0">
+          {item.kind === 'image' ? '🖼️ รูปภาพ Rich Message' : '💬 ข้อความ'}
+        </Badge>
+        <button type="button" onClick={onRemove} className="text-gray-400 hover:text-red-500 transition-colors">
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {item.kind === 'text' && (
+        <Textarea
+          value={item.text}
+          onChange={(e) => onUpdate({ text: e.target.value })}
+          placeholder="ข้อความที่ต้องการแทรก..."
+          className="text-sm min-h-[60px]"
+        />
+      )}
+
+      {item.kind === 'image' && (
+        <div className="space-y-2">
+          {/* URL input */}
+          <div className="flex gap-2">
+            <div className="flex-1 relative">
+              <Link className="absolute left-2.5 top-2.5 w-3 h-3 text-gray-400" />
+              <Input
+                value={item.imageUrl}
+                onChange={(e) => onUpdate({ imageUrl: e.target.value, uploadState: 'idle' })}
+                placeholder="https://example.com/image.jpg"
+                className="h-9 text-sm pl-7 font-mono"
+                disabled={item.uploadState === 'uploading'}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={item.uploadState === 'uploading'}
+              className="flex items-center gap-1 px-3 py-1 rounded border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              {item.uploadState === 'uploading' ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <UploadCloud className="w-3 h-3" />
+              )}
+              อัพโหลด
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f); }}
+            />
+          </div>
+
+          {/* Upload error */}
+          {item.uploadState === 'error' && (
+            <p className="text-xs text-red-600 flex items-center gap-1">
+              <XCircle className="w-3 h-3" /> {item.uploadError}
+            </p>
+          )}
+
+          {/* URL validation */}
+          {item.imageUrl && !item.imageUrl.startsWith('https://') && (
+            <p className="text-xs text-amber-600">⚠ URL ต้องขึ้นต้นด้วย https://</p>
+          )}
+
+          {/* Preview */}
+          {item.imageUrl && item.imageUrl.startsWith('https://') && (
+            <img
+              src={item.imageUrl}
+              alt="preview"
+              className="max-h-24 rounded border object-cover"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+            />
+          )}
+
+          {item.uploadState === 'done' && (
+            <p className="text-xs text-green-600">✓ อัพโหลดสำเร็จ</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Carousel split helper ────────────────────────────────────────────────────
@@ -163,10 +328,11 @@ function validateFlexMessages(messages: object[]): ValidationResult {
       const sizes = [...new Set(bubbles.map((b) => b.size).filter(Boolean))];
       if (sizes.length > 1)
         errors.push(`Payload ${n}: bubbles มีหลายขนาด (${sizes.join(', ')}) — LINE กำหนดให้ทุก bubble ในCarousel ต้องขนาดเดียวกัน`);
-      const nonGiga = bubbles.filter((b) => b.size && b.size !== 'giga');
-      if (nonGiga.length) warnings.push(`Payload ${n}: ${nonGiga.length} bubble ไม่ได้ใช้ size=giga`);
       const noSize = bubbles.filter((b) => !b.size);
       if (noSize.length) warnings.push(`Payload ${n}: ${noSize.length} bubble ไม่ได้ระบุ size`);
+    } else if (msg.type === 'image') {
+      if (!(msg as any).originalContentUrl) errors.push(`Payload ${n}: image message ต้องมี originalContentUrl`);
+      else if (!(msg as any).originalContentUrl.startsWith('https://')) errors.push(`Payload ${n}: originalContentUrl ต้องเป็น HTTPS`);
     } else if (msg.type === 'text') {
       if (!msg.text) errors.push(`Payload ${n}: text message ไม่มีข้อความ`);
     } else {
@@ -219,6 +385,8 @@ export function SendCatalogDialog({
     ...defaultConfig,
   });
   const [layoutMode, setLayoutMode] = useState<'grid' | 'detail'>('grid');
+  const [bubbleSize, setBubbleSize] = useState<BubbleSizeKey>('giga');
+  const [extraItems, setExtraItems] = useState<ExtraItem[]>([]);
   const [productsPerBubble, setProductsPerBubble] = useState(6);
   const [closingText, setClosingText] = useState(
     'ด่วน! โปรโมชั่นนี้มีจำนวนจำกัด ทักแชทสั่งซื้อได้เลยค่ะ 👇'
@@ -235,8 +403,15 @@ export function SendCatalogDialog({
       setValidationResult(null);
       setShowJson(false);
       setLayoutMode('grid');
+      setExtraItems([]);
+      setBubbleSize('giga');
     }
   }, [open]);
+
+  // Sync default bubble size when layout mode changes
+  useEffect(() => {
+    setBubbleSize(layoutMode === 'detail' ? 'kilo' : 'giga');
+  }, [layoutMode]);
 
   // Fetch tags on reaching tag step
   useEffect(() => {
@@ -274,10 +449,6 @@ export function SendCatalogDialog({
     return count;
   }, [layoutMode, products.length, includeClosingText, closingText]);
 
-  const totalPayloads =
-    (layoutMode === 'grid' ? carouselSplits.length : detailCarouselCount) +
-    (includeClosingText && closingText.trim() ? 1 : 0);
-
   // ── Per-carousel payloads for preview ──
   const carouselPayloads = useMemo(() => {
     if (layoutMode === 'grid') {
@@ -303,13 +474,43 @@ export function SendCatalogDialog({
         productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
         closingText: closing,
         maxCarousels: 3,
+        bubbleSize,
       });
     }
     return buildDetailMessages(products, config, {
       closingText: closing,
       maxCarousels: 4,
+      bubbleSize,
     });
-  }, [layoutMode, products, config, productsPerBubble, includeClosingText, closingText]);
+  }, [layoutMode, products, config, productsPerBubble, includeClosingText, closingText, bubbleSize]);
+
+  // finalMessages: flex carousels + interleaved extraItems + optional closing text
+  const finalMessages = useMemo(() => {
+    const flexMsgs = allMessages.filter((m: any) => m.type === 'flex');
+    const closingMsg = allMessages.find((m: any) => m.type === 'text');
+    const result: object[] = [];
+
+    for (let i = 0; i < flexMsgs.length; i++) {
+      result.push(flexMsgs[i]);
+      extraItems
+        .filter(item => item.afterFlexIndex === i)
+        .forEach(item => {
+          if (item.kind === 'text' && item.text.trim()) {
+            result.push({ type: 'text', text: item.text.trim() });
+          } else if (item.kind === 'image' && item.imageUrl && item.uploadState !== 'uploading') {
+            result.push({
+              type: 'image',
+              originalContentUrl: item.imageUrl,
+              previewImageUrl: item.imageUrl,
+            });
+          }
+        });
+    }
+    if (closingMsg) result.push(closingMsg);
+    return result.slice(0, 5);
+  }, [allMessages, extraItems]);
+
+  const totalPayloads = finalMessages.length;
 
   // Extract carousel contents from allMessages for detail-mode preview
   const detailCarouselPayloads = useMemo(() => {
@@ -347,16 +548,52 @@ export function SendCatalogDialog({
   };
 
   const runValidation = useCallback(() => {
-    const result = validateFlexMessages(allMessages);
+    const result = validateFlexMessages(finalMessages);
     setValidationResult(result);
     setJsonValidated(result.valid);
-  }, [allMessages]);
+  }, [finalMessages]);
 
   // Re-validate whenever messages change (mark as un-validated)
   useEffect(() => {
     setJsonValidated(false);
     setValidationResult(null);
-  }, [allMessages]);
+  }, [finalMessages]);
+
+  const uploadImageFile = useCallback(async (itemId: string, file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setExtraItems(prev => prev.map(i => i.id === itemId ? { ...i, uploadState: 'error', uploadError: 'ไฟล์ต้องเป็นรูปภาพเท่านั้น' } : i));
+      return;
+    }
+    setExtraItems(prev => prev.map(i => i.id === itemId ? { ...i, uploadState: 'uploading', imageFile: file } : i));
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const resp = await fetch('/api/inbox/catalog/upload-image', { method: 'POST', body: fd });
+      const data = await resp.json();
+      if (data.success && data.url) {
+        setExtraItems(prev => prev.map(i => i.id === itemId ? { ...i, imageUrl: data.url, uploadState: 'done' } : i));
+      } else {
+        setExtraItems(prev => prev.map(i => i.id === itemId ? { ...i, uploadState: 'error', uploadError: data.error || 'อัพโหลดล้มเหลว' } : i));
+      }
+    } catch (e) {
+      setExtraItems(prev => prev.map(i => i.id === itemId ? { ...i, uploadState: 'error', uploadError: (e as Error).message } : i));
+    }
+  }, []);
+
+  const addExtraItem = (afterFlexIndex: number, kind: ExtraItemKind) => {
+    setExtraItems(prev => [...prev, {
+      id: `${Date.now()}-${Math.random()}`,
+      kind, afterFlexIndex,
+      text: '', imageUrl: '', imageFile: null,
+      uploadState: 'idle', uploadError: '',
+    }]);
+  };
+
+  const removeExtraItem = (id: string) => setExtraItems(prev => prev.filter(i => i.id !== id));
+
+  const updateExtraItem = (id: string, patch: Partial<ExtraItem>) => {
+    setExtraItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
+  };
 
   const handleSend = async () => {
     setSending(true);
@@ -369,9 +606,11 @@ export function SendCatalogDialog({
           products,
           config,
           layoutMode,
+          bubbleSize,
           productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
           closingText: includeClosingText && closingText.trim() ? closingText.trim() : undefined,
           tagIds: Array.from(selectedTagIds),
+          messages: finalMessages,
         }),
       });
       const data = await resp.json();
@@ -466,14 +705,14 @@ export function SendCatalogDialog({
                       mode: 'grid' as const,
                       icon: LayoutGrid,
                       title: 'Grid (ประหยัด Quota)',
-                      desc: '6 สินค้า/Bubble · 2×3 grid · size: giga',
+                      desc: `2×3 grid · size: ${bubbleSize}`,
                       cap: `รองรับสูงสุด ~210 สินค้า`,
                     },
                     {
                       mode: 'detail' as const,
                       icon: FileText,
                       title: 'Detail (รายละเอียดครบ)',
-                      desc: '1 สินค้า/Bubble · ภาพ + ชื่อ + โปร + ราคา · size: kilo',
+                      desc: `1 สินค้า/Bubble · ภาพ + ชื่อ + โปร + ราคา · size: ${bubbleSize}`,
                       cap: `รองรับสูงสุด ~59 สินค้า`,
                     },
                   ] as const).map(({ mode, icon: Icon, title, desc, cap }) => (
@@ -498,6 +737,34 @@ export function SendCatalogDialog({
                       <p className="text-[10px] text-gray-400 mt-0.5">{cap}</p>
                     </button>
                   ))}
+                </div>
+
+                {/* Bubble Size Selector */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1">
+                    Bubble Size
+                    <span className="text-gray-400 font-normal">— manual override</span>
+                  </Label>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {(BUBBLE_SIZES as BubbleSizeKey[]).map(sz => (
+                      <button
+                        key={sz}
+                        type="button"
+                        onClick={() => setBubbleSize(sz)}
+                        className={cn(
+                          'px-2.5 py-1 rounded-md border text-xs font-mono transition-all',
+                          bubbleSize === sz
+                            ? 'border-green-500 bg-green-50 text-green-800 font-semibold'
+                            : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                        )}
+                      >
+                        {sz}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    Grid default: giga · Detail default: kilo · ทุก bubble ใน carousel ต้องขนาดเดียวกัน
+                  </p>
                 </div>
 
                 <div className={cn('grid gap-4', layoutMode === 'grid' ? 'grid-cols-2' : 'grid-cols-1')}>
@@ -544,8 +811,8 @@ export function SendCatalogDialog({
                   </div>
                   <p className="text-xs text-blue-600 pl-6">
                     {layoutMode === 'grid'
-                      ? `2 คอลัมน์ × 3 แถว = 6 สินค้า/Bubble · size=giga`
-                      : `1 สินค้า/Bubble · ภาพ + ชื่อ + โปร + ราคา + CTA · size=kilo`}
+                      ? `2 คอลัมน์ × 3 แถว = 6 สินค้า/Bubble · size=${bubbleSize}`
+                      : `1 สินค้า/Bubble · ภาพ + ชื่อ + โปร + ราคา + CTA · size=${bubbleSize}`}
                   </p>
                 </div>
 
@@ -630,60 +897,80 @@ export function SendCatalogDialog({
 
             {/* ── Step 2: Preview ── */}
             {step === 'preview' && (
-              <div className="space-y-4">
-                <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                  <Eye className="w-4 h-4" />
-                  Preview — {layoutMode === 'grid' ? carouselSplits.length : detailCarouselCount} Flex ·{' '}
-                  {totalPayloads} payload{totalPayloads !== 1 ? 's' : ''} total
-                  <Badge variant="outline" className="text-[10px] ml-1">
-                    {layoutMode === 'grid' ? `size: giga · grid` : `size: kilo · detail`}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                    <Eye className="w-4 h-4" />
+                    Preview &amp; จัดเรียง Payload
+                    <Badge variant="outline" className="text-[10px] ml-1">
+                      {layoutMode === 'grid' ? `size: ${bubbleSize} · grid` : `size: ${bubbleSize} · detail`}
+                    </Badge>
+                  </h3>
+                  <Badge className={cn('text-xs', finalMessages.length >= 5 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700')}>
+                    {finalMessages.length}/5 payloads
                   </Badge>
-                </h3>
+                </div>
 
-                {/* Grid mode carousels */}
-                {layoutMode === 'grid' && carouselPayloads.map((payload, idx) => {
-                  const split = carouselSplits[idx];
-                  return (
-                    <div key={idx} className="rounded-lg border bg-slate-50 p-3 space-y-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className="text-xs font-medium">
-                          Payload {idx + 1} — Flex Carousel
-                        </Badge>
-                        <span className="text-xs text-gray-500">
-                          {split.products.length} สินค้า{split.isFirst ? ' + Cover bubble' : ''}
-                          {split.isFirst && config.heroImageUrl ? ' 🖼️' : ''}
-                        </span>
+                {/* Render flex carousels + inserted items between them */}
+                {(() => {
+                  const flexMsgs = allMessages.filter((m: any) => m.type === 'flex');
+                  const items: React.ReactNode[] = [];
+
+                  flexMsgs.forEach((payload: any, idx: number) => {
+                    const bubbleCount = payload?.contents?.contents?.length ?? 0;
+
+                    // Flex payload card
+                    items.push(
+                      <div key={`flex-${idx}`} className="rounded-lg border bg-slate-50 p-3 space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="outline" className="text-xs font-medium">
+                            Payload — Flex Carousel
+                          </Badge>
+                          <span className="text-xs text-gray-500">
+                            {idx === 0 && layoutMode === 'detail' ? `Cover + ${bubbleCount - 1} สินค้า`
+                              : layoutMode === 'detail' ? `${bubbleCount} สินค้า`
+                              : `${carouselSplits[idx]?.products?.length ?? 0} สินค้า${idx === 0 ? ' + Cover' : ''}`}
+                            {' · '}size: {bubbleSize}
+                          </span>
+                        </div>
+                        <FlexPreview flex={payload?.contents ?? payload} />
                       </div>
-                      <FlexPreview flex={payload} />
-                    </div>
-                  );
-                })}
+                    );
 
-                {/* Detail mode carousels */}
-                {layoutMode === 'detail' && detailCarouselPayloads.map((payload, idx) => {
-                  const flexMsg = allMessages.filter((m: any) => m.type === 'flex')[idx] as any;
-                  const bubbleCount = (payload as any)?.contents?.length ?? 0;
-                  return (
-                    <div key={idx} className="rounded-lg border bg-slate-50 p-3 space-y-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className="text-xs font-medium">
-                          Payload {idx + 1} — Flex Carousel
-                        </Badge>
-                        <span className="text-xs text-gray-500">
-                          {idx === 0 ? `Cover + ${bubbleCount - 1} สินค้า` : `${bubbleCount} สินค้า`}
-                          {idx === 0 && config.heroImageUrl ? ' 🖼️' : ''}
-                          {' · '}size: kilo
-                        </span>
-                      </div>
-                      <FlexPreview flex={payload} />
-                    </div>
-                  );
-                })}
+                    // Extra items after this flex
+                    extraItems
+                      .filter(item => item.afterFlexIndex === idx)
+                      .forEach(item => {
+                        items.push(
+                          <ExtraItemCard
+                            key={item.id}
+                            item={item}
+                            onRemove={() => removeExtraItem(item.id)}
+                            onUpdate={(patch) => updateExtraItem(item.id, patch)}
+                            onUpload={(file) => uploadImageFile(item.id, file)}
+                          />
+                        );
+                      });
 
+                    // Insert slot after this flex (if not at limit)
+                    if (finalMessages.length < 5) {
+                      items.push(
+                        <InsertSlot
+                          key={`slot-${idx}`}
+                          onAdd={(kind) => addExtraItem(idx, kind)}
+                        />
+                      );
+                    }
+                  });
+
+                  return items;
+                })()}
+
+                {/* Closing text */}
                 {includeClosingText && closingText.trim() && (
                   <div className="rounded-lg border bg-slate-50 p-3 space-y-2">
                     <Badge variant="outline" className="text-xs font-medium">
-                      Payload {(layoutMode === 'grid' ? carouselSplits.length : detailCarouselCount) + 1} — Text
+                      Payload — Text (ปิดท้าย)
                     </Badge>
                     <div className="bg-white rounded-lg border p-3 text-sm text-gray-800 whitespace-pre-wrap">
                       {closingText}
@@ -815,8 +1102,8 @@ export function SendCatalogDialog({
                       )}
 
                       {showJson && (
-                        <pre className="bg-gray-900 text-green-400 text-[10px] font-mono rounded p-3 overflow-auto max-h-48 whitespace-pre-wrap leading-relaxed">
-                          {JSON.stringify(allMessages, null, 2)}
+                        <pre className="bg-gray-900 text-green-400 text-[10px] font-mono rounded p-3 overflow-auto max-h-48 whitespace-pre-wrap leading-relaxed break-all">
+                          {JSON.stringify(finalMessages)}
                         </pre>
                       )}
                     </div>
@@ -824,7 +1111,8 @@ export function SendCatalogDialog({
                     {/* ── Summary ── */}
                     <div className="rounded-lg border bg-gray-50 p-4 space-y-2.5 text-sm">
                       {[
-                        ['Layout mode', layoutMode === 'grid' ? 'Grid (6 สินค้า/Bubble · size: giga)' : 'Detail (1 สินค้า/Bubble · size: kilo)'],
+                        ['Layout mode', layoutMode === 'grid' ? 'Grid (6 สินค้า/Bubble)' : 'Detail (1 สินค้า/Bubble)'],
+                        ['Bubble size', `${bubbleSize} (${BUBBLE_SIZE_LABELS[bubbleSize]})`],
                         ['เทมเพลต', TEMPLATE_OPTIONS.find((o) => o.value === config.template)?.label],
                         ['สินค้า', `${products.length} รายการ`],
                         ...(layoutMode === 'grid'
@@ -832,12 +1120,13 @@ export function SendCatalogDialog({
                           : [['ภาพ + ชื่อ + โปร + ราคา', 'ครบทุก Bubble']]),
                         ['Flex Carousels', String(layoutMode === 'grid' ? carouselSplits.length : detailCarouselCount)],
                         ...(includeClosingText && closingText.trim() ? [['ข้อความปิดท้าย', 'มี']] : []),
-                        ['Payloads / call', `${totalPayloads} / 5 ✓`],
+                        ...(extraItems.length > 0 ? [['Extra payloads', `${extraItems.length} รายการ`]] : []),
+                        ['Payloads / call', `${finalMessages.length} / 5 ✓`],
                         ['Tags ที่เลือก', tags.filter((t) => selectedTagIds.has(t.id)).map((t) => t.name).join(', ') || '—'],
                       ].map(([label, val], i) => (
                         <div key={i} className={cn('flex justify-between')}>
                           <span className="text-gray-600">{label}</span>
-                          <span className={cn('font-medium text-right ml-4', label === 'Payloads / call' ? 'text-green-700 font-bold' : label === 'Layout mode' ? (layoutMode === 'detail' ? 'text-violet-700' : 'text-blue-700') : '')}>{val}</span>
+                          <span className={cn('font-medium text-right ml-4', label === 'Payloads / call' ? 'text-green-700 font-bold' : label === 'Layout mode' ? (layoutMode === 'detail' ? 'text-violet-700' : 'text-blue-700') : label === 'Bubble size' ? 'text-indigo-700 font-mono' : '')}>{val}</span>
                         </div>
                       ))}
                       <div className="flex justify-between border-t pt-2">

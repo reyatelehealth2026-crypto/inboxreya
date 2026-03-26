@@ -3,7 +3,7 @@ import { requireAuth } from '@/lib/auth-middleware';
 import prisma from '@/lib/prisma';
 import { pushLineMessage } from '@/lib/line-api';
 import { buildPromoMessages, buildDetailMessages } from '@/lib/flex-builder';
-import type { ExportPreviewProduct, ExportGlobalConfig } from '@/lib/flex-builder';
+import type { ExportPreviewProduct, ExportGlobalConfig, BubbleSizeKey } from '@/lib/flex-builder';
 
 /**
  * POST /api/inbox/catalog/send
@@ -39,6 +39,8 @@ export async function POST(request: NextRequest) {
       productsPerBubble = 6,
       closingText,
       tagIds,
+      bubbleSize,
+      messages: prebuiltMessages,
     } = body as {
       products: ExportPreviewProduct[];
       config: ExportGlobalConfig;
@@ -46,6 +48,8 @@ export async function POST(request: NextRequest) {
       productsPerBubble?: number;
       closingText?: string;
       tagIds: number[];
+      bubbleSize?: string;
+      messages?: object[];
     };
 
     if (!products || !Array.isArray(products) || products.length === 0) {
@@ -62,16 +66,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build all message objects once (reused for every recipient)
+    // Use pre-built messages from client if provided, otherwise rebuild server-side
     const closing = closingText?.trim() || undefined;
     const messages =
-      layoutMode === 'detail'
-        ? buildDetailMessages(products, config, { closingText: closing, maxCarousels: 4 })
-        : buildPromoMessages(products, config, {
-            productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
-            closingText: closing,
-            maxCarousels: 3,
-          });
+      prebuiltMessages && prebuiltMessages.length > 0
+        ? prebuiltMessages
+        : layoutMode === 'detail'
+          ? buildDetailMessages(products, config, {
+              closingText: closing,
+              maxCarousels: 4,
+              bubbleSize: bubbleSize as BubbleSizeKey | undefined,
+            })
+          : buildPromoMessages(products, config, {
+              productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
+              closingText: closing,
+              maxCarousels: 3,
+              bubbleSize: bubbleSize as BubbleSizeKey | undefined,
+            });
 
     if (messages.length === 0) {
       return NextResponse.json(
