@@ -5,7 +5,20 @@
       "Bash(tree:*)",
       "Bash(wc:*)",
       "Bash(du:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(xargs grep:*)",
+      "Bash(mysql -u cny_re_ya_com -pcny_re_ya_com -h 47.82.233.152 cny_re_ya_com -e \"DESCRIBE odoo_bdos;\")",
+      "Bash(npx ts-node -e \":*)",
+      "Bash(node -e \":*)",
+      "Bash(node:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git log:*)",
+      "Bash(curl -v -X POST \"https://cny.re-ya.com/api/bdo-inbox-api.php\" -H \"Content-Type: application/json\" -H \"X-Internal-Secret: UIFW4a63EGivOlJi4ulxBmaV+0S5WpS5i3ofQqzIOhI=\" -d '{\"\"\"\"action\"\"\"\":\"\"\"\"bdo_detail\"\"\"\",\"\"\"\"bdo_id\"\"\"\":46569,\"\"\"\"line_user_id\"\"\"\":\"\"\"\"\"\"\"\"}')",
+      "Bash(grep -A 50 \"CREATE TABLE.*odoo_bdos\" /c/Users/Administrator/odoo/database/*.sql)",
+      "Bash(grep -A 50 \"CREATE TABLE.*odoo_invoices\" /c/Users/Administrator/odoo/database/*.sql)",
+      "Bash(grep -n \"odoo_bdo_context\\\\|selected_invoices_json\" /c/Users/Administrator/odoo/database/*.sql)",
+      "Bash(cp /tmp/FlexPreview_feature.tsx src/components/inbox/FlexPreview.tsx)",
+      "Bash(cp /tmp/Sidebar_feature.tsx src/components/layout/Sidebar.tsx)"
     ]
   }
 }
