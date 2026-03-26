@@ -27,8 +27,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'bdoId is required' }, { status: 400 })
     }
 
+    const cacheKey = lineUserId
+      ? `slipcenter:bdodetail:${bdoId}:${lineUserId}`
+      : `slipcenter:bdodetail:${bdoId}`
     const data = await cacheQuery(
-      `slipcenter:bdodetail:${bdoId}`,
+      cacheKey,
       async () => {
         const res = await fetch(BDO_API, {
           method: 'POST',

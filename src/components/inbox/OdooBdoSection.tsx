@@ -375,8 +375,8 @@ function BdoCard({
     paid: { color: 'bg-green-100 text-green-700', label: 'ชำระแล้ว', icon: CheckCircle2 },
   }
 
-  // Use bdo.line_user_id (real LINE ID e.g. Uxxxxx) not the DB integer userId
-  const bdoLineUserId = bdo.line_user_id ?? lineUserId
+  // Use bdo.line_user_id (real LINE ID e.g. Uxxxxx) — lineUserId prop may be a DB integer, so only use it if it looks like a LINE UID
+  const bdoLineUserId = bdo.line_user_id ?? (lineUserId.startsWith('U') ? lineUserId : '')
 
   // Auto-fetch net_to_pay from PHP financial calculation (same data as LINE notification)
   const { data: netToPay, isLoading: netToPayLoading } = useQuery<number | null>({
