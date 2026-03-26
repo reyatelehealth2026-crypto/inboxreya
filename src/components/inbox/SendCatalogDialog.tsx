@@ -44,6 +44,7 @@ import {
   UploadCloud,
   Link,
   XCircle,
+  Calendar,
 } from 'lucide-react';
 import { FlexPreview } from './FlexPreview';
 import {
@@ -69,7 +70,7 @@ interface TagInfo {
   userCount: number;
 }
 
-type Step = 'flex-settings' | 'preview' | 'select-tags' | 'confirm';
+type Step = 'flex-settings' | 'preview' | 'select-tags' | 'schedule' | 'confirm';
 
 type ExtraItemKind = 'text' | 'image';
 interface ExtraItem {
@@ -96,6 +97,7 @@ const STEPS: { key: Step; label: string; icon: React.ElementType }[] = [
   { key: 'flex-settings', label: 'ตั้งค่า', icon: Settings2 },
   { key: 'preview', label: 'Preview', icon: Eye },
   { key: 'select-tags', label: 'Tags', icon: Tag },
+  { key: 'schedule', label: 'กำหนดเวลา', icon: Calendar },
   { key: 'confirm', label: 'ยืนยัน', icon: CheckCircle2 },
 ];
 
@@ -369,6 +371,11 @@ export function SendCatalogDialog({
   const [jsonValidated, setJsonValidated] = useState(false);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
 
+  // Schedule state
+  const [sendMode, setSendMode] = useState<'now' | 'scheduled'>('now');
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [scheduledTime, setScheduledTime] = useState('09:00');
+
   // Flex config
   const initialDefaults = getTemplateDefaults(
     (defaultConfig?.template as FlexMessageTemplate) ?? 'promotion'
@@ -405,6 +412,9 @@ export function SendCatalogDialog({
       setLayoutMode('grid');
       setExtraItems([]);
       setBubbleSize('giga');
+      setSendMode('now');
+      setScheduledDate('');
+      setScheduledTime('09:00');
     }
   }, [open]);
 
@@ -599,27 +609,47 @@ export function SendCatalogDialog({
     setSending(true);
     setSendResult(null);
     try {
-      const resp = await fetch('/api/inbox/catalog/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          products,
-          config,
-          layoutMode,
-          bubbleSize,
-          productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
-          closingText: includeClosingText && closingText.trim() ? closingText.trim() : undefined,
-          tagIds: Array.from(selectedTagIds),
-          messages: finalMessages,
-        }),
-      });
-      const data = await resp.json();
-      setSendResult(
-        data.success
-          ? { success: true, ...data.data }
-          : { success: false, error: data.error }
-      );
-      if (data.success) setStep('confirm');
+      if (sendMode === 'scheduled') {
+        const resp = await fetch('/api/inbox/broadcasts/schedule', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: finalMessages,
+            tagIds: Array.from(selectedTagIds),
+            scheduledAt: new Date(scheduledDate + 'T' + scheduledTime).toISOString(),
+            totalRecipients: totalTargetUsers,
+            title: `โปรโมชั่น ${products.length} สินค้า`,
+          }),
+        });
+        const data = await resp.json();
+        setSendResult(
+          data.success
+            ? { success: true }
+            : { success: false, error: data.error }
+        );
+      } else {
+        const resp = await fetch('/api/inbox/catalog/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            products,
+            config,
+            layoutMode,
+            bubbleSize,
+            productsPerBubble: Math.min(Math.max(1, productsPerBubble), 6),
+            closingText: includeClosingText && closingText.trim() ? closingText.trim() : undefined,
+            tagIds: Array.from(selectedTagIds),
+            messages: finalMessages,
+          }),
+        });
+        const data = await resp.json();
+        setSendResult(
+          data.success
+            ? { success: true, ...data.data }
+            : { success: false, error: data.error }
+        );
+        if (data.success) setStep('confirm');
+      }
     } catch (err) {
       setSendResult({ success: false, error: (err as Error).message });
     } finally {
@@ -634,6 +664,7 @@ export function SendCatalogDialog({
     // Allow proceeding when no tags exist in the system (so JSON validation is still reachable)
     // If tags DO exist, require at least one to be selected
     : step === 'select-tags' ? (selectedTagIds.size > 0 || (!loadingTags && tags.length === 0))
+    : step === 'schedule' ? (sendMode === 'now' || (sendMode === 'scheduled' && scheduledDate !== ''))
     : false;
 
   const goNext = () => { const n = STEPS[stepIndex + 1]; if (n) setStep(n.key); };
@@ -1029,7 +1060,97 @@ export function SendCatalogDialog({
               </div>
             )}
 
-            {/* ── Step 4: Confirm ── */}
+            {/* ── Step 4: Schedule ── */}
+            {step === 'schedule' && (
+              <div className="space-y-6">
+                <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  กำหนดเวลาส่ง
+                </h3>
+
+                {/* Mode selection */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setSendMode('now')}
+                    className={cn(
+                      'rounded-xl border-2 p-4 text-left transition-all',
+                      sendMode === 'now'
+                        ? 'border-green-500 bg-green-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    )}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Send className={cn('w-4 h-4', sendMode === 'now' ? 'text-green-600' : 'text-gray-400')} />
+                      <span className={cn('text-sm font-semibold', sendMode === 'now' ? 'text-green-800' : 'text-gray-700')}>
+                        ส่งทันที
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500">ส่งข้อความไปยัง LINE ทันที</p>
+                  </button>
+
+                  <button
+                    onClick={() => setSendMode('scheduled')}
+                    className={cn(
+                      'rounded-xl border-2 p-4 text-left transition-all',
+                      sendMode === 'scheduled'
+                        ? 'border-green-500 bg-green-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    )}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Calendar className={cn('w-4 h-4', sendMode === 'scheduled' ? 'text-green-600' : 'text-gray-400')} />
+                      <span className={cn('text-sm font-semibold', sendMode === 'scheduled' ? 'text-green-800' : 'text-gray-700')}>
+                        ตั้งเวลาส่ง
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500">บันทึกลงปฏิทินและส่งตามเวลาที่กำหนด</p>
+                  </button>
+                </div>
+
+                {sendMode === 'scheduled' && (
+                  <div className="space-y-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">วันที่ส่ง</Label>
+                      <Input
+                        type="date"
+                        value={scheduledDate}
+                        onChange={(e) => setScheduledDate(e.target.value)}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">เวลาที่ส่ง</Label>
+                      <Input
+                        type="time"
+                        value={scheduledTime}
+                        onChange={(e) => setScheduledTime(e.target.value)}
+                        className="text-sm"
+                      />
+                    </div>
+                    {scheduledDate && (
+                      <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 rounded-lg p-3 border border-green-200">
+                        <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>
+                          บันทึกในปฏิทิน:{' '}
+                          <strong>
+                            {new Date(scheduledDate + 'T' + scheduledTime).toLocaleDateString('th-TH', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </strong>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Step 5: Confirm ── */}
             {step === 'confirm' && (
               <div className="space-y-4">
                 <h3 className="font-semibold text-gray-800 flex items-center gap-2">
@@ -1042,15 +1163,34 @@ export function SendCatalogDialog({
                   <div className={cn('rounded-lg border p-4 space-y-2',
                     sendResult.success ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300')}>
                     {sendResult.success ? (
-                      <>
-                        <div className="flex items-center gap-2 text-green-700 font-medium">
-                          <CheckCircle2 className="w-5 h-5" /> ส่งสำเร็จ!
+                      sendMode === 'scheduled' ? (
+                        <div className="text-center space-y-3">
+                          <div className="flex items-center justify-center w-12 h-12 bg-green-100 rounded-full mx-auto">
+                            <Calendar className="w-6 h-6 text-green-600" />
+                          </div>
+                          <h3 className="font-semibold text-green-800">บันทึกในปฏิทินแล้ว</h3>
+                          <p className="text-sm text-gray-600">
+                            จะส่งไปยัง {Array.from(selectedTagIds).length} แท็ก ในวันที่{' '}
+                            {new Date(scheduledDate + 'T' + scheduledTime).toLocaleDateString('th-TH', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </p>
                         </div>
-                        <div className="text-sm text-green-700 space-y-1">
-                          <p>ส่งให้ <strong>{sendResult.totalUsers}</strong> ผู้ใช้ × <strong>{totalPayloads}</strong> payloads</p>
-                          <p>สำเร็จ <strong>{sendResult.successCount}</strong> · {sendResult.failCount ? `ล้มเหลว ${sendResult.failCount}` : 'ไม่มีความผิดพลาด'}</p>
-                        </div>
-                      </>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2 text-green-700 font-medium">
+                            <CheckCircle2 className="w-5 h-5" /> ส่งสำเร็จ!
+                          </div>
+                          <div className="text-sm text-green-700 space-y-1">
+                            <p>ส่งให้ <strong>{sendResult.totalUsers}</strong> ผู้ใช้ × <strong>{totalPayloads}</strong> payloads</p>
+                            <p>สำเร็จ <strong>{sendResult.successCount}</strong> · {sendResult.failCount ? `ล้มเหลว ${sendResult.failCount}` : 'ไม่มีความผิดพลาด'}</p>
+                          </div>
+                        </>
+                      )
                     ) : (
                       <div className="flex items-start gap-2 text-red-700">
                         <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
@@ -1163,7 +1303,7 @@ export function SendCatalogDialog({
               </Button>
             )}
 
-            {step === 'confirm' && !sendResult && (
+            {step === 'confirm' && !sendResult && sendMode === 'now' && (
               <Button onClick={handleSend} disabled={sending || !jsonValidated || selectedTagIds.size === 0} className="bg-green-600 hover:bg-green-700">
                 {sending ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> กำลังส่ง...</>
@@ -1173,6 +1313,18 @@ export function SendCatalogDialog({
                   <><AlertCircle className="w-4 h-4 mr-2" /> ตรวจสอบ JSON ก่อนส่ง</>
                 ) : (
                   <><Send className="w-4 h-4 mr-2" /> ยืนยันส่ง ({totalTargetUsers.toLocaleString()} คน)</>
+                )}
+              </Button>
+            )}
+
+            {step === 'confirm' && !sendResult && sendMode === 'scheduled' && (
+              <Button onClick={handleSend} disabled={sending || !jsonValidated || selectedTagIds.size === 0 || !scheduledDate} className="bg-green-600 hover:bg-green-700">
+                {sending ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> กำลังบันทึก...</>
+                ) : !jsonValidated ? (
+                  <><AlertCircle className="w-4 h-4 mr-2" /> ตรวจสอบ JSON ก่อน</>
+                ) : (
+                  <><Calendar className="w-4 h-4 mr-2" /> บันทึกปฏิทิน</>
                 )}
               </Button>
             )}
