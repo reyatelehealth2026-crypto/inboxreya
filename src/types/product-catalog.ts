@@ -1,3 +1,10 @@
+import {
+  buildFlexPayload,
+  buildProductCard,
+  type ExportPreviewProduct,
+  type FlexMessageTemplate,
+} from '@/lib/flex-builder';
+
 // Types for Product Catalog
 export interface ProductData {
   id: number;
@@ -87,101 +94,87 @@ export interface SelectedProduct {
   selectedUnit: ProductUnit | null;
 }
 
-// Helper functions for Flex Message generation
-export function generateProductBubble(product: Product, quantity: number = 1, unit?: ProductUnit): object {
+function getSelectedPrice(product: Product, unit?: ProductUnit | null): ProductPriceItem | undefined {
+  const allPrices = product.product_price.flatMap((priceGroup) => priceGroup.product_price ?? []);
+  if (!unit) {
+    return allPrices[0];
+  }
+
+  return (
+    allPrices.find((price) => price.product_unit_id === unit.id) ||
+    allPrices[0]
+  );
+}
+
+function getRibbonText(product: Product): string {
+  if (product.product_is_flashSale === 1) return 'FLASH SALE';
+  if (product.product_data[0]?.is_promotion === 1) return 'PROMOTION';
+  if (product.product_data[0]?.is_bestseller === 1) return 'BESTSELLER';
+  return '';
+}
+
+export function selectedProductToPreviewProduct(
+  product: Product,
+  quantity: number = 1,
+  unit?: ProductUnit | null
+): ExportPreviewProduct {
   const data = product.product_data[0];
-  const price = product.product_price[0]?.product_price[0];
+  const price = getSelectedPrice(product, unit);
   const photo = product.product_photo[0];
-  const displayPrice = price?.promotion_price !== '0.00' 
-    ? parseFloat(price.promotion_price) 
-    : parseFloat(price?.price || '0');
+  const basePrice = parseFloat(price?.price || '0');
+  const promotionPriceRaw = parseFloat(price?.promotion_price || '0');
+  const promotionPrice =
+    Number.isFinite(promotionPriceRaw) && promotionPriceRaw > 0 && promotionPriceRaw < basePrice
+      ? promotionPriceRaw
+      : null;
 
   return {
-    type: 'bubble',
-    size: 'micro',
-    hero: photo ? {
-      type: 'image',
-      url: `https://www.cnypharmacy.com/${photo.photo_path}`,
-      size: 'full',
-      aspectRatio: '1:1',
-      aspectMode: 'cover'
-    } : undefined,
-    body: {
-      type: 'box',
-      layout: 'vertical',
-      contents: [
-        {
-          type: 'text',
-          text: data.name.substring(0, 40) + (data.name.length > 40 ? '...' : ''),
-          weight: 'bold',
-          size: 'sm',
-          wrap: true
-        },
-        {
-          type: 'text',
-          text: `SKU: ${data.sku}`,
-          size: 'xs',
-          color: '#666666',
-          margin: 'sm'
-        },
-        {
-          type: 'box',
-          layout: 'horizontal',
-          margin: 'md',
-          contents: [
-            {
-              type: 'text',
-              text: unit ? `${quantity} ${unit.unit}` : `${quantity} ชิ้น`,
-              size: 'sm',
-              flex: 1
-            },
-            {
-              type: 'text',
-              text: `฿${displayPrice.toLocaleString()}`,
-              weight: 'bold',
-              size: 'sm',
-              color: '#15803D',
-              align: 'end'
-            }
-          ]
-        }
-      ]
-    },
-    footer: data.is_rx === 1 ? {
-      type: 'box',
-      layout: 'vertical',
-      contents: [
-        {
-          type: 'text',
-          text: '⚠️ ยาตามใบสั่งแพทย์',
-          size: 'xs',
-          color: '#DC2626',
-          align: 'center'
-        }
-      ],
-      backgroundColor: '#FEF2F2',
-      paddingAll: '8px'
-    } : undefined
+    productId: data?.id || 0,
+    sku: data?.sku || '',
+    name: data?.name || '',
+    imageUrl: photo ? `https://www.cnypharmacy.com/${photo.photo_path}` : null,
+    basePrice,
+    promotionPrice,
+    unitLabel: unit?.unit || '',
+    quantity,
+    productUrl: data?.sku ? `https://www.cnypharmacy.com/product/${data.sku}` : undefined,
+    isPrescription: data?.is_rx === 1,
+    ribbonText: getRibbonText(product),
   };
+}
+
+// Helper functions for Flex Message generation
+export function generateProductBubble(product: Product, quantity: number = 1, unit?: ProductUnit): object {
+  return buildProductCard(selectedProductToPreviewProduct(product, quantity, unit), {
+    template: 'product_catalog',
+    title: '',
+    intro: '',
+    footerText: '',
+    ctaLabel: 'ดูรายละเอียด',
+    theme: 'emerald',
+    includeIntroBubble: false,
+  });
 }
 
 export function generateFlexCarousel(products: SelectedProduct[]): object {
-  return {
-    type: 'carousel',
-    contents: products.map(p => generateProductBubble(p.product, p.quantity, p.selectedUnit || undefined))
-  };
+  return buildFlexPayload(
+    products.map((p) => selectedProductToPreviewProduct(p.product, p.quantity, p.selectedUnit)),
+    {
+      template: 'product_catalog',
+      title: '',
+      intro: '',
+      footerText: '',
+      ctaLabel: 'ดูรายละเอียด',
+      theme: 'emerald',
+      includeIntroBubble: false,
+    }
+  );
 }
 
-// Flex Message Template Types
-export type FlexMessageTemplate = 
-  | 'product_catalog' 
-  | 'promotion' 
-  | 'flash_sale' 
-  | 'new_arrival' 
-  | 'bestseller';
+export type { FlexMessageTemplate };
 
 export function generateFlexMessageByTemplate(
-  products: SelectedProduct[], 
+  products: SelectedProduct[],
   template: FlexMessageTemplate,
   options?: {
     title?: string;
@@ -189,91 +182,26 @@ export function generateFlexMessageByTemplate(
     headerColor?: string;
   }
 ): object {
-  const bubbles = products.map(p => generateProductBubble(p.product, p.quantity, p.selectedUnit || undefined));
-  
-  const headerTexts: Record<FlexMessageTemplate, { title: string; subtitle: string; color: string }> = {
-    product_catalog: { 
-      title: options?.title || '📋 แคตตาล็อคสินค้า', 
-      subtitle: options?.subtitle || 'เลือกสินค้าที่ต้องการ',
-      color: options?.headerColor || '#15803D'
-    },
-    promotion: { 
-      title: options?.title || '🔥 โปรโมชั่นพิเศษ', 
-      subtitle: options?.subtitle || 'จำกัดเวลา!',
-      color: options?.headerColor || '#EA580C'
-    },
-    flash_sale: { 
-      title: options?.title || '⚡ Flash Sale', 
-      subtitle: options?.subtitle || 'รีบเลยก่อนหมด!',
-      color: options?.headerColor || '#DC2626'
-    },
-    new_arrival: { 
-      title: options?.title || '✨ สินค้าใหม่', 
-      subtitle: options?.subtitle || 'มาใหม่ล่าสุด',
-      color: options?.headerColor || '#7C3AED'
-    },
-    bestseller: { 
-      title: options?.title || '🏆 สินค้าขายดี', 
-      subtitle: options?.subtitle || 'ยอดนิยมจากลูกค้า',
-      color: options?.headerColor || '#CA8A04'
+  return buildFlexPayload(
+    products.map((p) => selectedProductToPreviewProduct(p.product, p.quantity, p.selectedUnit)),
+    {
+      template,
+      title: options?.title || '',
+      intro: options?.subtitle || '',
+      footerText: 'แตะปุ่มเพื่อดูรายละเอียดสินค้าเพิ่มเติม',
+      ctaLabel: template === 'product_catalog' ? 'ดูรายละเอียด' : 'ดูสินค้า',
+      theme:
+        template === 'promotion'
+          ? 'rose'
+          : template === 'flash_sale'
+            ? 'amber'
+            : template === 'new_arrival'
+              ? 'violet'
+              : 'emerald',
+      accentColor: options?.headerColor,
+      includeIntroBubble: template !== 'product_catalog',
     }
-  };
-
-  const header = headerTexts[template];
-
-  return {
-    type: 'bubble',
-    size: 'mega',
-    header: {
-      type: 'box',
-      layout: 'vertical',
-      backgroundColor: header.color,
-      paddingAll: '12px',
-      alignItems: 'center',
-      contents: [
-        {
-          type: 'text',
-          text: header.title,
-          color: '#FFFFFF',
-          weight: 'bold',
-          size: 'lg'
-        },
-        {
-          type: 'text',
-          text: header.subtitle,
-          color: '#FFFFFF',
-          size: 'sm',
-          margin: 'sm'
-        }
-      ]
-    },
-    body: {
-      type: 'box',
-      layout: 'vertical',
-      contents: [
-        {
-          type: 'carousel',
-          contents: bubbles
-        }
-      ]
-    },
-    footer: {
-      type: 'box',
-      layout: 'vertical',
-      contents: [
-        {
-          type: 'button',
-          action: {
-            type: 'uri',
-            label: 'ดูสินค้าทั้งหมด',
-            uri: 'https://www.cnypharmacy.com'
-          },
-          style: 'primary',
-          color: header.color
-        }
-      ]
-    }
-  };
+  );
 }
 
 // Validation helpers

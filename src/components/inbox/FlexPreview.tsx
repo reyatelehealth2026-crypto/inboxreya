@@ -23,6 +23,14 @@ const spacingMap: Record<string, number> = {
   xxl: 24,
 }
 
+/** Parse named spacing (xs/sm/md…) or pixel values like '24px' / '6px' */
+function parseSizeValue(value: string | undefined): number {
+  if (!value || value === 'none') return 0;
+  if (value in spacingMap) return spacingMap[value];
+  const m = value.match(/^(\d+(?:\.\d+)?)px$/);
+  return m ? parseFloat(m[1]) : 0;
+}
+
 const textSizeMap: Record<string, number> = {
   xxs: 9,
   xs: 10,
@@ -80,6 +88,11 @@ function FlexFrame({ children }: { children: React.ReactNode }) {
 function BubbleShell({ bubble }: { bubble: FlexContent }) {
   const size = bubble.size || 'mega'
   const width = bubbleWidthMap[size] ?? bubbleWidthMap.mega
+  // Respect LINE bubble `styles` section for section background colours
+  const bodyBg: string = bubble.styles?.body?.backgroundColor ?? '#ffffff'
+  const footerBg: string | undefined = bubble.styles?.footer?.backgroundColor
+  const headerBg: string | undefined = bubble.styles?.header?.backgroundColor
+
   return (
     <div
       style={{
@@ -94,13 +107,20 @@ function BubbleShell({ bubble }: { bubble: FlexContent }) {
     >
       {bubble.hero && <div>{renderHero(bubble.hero)}</div>}
       {bubble.header && (
-        <div style={{ padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+        <div style={{ background: headerBg ?? '#f8fafc', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
           {renderBox(bubble.header)}
         </div>
       )}
-      {bubble.body && <div style={{ padding: '12px 16px' }}>{renderBox(bubble.body)}</div>}
+      {/* No outer padding — each body box sets its own via paddingAll */}
+      {bubble.body && (
+        <div style={{ background: bodyBg }}>
+          {renderBox(bubble.body)}
+        </div>
+      )}
       {bubble.footer && (
-        <div style={{ padding: '12px 16px', borderTop: '1px solid #e2e8f0' }}>{renderBox(bubble.footer)}</div>
+        <div style={{ background: footerBg ?? '#ffffff', borderTop: footerBg ? 'none' : '1px solid #e2e8f0' }}>
+          {renderBox(bubble.footer)}
+        </div>
       )}
     </div>
   )
@@ -141,9 +161,10 @@ function renderBox(box: FlexContent): React.ReactNode {
   }
 
   const layout = box.layout || 'vertical'
-  const spacing = spacingMap[box.spacing || 'none'] ?? 0
-  const padding = spacingMap[box.paddingAll || 'none'] ?? 0
+  const spacing = parseSizeValue(box.spacing)
+  const padding = parseSizeValue(box.paddingAll)
   const backgroundColor = box.backgroundColor || 'transparent'
+  const borderRadius = box.cornerRadius ? parseSizeValue(box.cornerRadius) : undefined
 
   return (
     <div
@@ -153,9 +174,13 @@ function renderBox(box: FlexContent): React.ReactNode {
         gap: spacing,
         padding,
         backgroundColor,
+        borderRadius,
         alignItems: alignMap[box.alignItems] || undefined,
         justifyContent: justifyMap[box.justifyContent] || undefined,
         flex: box.flex !== undefined ? box.flex : undefined,
+        width: box.width || undefined,
+        minWidth: 0,
+        overflow: 'hidden',
       }}
     >
       {Array.isArray(box.contents) ? box.contents.map((item, index) => (
@@ -194,7 +219,7 @@ function renderText(text: FlexContent) {
   const color = text.color || '#333333'
   const align = text.align || 'start'
   const wrap = text.wrap !== false
-  const marginTop = spacingMap[text.margin || 'none'] ?? 0
+  const marginTop = parseSizeValue(text.margin)
   const decoration = text.decoration === 'line-through' ? 'line-through' : 'none'
 
   return (
@@ -220,7 +245,7 @@ function renderText(text: FlexContent) {
 
 function renderImage(img: FlexContent) {
   const aspectRatio = img.aspectRatio ? img.aspectRatio.replace(':', ' / ') : '1 / 1'
-  const marginTop = spacingMap[img.margin || 'none'] ?? 0
+  const marginTop = parseSizeValue(img.margin)
   return (
     <div
       style={{
@@ -258,7 +283,7 @@ function renderButton(btn: FlexContent) {
   const style = btn.style || 'link'
   const height = btn.height || 'md'
   const color = btn.color || '#06C755'
-  const marginTop = spacingMap[btn.margin || 'none'] ?? 0
+  const marginTop = parseSizeValue(btn.margin)
   const paddingY = height === 'sm' ? 6 : height === 'lg' ? 12 : 8
 
   let background = 'transparent'
