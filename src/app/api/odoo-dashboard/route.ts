@@ -183,29 +183,55 @@ async function handleRequest(request: NextRequest) {
       })
     }
 
-    // Non-cacheable: proxy ตรงๆ
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': 'InboxReya-OdooDashboard/1.0',
-      },
-      body: JSON.stringify(input),
-      cache: 'no-store',
-    })
+    // Non-cacheable: proxy ตรงๆ (timeout 35s สำหรับ mutation actions ที่เรียก Odoo API)
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 35_000)
+    let response: Response
+    try {
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'InboxReya-OdooDashboard/1.0',
+        },
+        body: JSON.stringify(input),
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timeoutId)
+    }
+
+    const raw = await response.text()
+    if (!raw.trim()) {
+      console.error('[OdooDashboard] Empty response body from PHP, action:', action)
+      return NextResponse.json(
+        { success: false, error: 'PHP backend returned empty response' },
+        { status: 502 }
+      )
+    }
 
     const contentType = response.headers.get('content-type')
     if (!contentType || !contentType.includes('application/json')) {
-      const text = await response.text()
-      console.error('[OdooDashboard] Non-JSON response:', text.substring(0, 300))
+      console.error('[OdooDashboard] Non-JSON response:', raw.substring(0, 300))
       return NextResponse.json(
         { success: false, error: 'PHP backend returned non-JSON response' },
         { status: 502 }
       )
     }
 
-    const result = await response.json()
+    let result: unknown
+    try {
+      result = JSON.parse(raw)
+    } catch (parseErr) {
+      console.error('[OdooDashboard] JSON parse error, action:', action, 'body prefix:', raw.substring(0, 300))
+      return NextResponse.json(
+        { success: false, error: 'PHP backend returned malformed JSON' },
+        { status: 502 }
+      )
+    }
+
     return NextResponse.json(result, { status: response.status })
   } catch (error) {
     console.error('[OdooDashboard] Error:', error)
