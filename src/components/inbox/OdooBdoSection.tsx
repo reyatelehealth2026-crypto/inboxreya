@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
+import { useCustomerProfile } from '@/hooks/use-customer-profile'
 import { SlipUploadModal } from './SlipUploadModal'
 import { FlexPreview } from './FlexPreview'
 import { BdoDetailPanel } from '@/components/slip-center/BdoDetailPanel'
@@ -78,6 +79,7 @@ async function fetchPendingBdos(userId: string): Promise<{ bdo_orders: BdoOrderR
 export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const { data: customerProfile } = useCustomerProfile(userId)
   const { data, isLoading, error } = useQuery({
     queryKey: ['customer-bdos', userId],
     queryFn: () => fetchPendingBdos(userId),
@@ -247,6 +249,9 @@ export function OdooBdoSection({ userId, memberId }: OdooBdoSectionProps) {
           onClose={() => setSelectedBdo(null)}
           bdo={selectedBdo}
           userId={userId}
+          customerName={customerProfile?.user?.displayName || customerProfile?.user?.realName || null}
+          customerAvatar={customerProfile?.user?.pictureUrl || null}
+          customerId={customerProfile?.user?.id || null}
           onSuccess={() => {
             setSelectedBdo(null)
             refreshAll()
