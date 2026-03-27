@@ -163,7 +163,7 @@ export function BroadcastList() {
                       const status = statusConfig[broadcast.status]
                       const StatusIcon = status.icon
                       const successRate = broadcast.totalRecipients > 0 
-                        ? Math.round((broadcast.successCount / broadcast.totalRecipients) * 100)
+                        ? Math.round((broadcast.deliveredCount / broadcast.totalRecipients) * 100)
                         : 0
                       
                       return (

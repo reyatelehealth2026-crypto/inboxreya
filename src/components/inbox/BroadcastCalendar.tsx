@@ -98,7 +98,12 @@ export function BroadcastCalendar() {
   const handleCancel = async (id: number) => {
     setCancelling(id);
     try {
-      await fetch(`/api/inbox/broadcasts/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/inbox/broadcasts/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!data.success) {
+        console.error('Failed to cancel broadcast:', data.error);
+        return;
+      }
       setBroadcasts((prev) => prev.filter((b) => b.id !== id));
       setSelectedBroadcast(null);
       if (

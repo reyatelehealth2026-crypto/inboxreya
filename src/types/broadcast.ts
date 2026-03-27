@@ -9,8 +9,8 @@ export interface Broadcast {
   scheduledAt?: string | null
   sentAt?: string | null
   totalRecipients: number
-  successCount: number
-  failedCount: number
+  deliveredCount: number
+  readCount: number
   status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled'
   createdBy: number
   createdAt: string

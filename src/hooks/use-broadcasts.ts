@@ -78,8 +78,8 @@ export function useCancelBroadcast() {
   
   return useMutation({
     mutationFn: async (id: number) => {
-      const res = await fetch(`${API_BASE}/broadcasts/${id}/cancel`, {
-        method: 'POST',
+      const res = await fetch(`${API_BASE}/broadcasts/${id}`, {
+        method: 'DELETE',
       })
       if (!res.ok) throw new Error('Failed to cancel broadcast')
       return res.json()
