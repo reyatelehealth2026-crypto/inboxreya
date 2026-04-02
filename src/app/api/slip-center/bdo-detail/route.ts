@@ -63,9 +63,27 @@ export async function GET(request: NextRequest) {
 
         // bdo-inbox-api wraps result under json.data which contains the actionBdoDetail return
         const d = json.data || {}
+        const bdo = d.bdo ?? null
+
+        // Only show BDOs dated >= 2025-03-24 AND not yet paid
+        const CUTOFF = new Date('2025-03-24T00:00:00+07:00')
+        if (bdo) {
+          const rawDate = bdo.doc_date ?? bdo.bdo_date ?? null
+          if (!rawDate) {
+            throw new Error('BDO_FILTERED: BDO ไม่มีวันที่ ไม่แสดงในระบบ')
+          }
+          const bdoDate = new Date(rawDate)
+          if (isNaN(bdoDate.getTime()) || bdoDate < CUTOFF) {
+            throw new Error('BDO_FILTERED: ข้อมูลก่อน 24 มีนาคม 2568 ถูกปิดแล้ว')
+          }
+          const state = String(bdo.state ?? bdo.payment_state ?? '').toLowerCase()
+          if (state === 'paid' || state === 'in_payment' || state === 'reversed' || state === 'cancelled') {
+            throw new Error('BDO_FILTERED: BDO นี้ชำระแล้ว ไม่แสดงในระบบ')
+          }
+        }
 
         return {
-          bdo:                  d.bdo                  ?? null,
+          bdo:                  bdo,
           sale_orders:          d.sale_orders          ?? [],
           outstanding_invoices: d.outstanding_invoices ?? [],
           credit_notes:         d.credit_notes         ?? [],
