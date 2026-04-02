@@ -52,13 +52,7 @@ export async function GET(request: NextRequest) {
           throw new Error(json.error || 'PHP error')
         }
 
-        const CUTOFF_STR = '2025-03-24'
-        const isAfterCutoff = (b: any) => {
-          const rawDate = b?.bdo_date ?? b?.doc_date ?? null
-          if (!rawDate) return false  // no date = block
-          const d = String(rawDate).slice(0, 10)
-          return /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= CUTOFF_STR
-        }
+        // No date filter here — PHP already filters by bdo_date >= 2025-03-24
 
         const d = json.data
         const rawBdos: any[] = d.bdo_orders ?? []
@@ -69,7 +63,7 @@ export async function GET(request: NextRequest) {
           return s === 'paid' || s === 'fully_paid' || s === 'done' || st === 'done'
         }
 
-        const activeBdos = rawBdos.filter(b => !isPaid(b) && isAfterCutoff(b))
+        const activeBdos = rawBdos.filter(b => !isPaid(b))
         const paidBdos   = rawBdos.filter(b => isPaid(b))
 
         return {

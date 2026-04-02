@@ -60,13 +60,7 @@ export async function GET(request: NextRequest) {
           ? bdoRes.data.bdos
           : []
 
-        const CUTOFF_STR = '2025-03-24'
-        const isAfterCutoff = (b: any) => {
-          const rawDate = b?.bdo_date ?? b?.doc_date ?? null
-          if (!rawDate) return false  // no date = block
-          const d = String(rawDate).slice(0, 10)
-          return /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= CUTOFF_STR
-        }
+        // No date filter here — PHP already filters by bdo_date >= 2025-03-24
 
         const isPaidStatus = (b: any) => {
           const status = String(b?.payment_status || b?.status || '').toLowerCase()
@@ -75,7 +69,7 @@ export async function GET(request: NextRequest) {
 
         const paidBdos = rawBdos.filter((b: any) => isPaidStatus(b))
 
-        const activeBdos = rawBdos.filter((b: any) => !isPaidStatus(b) && isAfterCutoff(b))
+        const activeBdos = rawBdos.filter((b: any) => !isPaidStatus(b))
 
         const pendingBdos = activeBdos.filter((b: any) => {
           const status = String(b?.payment_status || b?.status || '').toLowerCase()

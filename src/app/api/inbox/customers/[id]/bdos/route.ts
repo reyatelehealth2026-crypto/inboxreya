@@ -67,17 +67,8 @@ export async function GET(
         }
 
         const res = await response.json()
-        const raw = res.data || { bdo_orders: res.bdo_orders || [], total: res.total || 0 }
-        const CUTOFF_STR = '2025-03-24'
-        const bdoOrders: any[] = raw.bdo_orders ?? []
-        const filtered = bdoOrders.filter((b: any) => {
-          // Use only bdo_date/doc_date — never fall back to created_at (sync date != BDO date)
-          const rawDate = b?.bdo_date ?? b?.doc_date ?? null
-          if (!rawDate) return false  // no date = block
-          const d = String(rawDate).slice(0, 10)
-          return /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= CUTOFF_STR
-        })
-        return { ...raw, bdo_orders: filtered, total: filtered.length }
+        // PHP already filters by bdo_date >= 2025-03-24
+        return res.data || { bdo_orders: res.bdo_orders || [], total: res.total || 0 }
       },
       CACHE_TTL.ORDERS  // 30s
     )
