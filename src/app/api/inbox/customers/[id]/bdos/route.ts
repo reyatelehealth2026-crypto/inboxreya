@@ -67,7 +67,14 @@ export async function GET(
         }
 
         const res = await response.json()
-        return res.data || { bdo_orders: res.bdo_orders || [], total: res.total || 0 }
+        const raw = res.data || { bdo_orders: res.bdo_orders || [], total: res.total || 0 }
+        const CUTOFF_STR = '2025-03-24'
+        const bdoOrders: any[] = raw.bdo_orders ?? []
+        const filtered = bdoOrders.filter((b: any) => {
+          const d = String(b?.bdo_date ?? b?.doc_date ?? b?.created_at ?? '').slice(0, 10)
+          return /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= CUTOFF_STR
+        })
+        return { ...raw, bdo_orders: filtered, total: filtered.length }
       },
       CACHE_TTL.ORDERS  // 30s
     )

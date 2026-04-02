@@ -60,6 +60,13 @@ export async function GET(request: NextRequest) {
           ? bdoRes.data.bdos
           : []
 
+        const CUTOFF_STR = '2025-03-24'
+        const isAfterCutoff = (b: any) => {
+          const raw = b?.bdo_date ?? b?.doc_date ?? b?.created_at ?? ''
+          const d = String(raw).slice(0, 10)
+          return /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= CUTOFF_STR
+        }
+
         const isPaidStatus = (b: any) => {
           const status = String(b?.payment_status || b?.status || '').toLowerCase()
           return status === 'paid' || status === 'fully_paid' || status === 'done'
@@ -67,7 +74,7 @@ export async function GET(request: NextRequest) {
 
         const paidBdos = rawBdos.filter((b: any) => isPaidStatus(b))
 
-        const activeBdos = rawBdos.filter((b: any) => !isPaidStatus(b))
+        const activeBdos = rawBdos.filter((b: any) => !isPaidStatus(b) && isAfterCutoff(b))
 
         const pendingBdos = activeBdos.filter((b: any) => {
           const status = String(b?.payment_status || b?.status || '').toLowerCase()
