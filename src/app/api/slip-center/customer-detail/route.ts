@@ -54,8 +54,9 @@ export async function GET(request: NextRequest) {
 
         const CUTOFF_STR = '2025-03-24'
         const isAfterCutoff = (b: any) => {
-          const raw = b?.bdo_date ?? b?.doc_date ?? b?.created_at ?? ''
-          const d = String(raw).slice(0, 10)
+          const rawDate = b?.bdo_date ?? b?.doc_date ?? null
+          if (!rawDate) return false  // no date = block
+          const d = String(rawDate).slice(0, 10)
           return /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= CUTOFF_STR
         }
 
