@@ -83,9 +83,16 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        // Second layer: strip any sale_orders dated before cutoff
+        const rawSaleOrders: any[] = d.sale_orders ?? []
+        const saleOrders = rawSaleOrders.filter((so: any) => {
+          const soDate = String(so.date_order ?? so.order_date ?? so.doc_date ?? '').slice(0, 10)
+          return soDate >= CUTOFF_STR
+        })
+
         return {
           bdo:                  bdo,
-          sale_orders:          d.sale_orders          ?? [],
+          sale_orders:          saleOrders,
           outstanding_invoices: d.outstanding_invoices ?? [],
           credit_notes:         d.credit_notes         ?? [],
           deposits:             d.deposits             ?? [],
