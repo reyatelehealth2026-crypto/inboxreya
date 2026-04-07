@@ -397,11 +397,11 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
               เลือกรูปจากแชทล่าสุด
             </Label>
             {loadingImages ? (
-              <div className="grid grid-cols-9 gap-1.5">
-                {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(i => <Skeleton key={i} className="w-full aspect-square rounded-lg" />)}
+              <div className="flex flex-wrap gap-2 max-h-[420px] overflow-y-auto overflow-x-hidden content-start">
+                {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(i => <Skeleton key={i} className="h-[88px] w-[88px] rounded-lg shrink-0" />)}
               </div>
             ) : recentImages.length > 0 ? (
-              <div className="grid grid-cols-9 gap-1.5 max-h-[400px] overflow-y-auto">
+              <div className="flex flex-wrap gap-2 max-h-[420px] overflow-y-auto overflow-x-hidden content-start">
                 {recentImages.map((img) => {
                   const isSelected = selectedImageId === img.id
                   const imgUrl = img.url
