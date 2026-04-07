@@ -412,7 +412,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
                       type="button"
                       onClick={() => selectInboxImage(img)}
                       className={cn(
-                        "relative h-[66px] w-[66px] rounded-lg overflow-hidden border-2 transition-all bg-gray-100",
+                        "relative h-[90px] w-[90px] rounded-lg overflow-hidden border-2 transition-all bg-gray-100",
                         isSelected ? "border-teal-500 ring-2 ring-teal-200" : "border-gray-200 hover:border-gray-400"
                       )}
                     >
