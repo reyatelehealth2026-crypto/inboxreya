@@ -398,7 +398,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
             </Label>
             {loadingImages ? (
               <div className="flex flex-wrap gap-2 max-h-[420px] overflow-y-auto overflow-x-hidden content-start">
-                {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(i => <Skeleton key={i} className="h-[88px] w-[88px] rounded-lg shrink-0" />)}
+                {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(i => <Skeleton key={i} className="h-[66px] w-[66px] rounded-lg shrink-0" />)}
               </div>
             ) : recentImages.length > 0 ? (
               <div className="flex flex-wrap gap-2 max-h-[420px] overflow-y-auto overflow-x-hidden content-start">
@@ -412,7 +412,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
                       type="button"
                       onClick={() => selectInboxImage(img)}
                       className={cn(
-                        "relative h-[88px] w-[88px] rounded-lg overflow-hidden border-2 transition-all bg-gray-100",
+                        "relative h-[66px] w-[66px] rounded-lg overflow-hidden border-2 transition-all bg-gray-100",
                         isSelected ? "border-teal-500 ring-2 ring-teal-200" : "border-gray-200 hover:border-gray-400"
                       )}
                     >
