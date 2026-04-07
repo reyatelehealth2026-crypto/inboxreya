@@ -380,7 +380,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose() }}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <FileCheck className="h-5 w-5 text-teal-600" />
@@ -413,11 +413,11 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
             เลือกรูปจากแชทล่าสุด
           </Label>
           {loadingImages ? (
-            <div className="grid grid-cols-3 gap-1.5">
-              {[1,2,3,4,5,6].map(i => <Skeleton key={i} className="w-full aspect-square rounded-lg" />)}
+            <div className="grid grid-cols-5 gap-2">
+              {[1,2,3,4,5,6,7,8,9,10].map(i => <Skeleton key={i} className="w-full aspect-square rounded-lg" />)}
             </div>
           ) : recentImages.length > 0 ? (
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-5 gap-2">
               {recentImages.map((img) => {
                 const isSelected = selectedImageId === img.id
                 const imgUrl = img.url
