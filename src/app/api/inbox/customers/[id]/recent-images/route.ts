@@ -6,7 +6,7 @@ import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 /**
  * GET /api/inbox/customers/[id]/recent-images
  *
- * Returns the 8 most recent incoming image messages for this user.
+ * Returns up to 50 recent incoming image messages for this user.
  * Used by SlipUploadModal to let sales pick a recent image as slip.
  */
 export async function GET(
@@ -45,12 +45,21 @@ export async function GET(
       CACHE_TTL.MESSAGES  // 15s
     )
 
-    const images = messages.map((msg) => ({
-      id: msg.id,
-      url: msg.content || null,
-      mediaUrl: msg.mediaUrl || null,
-      createdAt: msg.createdAt?.toISOString() || null,
-    }))
+    const phpBase = process.env.NEXT_PUBLIC_PHP_API_URL || process.env.PHP_API_URL || ''
+
+    const images = messages.map((msg) => {
+      const directUrl = msg.content && /^https?:\/\//.test(msg.content) ? msg.content : null
+      const proxyUrl = msg.mediaUrl && phpBase
+        ? `${phpBase.replace(/\/$/, '')}/api/line_content.php?id=${msg.mediaUrl}`
+        : null
+
+      return {
+        id: msg.id,
+        url: directUrl || proxyUrl,
+        mediaUrl: msg.mediaUrl || null,
+        createdAt: msg.createdAt?.toISOString() || null,
+      }
+    })
 
     return NextResponse.json({
       success: true,
