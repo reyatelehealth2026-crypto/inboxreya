@@ -17,6 +17,7 @@ interface SlipVerifyResult {
   success: boolean
   verified: boolean
   error?: string
+  warnings?: Array<{ type: string; message: string }>
   data?: {
     transRef: string
     sendingBank: string
