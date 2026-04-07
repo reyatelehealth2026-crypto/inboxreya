@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Image from 'next/image'
-import { Upload, X, FileImage, Loader2, Calendar, DollarSign, FileCheck, Check, Search, ShieldCheck, ShieldAlert, Building2, ArrowRight, Gift, SendHorizonal } from 'lucide-react'
+import { Upload, X, FileImage, Loader2, Calendar, DollarSign, FileCheck, Check, Search, ShieldCheck, ShieldAlert, Building2, ArrowRight, Gift, SendHorizonal, Maximize2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -115,6 +115,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
   const [loadingImages, setLoadingImages] = useState(false)
   const [selectedImageId, setSelectedImageId] = useState<number | null>(null)
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
   const [manualFile, setManualFile] = useState<File | null>(null)
   const [manualPreview, setManualPreview] = useState<string | null>(null)
   const displayBdoAmount = bdo.amount_net_to_pay ?? bdo.amount_total
@@ -130,6 +131,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
     if (!open) return
     setSelectedImageId(null)
     setSelectedImageUrl(null)
+    setPreviewImageUrl(null)
     setManualFile(null)
     setManualPreview(null)
     setAmount((bdo.amount_net_to_pay ?? bdo.amount_total)?.toString() || '')
@@ -379,7 +381,8 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
     bdo.payment_method === 'bank_transfer' ? 'โอนเงิน' : bdo.payment_method || '-'
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose() }}>
+    <>
+      <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose() }}>
       <DialogContent className="!block !max-w-6xl w-full max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
@@ -407,35 +410,48 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
                   const imgUrl = img.url
                   if (!imgUrl || (!imgUrl.startsWith('http://') && !imgUrl.startsWith('https://'))) return null
                   return (
-                    <button
-                      key={img.id}
-                      type="button"
-                      onClick={() => selectInboxImage(img)}
-                      className={cn(
-                        "relative h-[90px] w-[90px] rounded-lg overflow-hidden border-2 transition-all bg-gray-100",
-                        isSelected ? "border-teal-500 ring-2 ring-teal-200" : "border-gray-200 hover:border-gray-400"
-                      )}
-                    >
-                      <Image
-                        src={imgUrl}
-                        alt=""
-                        fill
-                        className="object-cover"
-                        unoptimized
-                      />
-                      {isSelected && (
-                        <div className="absolute inset-0 bg-teal-500/20 flex items-center justify-center">
-                          <div className="bg-teal-500 rounded-full p-1">
-                            <Check className="h-3 w-3 text-white" />
+                    <div key={img.id} className="relative h-[90px] w-[90px] shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => selectInboxImage(img)}
+                        className={cn(
+                          "relative h-full w-full rounded-lg overflow-hidden border-2 transition-all bg-gray-100",
+                          isSelected ? "border-teal-500 ring-2 ring-teal-200" : "border-gray-200 hover:border-gray-400"
+                        )}
+                      >
+                        <Image
+                          src={imgUrl}
+                          alt=""
+                          fill
+                          className="object-cover"
+                          unoptimized
+                        />
+                        {isSelected && (
+                          <div className="absolute inset-0 bg-teal-500/20 flex items-center justify-center">
+                            <div className="bg-teal-500 rounded-full p-1">
+                              <Check className="h-3 w-3 text-white" />
+                            </div>
                           </div>
-                        </div>
-                      )}
-                      {img.createdAt && (
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] text-center py-0.5">
-                          {new Date(img.createdAt).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })}
-                        </div>
-                      )}
-                    </button>
+                        )}
+                        {img.createdAt && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] text-center py-0.5">
+                            {new Date(img.createdAt).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })}
+                          </div>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setPreviewImageUrl(imgUrl)
+                        }}
+                        className="absolute top-1 right-1 z-10 rounded-md bg-black/65 p-1 text-white hover:bg-black/80"
+                        title="ดูรูปขนาดเต็ม"
+                        aria-label="ดูรูปขนาดเต็ม"
+                      >
+                        <Maximize2 className="h-3 w-3" />
+                      </button>
+                    </div>
                   )
                 })}
               </div>
@@ -763,5 +779,29 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
         </div>
       </DialogContent>
     </Dialog>
+
+    <Dialog open={!!previewImageUrl} onOpenChange={(isOpen) => { if (!isOpen) setPreviewImageUrl(null) }}>
+      <DialogContent className="!block !max-w-5xl w-[95vw] max-h-[92vh] overflow-hidden p-3">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-sm">
+            <FileImage className="h-4 w-4 text-teal-600" />
+            ดูรูปขนาดเต็ม
+          </DialogTitle>
+        </DialogHeader>
+        <div className="mt-2 flex items-center justify-center rounded-lg bg-black/5 p-2">
+          {previewImageUrl && (
+            <Image
+              src={previewImageUrl}
+              alt="ดูรูปขนาดเต็ม"
+              width={1600}
+              height={1600}
+              className="h-auto max-h-[78vh] w-auto max-w-full rounded-md object-contain"
+              unoptimized
+            />
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  </>
   )
 }
