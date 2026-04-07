@@ -86,18 +86,52 @@ export async function POST(request: NextRequest) {
     // Frontend expects: { success, verified, data: { amount, transRef, sender, receiver, ... } }
     
     const { data } = apiSlipData
+    const tx = data.transaction || {}
     
     if (data.status === 'success' && data.isAuthentic === true) {
+      // Build response compatible with both old SlipMate format and new ApiSlip format
+      const transDate = tx.date || ''
+      const transTime = transDate ? transDate.split('T')[1]?.replace(/\.\d+Z$/, '') || '' : ''
+      
       return NextResponse.json({
         success: true,
         verified: true,
         data: {
-          amount: data.transaction.amount,
-          transRef: data.transaction.refId,
-          date: data.transaction.date,
-          sender: data.transaction.sender,
-          receiver: data.transaction.receiver,
-          // Keep raw data for debugging/additional info
+          // Core fields (used by frontend)
+          amount: tx.amount,
+          transRef: tx.refId,
+          transDate: transDate.split('T')[0]?.replace(/-/g, '') || transDate.split('T')[0] || '', // YYYYMMDD or YYYY-MM-DD
+          transTime: transTime,
+          transDateTime: transDate,
+          date: transDate,
+          
+          // Sender info
+          sender: {
+            name: tx.sender?.name || '',
+            displayName: tx.sender?.name || '',
+            account: {
+              value: tx.sender?.account || '',
+            },
+          },
+          sendingBank: tx.sender?.bank || '',
+          sendingBankName: tx.sender?.bank || '',
+          
+          // Receiver info
+          receiver: {
+            name: tx.receiver?.name || '',
+            displayName: tx.receiver?.name || '',
+            account: {
+              value: tx.receiver?.account || '',
+            },
+          },
+          receivingBank: tx.receiver?.bank || '',
+          receivingBankName: tx.receiver?.bank || '',
+          
+          // Additional fields
+          transFeeAmount: tx.transFeeAmount || 0,
+          currency: tx.currency || 'THB',
+          
+          // Keep raw data for debugging
           _raw: data,
         },
       })
