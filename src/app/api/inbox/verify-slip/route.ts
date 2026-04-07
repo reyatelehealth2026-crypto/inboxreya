@@ -93,9 +93,33 @@ export async function POST(request: NextRequest) {
       const transDate = tx.date || ''
       const transTime = transDate ? transDate.split('T')[1]?.replace(/\.\d+Z$/, '') || '' : ''
       
+      // Validate receiver account
+      const EXPECTED_RECEIVER_ACCOUNT = process.env.EXPECTED_RECEIVER_ACCOUNT || '068-3-84622-8'
+      const EXPECTED_RECEIVER_NAME = process.env.EXPECTED_RECEIVER_NAME || 'บริษัท ซี เอ็น วาย เฮลท์แคร์ จำกัด'
+      
+      const warnings: Array<{ type: string; message: string }> = []
+      
+      const receiverAccount = tx.receiver?.account || ''
+      const receiverName = tx.receiver?.name || ''
+      
+      if (receiverAccount && receiverAccount !== EXPECTED_RECEIVER_ACCOUNT) {
+        warnings.push({
+          type: 'receiver_account_mismatch',
+          message: `⚠️ บัญชีผู้รับไม่ตรงกับบริษัท\ncนพบ: ${receiverAccount}\nคาดหวัง: ${EXPECTED_RECEIVER_ACCOUNT}`,
+        })
+      }
+      
+      if (receiverName && receiverName !== EXPECTED_RECEIVER_NAME) {
+        warnings.push({
+          type: 'receiver_name_mismatch',
+          message: `⚠️ ชื่อผู้รับไม่ตรงกับบริษัท\nพบ: ${receiverName}\nคาดหวัง: ${EXPECTED_RECEIVER_NAME}`,
+        })
+      }
+      
       return NextResponse.json({
         success: true,
         verified: true,
+        warnings, // คำเตือนถ้ามี
         data: {
           // Core fields (used by frontend)
           amount: tx.amount,
