@@ -34,7 +34,7 @@ export async function GET(
           direction: 'incoming',
         },
         orderBy: { createdAt: 'desc' },
-        take: 8,
+        take: 50,  // Increased from 8 to 50 to allow selecting older images
         select: {
           id: true,
           content: true,

@@ -380,7 +380,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose() }}>
-      <DialogContent className="!max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+      <DialogContent className="!max-w-5xl w-full max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <FileCheck className="h-5 w-5 text-teal-600" />
@@ -388,372 +388,378 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
           </DialogTitle>
         </DialogHeader>
 
-        {/* BDO Info */}
-        <div className="bg-gray-50 rounded-lg p-3 space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-gray-900">
-              {bdo.bdo_name || `BDO-${bdo.bdo_id}`}
-            </span>
-            <Badge variant="outline" className="text-xs">
-              {paymentLabel}
-            </Badge>
-          </div>
-          {bdo.order_name && (
-            <p className="text-xs text-blue-600">{bdo.order_name}</p>
-          )}
-          <p className="text-lg font-bold text-teal-700">
-            ฿{(bdo.amount_net_to_pay ?? bdo.amount_total)?.toLocaleString('th-TH', { minimumFractionDigits: 0 }) || '0'}
-          </p>
-        </div>
-
-        {/* Recent Images from Inbox */}
-        <div>
-          <Label className="text-xs text-gray-600 mb-2 block">
-            <FileImage className="h-3 w-3 inline mr-1" />
-            เลือกรูปจากแชทล่าสุด
-          </Label>
-          {loadingImages ? (
-            <div className="grid grid-cols-9 gap-1.5">
-              {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(i => <Skeleton key={i} className="w-full aspect-square rounded-lg" />)}
-            </div>
-          ) : recentImages.length > 0 ? (
-            <div className="grid grid-cols-9 gap-1.5">
-              {recentImages.map((img) => {
-                const isSelected = selectedImageId === img.id
-                const imgUrl = img.url
-                if (!imgUrl || (!imgUrl.startsWith('http://') && !imgUrl.startsWith('https://'))) return null
-                return (
-                  <button
-                    key={img.id}
-                    type="button"
-                    onClick={() => selectInboxImage(img)}
-                    className={cn(
-                      "relative w-full aspect-square rounded-lg overflow-hidden border-2 transition-all",
-                      isSelected ? "border-teal-500 ring-2 ring-teal-200" : "border-gray-200 hover:border-gray-400"
-                    )}
-                  >
-                    <Image
-                      src={imgUrl}
-                      alt=""
-                      fill
-                      className="object-cover"
-                      unoptimized
-                    />
-                    {isSelected && (
-                      <div className="absolute inset-0 bg-teal-500/20 flex items-center justify-center">
-                        <div className="bg-teal-500 rounded-full p-1">
-                          <Check className="h-3 w-3 text-white" />
-                        </div>
-                      </div>
-                    )}
-                    {img.createdAt && (
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] text-center py-0.5">
-                        {new Date(img.createdAt).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })}
-                      </div>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          ) : (
-            <p className="text-xs text-gray-400 text-center py-3">ไม่มีรูปในแชท</p>
-          )}
-        </div>
-
-        {/* Manual Upload Fallback */}
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="flex-1 h-px bg-gray-200" />
-            <span className="text-[10px] text-gray-400">หรือ</span>
-            <div className="flex-1 h-px bg-gray-200" />
-          </div>
-          {!manualPreview ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full text-xs gap-1.5 text-gray-500"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload className="h-3 w-3" />
-              อัพโหลดจากเครื่อง
-            </Button>
-          ) : (
-            <div className="relative inline-block">
-              <Image
-                src={manualPreview}
-                alt="สลิป"
-                width={120}
-                height={90}
-                className="h-20 w-auto object-contain rounded-lg border"
-                unoptimized
-              />
-              <button
-                type="button"
-                onClick={clearManual}
-                className="absolute -top-1 -right-1 bg-white rounded-full shadow border p-0.5"
-              >
-                <X className="h-3 w-3 text-gray-500" />
-              </button>
-            </div>
-          )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleFileChange}
-          />
-        </div>
-
-        {/* Amount & Date */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label htmlFor="slip-amount" className="text-xs text-gray-600">
-              <DollarSign className="h-3 w-3 inline mr-0.5" />
-              จำนวนเงิน
+        {/* 2-Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* LEFT: Image Selection Grid */}
+          <div className="space-y-2">
+            <Label className="text-xs text-gray-600 mb-2 block">
+              <FileImage className="h-3 w-3 inline mr-1" />
+              เลือกรูปจากแชทล่าสุด
             </Label>
-            <Input
-              id="slip-amount"
-              type="number"
-              step="0.01"
-              min="0"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="auto-fill"
-              className="mt-1 h-8 text-sm"
-            />
-          </div>
-          <div>
-            <Label htmlFor="slip-date" className="text-xs text-gray-600">
-              <Calendar className="h-3 w-3 inline mr-0.5" />
-              วันที่โอน
-            </Label>
-            <Input
-              id="slip-date"
-              type="date"
-              value={transferDate}
-              onChange={(e) => setTransferDate(e.target.value)}
-              className="mt-1 h-8 text-sm"
-            />
-          </div>
-        </div>
-
-        {/* Verify Result Panel */}
-        {verifyResult && (
-          <>
-            {verifyResult.verified && verifyResult.data ? (() => {
-              const d = verifyResult.data
-              const senderBank = getBankInfo(d.sendingBank, d.sendingBankName)
-              const receiverBank = getBankInfo(d.receivingBank, d.receivingBankName)
-              const earnedPoints = Math.floor((d.amount || 0) / POINTS_RATE)
-              const transDateDisplay = d.transDate
-                ? (() => {
-                    try {
-                      const parsed = new Date(d.transDate)
-                      if (!isNaN(parsed.getTime())) {
-                        return parsed.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' })
-                      }
-                    } catch {}
-                    return d.transDate
-                  })()
-                : null
-
-              return (
-                <div className="space-y-3">
-                  {/* Green header — สลิปถูกต้อง */}
-                  <div className="rounded-xl overflow-hidden border border-green-200">
-                    <div className="bg-gradient-to-r from-green-500 to-emerald-500 px-4 py-3 flex items-center gap-2">
-                      <ShieldCheck className="h-5 w-5 text-white" />
-                      <span className="font-bold text-white text-sm">สลิปถูกต้อง</span>
-                    </div>
-                    <div className="bg-white px-4 py-3 text-center">
-                      <p className="text-2xl font-bold text-gray-900">
-                        ฿{d.amount?.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                      </p>
-                      <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
-                        <span>วันที่-เวลา</span>
-                        <span className="text-gray-700 font-medium">
-                          {transDateDisplay}{d.transTime ? `, ${d.transTime}` : ''}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Bank Transfer Card — Flex style */}
-                  <div className="rounded-xl border border-gray-200 overflow-hidden">
-                    <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
-                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">รายการตรวจสอบล่าสุด</p>
-                    </div>
-                    <div className="px-3 py-3">
-                      {/* Sender */}
-                      <div className="flex items-start gap-2.5">
-                        <div
-                          className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 mt-0.5"
-                          style={{ backgroundColor: senderBank.color }}
-                        >
-                          {senderBank.abbr}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-gray-800">{senderBank.name}</p>
-                          <p className="text-[11px] text-gray-600 truncate">
-                            {d.sender?.displayName || d.sender?.name || '-'}
-                          </p>
-                          {d.sender?.account?.value && (
-                            <p className="text-[10px] font-mono text-gray-400">{d.sender.account.value}</p>
-                          )}
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-xs text-gray-400">
-                            {transDateDisplay || ''}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Arrow divider */}
-                      <div className="flex items-center gap-2 my-2 pl-[18px]">
-                        <div className="w-px h-4 bg-gray-200" />
-                        <ArrowRight className="h-3 w-3 text-gray-300" />
-                      </div>
-
-                      {/* Receiver */}
-                      <div className="flex items-start gap-2.5">
-                        <div
-                          className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 mt-0.5"
-                          style={{ backgroundColor: receiverBank.color }}
-                        >
-                          {receiverBank.abbr}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-gray-800">{receiverBank.name}</p>
-                          <p className="text-[11px] text-gray-600 truncate">
-                            {d.receiver?.displayName || d.receiver?.name || '-'}
-                          </p>
-                          {d.receiver?.account?.value && (
-                            <p className="text-[10px] font-mono text-gray-400">{d.receiver.account.value}</p>
-                          )}
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-sm font-bold text-gray-900">
-                            {d.amount?.toLocaleString('th-TH', { minimumFractionDigits: 1 })}
-                          </p>
-                          <p className="text-[10px] text-gray-400">บาท</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Ref footer */}
-                    <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-                      <span className="text-[10px] text-gray-400">Ref:</span>
-                      <span className="text-[10px] font-mono text-gray-500 truncate ml-1">{d.transRef}</span>
-                    </div>
-                  </div>
-
-                  {/* Points Preview Card */}
-                  {earnedPoints > 0 && (
-                    <div className="rounded-xl border border-teal-200 overflow-hidden">
-                      <div className="flex items-center gap-3 p-3">
-                        {/* Customer avatar */}
-                        <div className="flex-shrink-0">
-                          {customerAvatar ? (
-                            <Image
-                              src={customerAvatar}
-                              alt=""
-                              width={48}
-                              height={48}
-                              className="w-12 h-12 rounded-full object-cover border-2 border-teal-100"
-                              unoptimized
-                            />
-                          ) : (
-                            <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center">
-                              <span className="text-teal-700 font-bold text-base">
-                                {(customerName || '?')[0]}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-gray-800 truncate">{customerName || 'ลูกค้า'}</p>
-                          {customerId && (
-                            <p className="text-[10px] text-gray-400">ID: {customerId}</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-0 border-t border-teal-100">
-                        <div className="p-2.5 text-center border-r border-teal-100">
-                          <p className="text-[10px] text-gray-500">ยอดซื้อ</p>
-                          <p className="text-base font-bold text-gray-800">
-                            {d.amount?.toLocaleString('th-TH', { minimumFractionDigits: 0 })} ฿
-                          </p>
-                        </div>
-                        <div className="p-2.5 text-center bg-teal-50/50">
-                          <p className="text-[10px] text-gray-500">ได้รับแต้มสะสม</p>
-                          <p className="text-xl font-bold text-teal-600">+{earnedPoints}</p>
-                          <p className="text-[10px] text-teal-500">point</p>
-                        </div>
-                      </div>
-                      <div className="px-3 py-1.5 bg-gray-50 border-t border-teal-100 text-center">
-                        <p className="text-[10px] text-gray-400">(อัตรา 1,000 ฿ = 1 point)</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Send to customer checkbox */}
-                  <div className="flex items-center gap-2 px-1">
-                    <Checkbox
-                      id="send-to-customer"
-                      checked={sendToCustomer}
-                      onCheckedChange={(checked) => setSendToCustomer(checked === true)}
-                    />
-                    <label htmlFor="send-to-customer" className="text-xs text-gray-600 cursor-pointer flex items-center gap-1">
-                      <SendHorizonal className="h-3 w-3 text-green-600" />
-                      ส่งผลตรวจสลิป{earnedPoints > 0 ? '+แต้ม' : ''}ให้ลูกค้าทาง LINE
-                    </label>
-                  </div>
-                </div>
-              )
-            })() : (
-              <div className="rounded-lg p-3 text-sm border bg-red-50 border-red-200">
-                <div className="flex items-center gap-2 mb-1">
-                  <ShieldAlert className="h-4 w-4 text-red-600" />
-                  <span className="font-semibold text-red-700">สลิปไม่ผ่านการตรวจสอบ</span>
-                </div>
-                {verifyResult.error && (
-                  <p className="text-xs text-red-600 mt-1">{verifyResult.error}</p>
-                )}
+            {loadingImages ? (
+              <div className="grid grid-cols-9 gap-1.5">
+                {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(i => <Skeleton key={i} className="w-full aspect-square rounded-lg" />)}
               </div>
+            ) : recentImages.length > 0 ? (
+              <div className="grid grid-cols-9 gap-1.5 max-h-[400px] overflow-y-auto">
+                {recentImages.map((img) => {
+                  const isSelected = selectedImageId === img.id
+                  const imgUrl = img.url
+                  if (!imgUrl || (!imgUrl.startsWith('http://') && !imgUrl.startsWith('https://'))) return null
+                  return (
+                    <button
+                      key={img.id}
+                      type="button"
+                      onClick={() => selectInboxImage(img)}
+                      className={cn(
+                        "relative w-full aspect-square rounded-lg overflow-hidden border-2 transition-all",
+                        isSelected ? "border-teal-500 ring-2 ring-teal-200" : "border-gray-200 hover:border-gray-400"
+                      )}
+                    >
+                      <Image
+                        src={imgUrl}
+                        alt=""
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
+                      {isSelected && (
+                        <div className="absolute inset-0 bg-teal-500/20 flex items-center justify-center">
+                          <div className="bg-teal-500 rounded-full p-1">
+                            <Check className="h-3 w-3 text-white" />
+                          </div>
+                        </div>
+                      )}
+                      {img.createdAt && (
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] text-center py-0.5">
+                          {new Date(img.createdAt).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })}
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 text-center py-3">ไม่มีรูปในแชท</p>
             )}
-          </>
-        )}
 
-        {/* Actions */}
-        <div className="flex gap-2 pt-1">
-          <Button variant="outline" className="h-9" onClick={onClose} disabled={uploading || verifying}>
-            ยกเลิก
-          </Button>
-          <Button
-            variant="outline"
-            className="h-9 gap-1 border-blue-300 text-blue-700 hover:bg-blue-50"
-            onClick={handleVerifySlip}
-            disabled={!hasSelection || verifying || uploading}
-          >
-            {verifying ? (
-              <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> กำลังตรวจ...</>
-            ) : (
-              <><Search className="h-4 w-4 mr-1" /> ตรวจสอบสลิป</>
+            {/* Manual Upload */}
+            <div className="pt-2">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="flex-1 h-px bg-gray-200" />
+                <span className="text-[10px] text-gray-400">หรือ</span>
+                <div className="flex-1 h-px bg-gray-200" />
+              </div>
+              {!manualPreview ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full text-xs gap-1.5 text-gray-500"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="h-3 w-3" />
+                  อัพโหลดจากเครื่อง
+                </Button>
+              ) : (
+                <div className="relative inline-block">
+                  <Image
+                    src={manualPreview}
+                    alt="สลิป"
+                    width={120}
+                    height={90}
+                    className="h-20 w-auto object-contain rounded-lg border"
+                    unoptimized
+                  />
+                  <button
+                    type="button"
+                    onClick={clearManual}
+                    className="absolute -top-1 -right-1 bg-white rounded-full shadow border p-0.5"
+                  >
+                    <X className="h-3 w-3 text-gray-500" />
+                  </button>
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
+          </div>
+
+          {/* RIGHT: BDO Info & Form */}
+          <div className="space-y-3">
+            {/* BDO Info */}
+            <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-gray-900">
+                  {bdo.bdo_name || `BDO-${bdo.bdo_id}`}
+                </span>
+                <Badge variant="outline" className="text-xs">
+                  {paymentLabel}
+                </Badge>
+              </div>
+              {bdo.order_name && (
+                <p className="text-xs text-blue-600">{bdo.order_name}</p>
+              )}
+              <p className="text-lg font-bold text-teal-700">
+                ฿{(bdo.amount_net_to_pay ?? bdo.amount_total)?.toLocaleString('th-TH', { minimumFractionDigits: 0 }) || '0'}
+              </p>
+            </div>
+
+            {/* Amount & Date */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="slip-amount" className="text-xs text-gray-600">
+                  <DollarSign className="h-3 w-3 inline mr-0.5" />
+                  จำนวนเงิน
+                </Label>
+                <Input
+                  id="slip-amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="auto-fill"
+                  className="mt-1 h-8 text-sm"
+                />
+              </div>
+              <div>
+                <Label htmlFor="slip-date" className="text-xs text-gray-600">
+                  <Calendar className="h-3 w-3 inline mr-0.5" />
+                  วันที่โอน
+                </Label>
+                <Input
+                  id="slip-date"
+                  type="date"
+                  value={transferDate}
+                  onChange={(e) => setTransferDate(e.target.value)}
+                  className="mt-1 h-8 text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Verify Result Panel */}
+            {verifyResult && (
+              <>
+                {verifyResult.verified && verifyResult.data ? (() => {
+                  const d = verifyResult.data
+                  const senderBank = getBankInfo(d.sendingBank, d.sendingBankName)
+                  const receiverBank = getBankInfo(d.receivingBank, d.receivingBankName)
+                  const earnedPoints = Math.floor((d.amount || 0) / POINTS_RATE)
+                  const transDateDisplay = d.transDate
+                    ? (() => {
+                        try {
+                          const parsed = new Date(d.transDate)
+                          if (!isNaN(parsed.getTime())) {
+                            return parsed.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' })
+                          }
+                        } catch {}
+                        return d.transDate
+                      })()
+                    : null
+
+                  return (
+                    <div className="space-y-3">
+                      {/* Green header — สลิปถูกต้อง */}
+                      <div className="rounded-xl overflow-hidden border border-green-200">
+                        <div className="bg-gradient-to-r from-green-500 to-emerald-500 px-4 py-3 flex items-center gap-2">
+                          <ShieldCheck className="h-5 w-5 text-white" />
+                          <span className="font-bold text-white text-sm">สลิปถูกต้อง</span>
+                        </div>
+                        <div className="bg-white px-4 py-3 text-center">
+                          <p className="text-2xl font-bold text-gray-900">
+                            ฿{d.amount?.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                          </p>
+                          <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+                            <span>วันที่-เวลา</span>
+                            <span className="text-gray-700 font-medium">
+                              {transDateDisplay}{d.transTime ? `, ${d.transTime}` : ''}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Bank Transfer Card — Flex style */}
+                      <div className="rounded-xl border border-gray-200 overflow-hidden">
+                        <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
+                          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">รายการตรวจสอบล่าสุด</p>
+                        </div>
+                        <div className="px-3 py-3">
+                          {/* Sender */}
+                          <div className="flex items-start gap-2.5">
+                            <div
+                              className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 mt-0.5"
+                              style={{ backgroundColor: senderBank.color }}
+                            >
+                              {senderBank.abbr}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-gray-800">{senderBank.name}</p>
+                              <p className="text-[11px] text-gray-600 truncate">
+                                {d.sender?.displayName || d.sender?.name || '-'}
+                              </p>
+                              {d.sender?.account?.value && (
+                                <p className="text-[10px] font-mono text-gray-400">{d.sender.account.value}</p>
+                              )}
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className="text-xs text-gray-400">
+                                {transDateDisplay || ''}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Arrow divider */}
+                          <div className="flex items-center gap-2 my-2 pl-[18px]">
+                            <div className="w-px h-4 bg-gray-200" />
+                            <ArrowRight className="h-3 w-3 text-gray-300" />
+                          </div>
+
+                          {/* Receiver */}
+                          <div className="flex items-start gap-2.5">
+                            <div
+                              className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 mt-0.5"
+                              style={{ backgroundColor: receiverBank.color }}
+                            >
+                              {receiverBank.abbr}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-gray-800">{receiverBank.name}</p>
+                              <p className="text-[11px] text-gray-600 truncate">
+                                {d.receiver?.displayName || d.receiver?.name || '-'}
+                              </p>
+                              {d.receiver?.account?.value && (
+                                <p className="text-[10px] font-mono text-gray-400">{d.receiver.account.value}</p>
+                              )}
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className="text-sm font-bold text-gray-900">
+                                {d.amount?.toLocaleString('th-TH', { minimumFractionDigits: 1 })}
+                              </p>
+                              <p className="text-[10px] text-gray-400">บาท</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Ref footer */}
+                        <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+                          <span className="text-[10px] text-gray-400">Ref:</span>
+                          <span className="text-[10px] font-mono text-gray-500 truncate ml-1">{d.transRef}</span>
+                        </div>
+                      </div>
+
+                      {/* Points Preview Card */}
+                      {earnedPoints > 0 && (
+                        <div className="rounded-xl border border-teal-200 overflow-hidden">
+                          <div className="flex items-center gap-3 p-3">
+                            {/* Customer avatar */}
+                            <div className="flex-shrink-0">
+                              {customerAvatar ? (
+                                <Image
+                                  src={customerAvatar}
+                                  alt=""
+                                  width={48}
+                                  height={48}
+                                  className="w-12 h-12 rounded-full object-cover border-2 border-teal-100"
+                                  unoptimized
+                                />
+                              ) : (
+                                <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center">
+                                  <span className="text-teal-700 font-bold text-base">
+                                    {(customerName || '?')[0]}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-gray-800 truncate">{customerName || 'ลูกค้า'}</p>
+                              {customerId && (
+                                <p className="text-[10px] text-gray-400">ID: {customerId}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-0 border-t border-teal-100">
+                            <div className="p-2.5 text-center border-r border-teal-100">
+                              <p className="text-[10px] text-gray-500">ยอดซื้อ</p>
+                              <p className="text-base font-bold text-gray-800">
+                                {d.amount?.toLocaleString('th-TH', { minimumFractionDigits: 0 })} ฿
+                              </p>
+                            </div>
+                            <div className="p-2.5 text-center bg-teal-50/50">
+                              <p className="text-[10px] text-gray-500">ได้รับแต้มสะสม</p>
+                              <p className="text-xl font-bold text-teal-600">+{earnedPoints}</p>
+                              <p className="text-[10px] text-teal-500">point</p>
+                            </div>
+                          </div>
+                          <div className="px-3 py-1.5 bg-gray-50 border-t border-teal-100 text-center">
+                            <p className="text-[10px] text-gray-400">(อัตรา 1,000 ฿ = 1 point)</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Send to customer checkbox */}
+                      <div className="flex items-center gap-2 px-1">
+                        <Checkbox
+                          id="send-to-customer"
+                          checked={sendToCustomer}
+                          onCheckedChange={(checked) => setSendToCustomer(checked === true)}
+                        />
+                        <label htmlFor="send-to-customer" className="text-xs text-gray-600 cursor-pointer flex items-center gap-1">
+                          <SendHorizonal className="h-3 w-3 text-green-600" />
+                          ส่งผลตรวจสลิป{earnedPoints > 0 ? '+แต้ม' : ''}ให้ลูกค้าทาง LINE
+                        </label>
+                      </div>
+                    </div>
+                  )
+                })() : (
+                  <div className="rounded-lg p-3 text-sm border bg-red-50 border-red-200">
+                    <div className="flex items-center gap-2 mb-1">
+                      <ShieldAlert className="h-4 w-4 text-red-600" />
+                      <span className="font-semibold text-red-700">สลิปไม่ผ่านการตรวจสอบ</span>
+                    </div>
+                    {verifyResult.error && (
+                      <p className="text-xs text-red-600 mt-1">{verifyResult.error}</p>
+                    )}
+                  </div>
+                )}
+              </>
             )}
-          </Button>
-          <Button
-            className="flex-1 h-9 bg-teal-600 hover:bg-teal-700"
-            onClick={handleSubmit}
-            disabled={!hasSelection || uploading || verifying}
-          >
-            {uploading ? (
-              <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> กำลังบันทึก...</>
-            ) : (
-              <><Upload className="h-4 w-4 mr-1.5" /> บันทึกสลิป</>
-            )}
-          </Button>
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="h-9" onClick={onClose} disabled={uploading || verifying}>
+                ยกเลิก
+              </Button>
+              <Button
+                variant="outline"
+                className="h-9 gap-1 border-blue-300 text-blue-700 hover:bg-blue-50"
+                onClick={handleVerifySlip}
+                disabled={!hasSelection || verifying || uploading}
+              >
+                {verifying ? (
+                  <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> กำลังตรวจ...</>
+                ) : (
+                  <><Search className="h-4 w-4 mr-1" /> ตรวจสอบสลิป</>
+                )}
+              </Button>
+              <Button
+                className="flex-1 h-9 bg-teal-600 hover:bg-teal-700"
+                onClick={handleSubmit}
+                disabled={!hasSelection || uploading || verifying}
+              >
+                {uploading ? (
+                  <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> กำลังบันทึก...</>
+                ) : (
+                  <><Upload className="h-4 w-4 mr-1.5" /> บันทึกสลิป</>
+                )}
+              </Button>
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
