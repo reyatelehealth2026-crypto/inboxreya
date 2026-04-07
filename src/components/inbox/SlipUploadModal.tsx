@@ -765,9 +765,3 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
     </Dialog>
   )
 }
-iv>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
