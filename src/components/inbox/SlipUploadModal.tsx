@@ -380,7 +380,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose() }}>
-      <DialogContent className="!max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+      <DialogContent className="!block !max-w-6xl w-full max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <FileCheck className="h-5 w-5 text-teal-600" />
@@ -389,9 +389,9 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
         </DialogHeader>
 
         {/* 2-Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5 items-start">
           {/* LEFT: Image Selection Grid */}
-          <div className="space-y-2">
+          <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
             <Label className="text-xs text-gray-600 mb-2 block">
               <FileImage className="h-3 w-3 inline mr-1" />
               เลือกรูปจากแชทล่าสุด
@@ -491,7 +491,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
           </div>
 
           {/* RIGHT: BDO Info & Form */}
-          <div className="space-y-3">
+          <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/40 p-4">
             {/* BDO Info */}
             <div className="bg-gray-50 rounded-lg p-3 space-y-1">
               <div className="flex items-center justify-between">
