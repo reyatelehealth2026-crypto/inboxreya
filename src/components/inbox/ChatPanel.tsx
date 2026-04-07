@@ -598,6 +598,16 @@ function MessageBubble({
                                   const d = result.data.transDate.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')
                                   if (d.match(/^\d{4}-\d{2}-\d{2}$/)) setSlipDate(d)
                                 }
+                                // Show warnings if receiver doesn't match company account
+                                if (result.warnings && result.warnings.length > 0) {
+                                  result.warnings.forEach((w: { type: string; message: string }) => {
+                                    toast({
+                                      title: 'คำเตือน',
+                                      description: w.message,
+                                      variant: 'destructive',
+                                    })
+                                  })
+                                }
                               }
                             } catch {
                               setSlipVerifyResult({ verified: false, error: 'ไม่สามารถเชื่อมต่อระบบตรวจสอบได้' })

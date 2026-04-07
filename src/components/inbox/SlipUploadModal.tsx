@@ -212,7 +212,19 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
             setTransferDate(parsed.toISOString().slice(0, 10))
           }
         }
-        toast({ title: 'สลิปแท้ ตรวจสอบผ่าน', description: `Ref: ${json.data.transRef}` })
+        
+        // Show warnings if receiver doesn't match company account
+        if (json.warnings && json.warnings.length > 0) {
+          json.warnings.forEach((w: { type: string; message: string }) => {
+            toast({
+              title: 'คำเตือน',
+              description: w.message,
+              variant: 'destructive',
+            })
+          })
+        } else {
+          toast({ title: 'สลิปแท้ ตรวจสอบผ่าน', description: `Ref: ${json.data.transRef}` })
+        }
       } else {
         toast({
           title: 'ตรวจสอบสลิปไม่ผ่าน',
