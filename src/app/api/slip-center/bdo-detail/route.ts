@@ -83,10 +83,16 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Second layer: strip any sale_orders dated before cutoff
+        // Second layer: keep sale_orders unless they explicitly have a valid date older than cutoff.
+        // Some upstream BDO detail responses include SO lines but omit a date field on the SO object.
         const rawSaleOrders: any[] = d.sale_orders ?? []
         const saleOrders = rawSaleOrders.filter((so: any) => {
-          const soDate = String(so.date_order ?? so.order_date ?? so.doc_date ?? '').slice(0, 10)
+          const rawSoDate = so.date_order ?? so.order_date ?? so.doc_date ?? so.date ?? null
+          if (!rawSoDate) return true
+
+          const soDate = String(rawSoDate).slice(0, 10)
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(soDate)) return true
+
           return soDate >= CUTOFF_STR
         })
 

@@ -51,6 +51,8 @@ interface BdoDetailSaleOrderRecord {
   name?: string
   amount_total?: number
   lines?: BdoDetailLineRecord[]
+  order_lines?: BdoDetailLineRecord[]
+  items?: BdoDetailLineRecord[]
 }
 
 interface BdoDetailMessagePayload {
@@ -80,9 +82,16 @@ function buildItemLineLabel(line: BdoDetailLineRecord) {
   return code ? `${name} (${code})` : name
 }
 
+function getOrderLines(order: BdoDetailSaleOrderRecord) {
+  if (Array.isArray(order.lines) && order.lines.length > 0) return order.lines
+  if (Array.isArray(order.order_lines) && order.order_lines.length > 0) return order.order_lines
+  if (Array.isArray(order.items) && order.items.length > 0) return order.items
+  return []
+}
+
 function buildBdoItemsMessage(payload: BdoDetailMessagePayload, bdo: BdoOrderRecord) {
-  const saleOrders = (payload.sale_orders || []).filter((order) => Array.isArray(order.lines) && order.lines.length > 0)
-  const totalItemCount = saleOrders.reduce((sum, order) => sum + (order.lines?.length || 0), 0)
+  const saleOrders = (payload.sale_orders || []).filter((order) => getOrderLines(order).length > 0)
+  const totalItemCount = saleOrders.reduce((sum, order) => sum + getOrderLines(order).length, 0)
 
   if (saleOrders.length === 0 || totalItemCount === 0) {
     throw new Error('ไม่พบรายการสินค้าใน BDO นี้')
@@ -113,7 +122,7 @@ function buildBdoItemsMessage(payload: BdoDetailMessagePayload, bdo: BdoOrderRec
     if (prospectiveSection.length > MAX_MESSAGE_LENGTH) break
     output.push(...sectionLines)
 
-    for (const line of order.lines || []) {
+    for (const line of getOrderLines(order)) {
       const quantityText = `${fmtQty(line.quantity)}${line.uom ? ` ${line.uom}` : ''}`
       const unitPrice = line.unit_price ?? line.price_unit ?? null
       const subtotal = line.subtotal ?? line.price_subtotal ?? null

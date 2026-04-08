@@ -46,6 +46,8 @@ interface SaleOrder {
   name?: string
   amount_total?: number
   lines?: SaleOrderLine[]
+  order_lines?: SaleOrderLine[]
+  items?: SaleOrderLine[]
 }
 
 interface FinanceRow {
@@ -98,6 +100,14 @@ function fmtDate(raw?: string | null): string {
   const d = new Date(raw)
   if (isNaN(d.getTime())) return String(raw).slice(0, 10)
   return d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' })
+}
+
+function getSaleOrderLines(order?: SaleOrder | null) {
+  if (!order) return []
+  if (Array.isArray(order.lines) && order.lines.length > 0) return order.lines
+  if (Array.isArray(order.order_lines) && order.order_lines.length > 0) return order.order_lines
+  if (Array.isArray(order.items) && order.items.length > 0) return order.items
+  return []
 }
 
 function SectionTitle({ icon: Icon, color, label }: { icon: React.ElementType; color: string; label: string }) {
@@ -261,7 +271,7 @@ export function BdoDetailPanel({ bdoId, bdoName, partnerId, lineUserId, onClose 
                           <span className="text-xs font-semibold text-gray-800">{order.name || '-'}</span>
                           <span className="text-xs font-bold text-blue-600">{fmtBaht(order.amount_total)}</span>
                         </div>
-                        {Array.isArray(order.lines) && order.lines.length > 0 && (
+                        {getSaleOrderLines(order).length > 0 && (
                           <div className="overflow-x-auto">
                             <table className="w-full text-[11px]">
                               <thead>
@@ -273,7 +283,7 @@ export function BdoDetailPanel({ bdoId, bdoName, partnerId, lineUserId, onClose 
                                 </tr>
                               </thead>
                               <tbody>
-                                {order.lines.map((line, li) => (
+                                {getSaleOrderLines(order).map((line, li) => (
                                   <tr key={li} className="border-t border-gray-50 hover:bg-gray-50/50">
                                     <td className="px-2 py-1.5">
                                       <span className="text-gray-800">{line.product_name || line.name || '-'}</span>
