@@ -216,13 +216,12 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
           }
         }
         
-        // Show warnings if receiver doesn't match company account
+        // Show soft warnings if receiver details still look suspicious
         if (json.warnings && json.warnings.length > 0) {
           json.warnings.forEach((w: { type: string; message: string }) => {
             toast({
-              title: 'คำเตือน',
+              title: 'ตรวจผ่าน แต่มีข้อสังเกต',
               description: w.message,
-              variant: 'destructive',
             })
           })
         } else {
@@ -383,7 +382,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
   return (
     <>
       <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose() }}>
-      <DialogContent className="!block !max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+      <DialogContent className="!block !max-w-6xl w-[min(96vw,72rem)] max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <FileCheck className="h-5 w-5 text-teal-600" />
@@ -392,7 +391,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
         </DialogHeader>
 
         {/* 2-Column Layout */}
-        <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5 items-start">
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-[1.25fr_1fr] lg:grid-cols-[1.6fr_1fr] gap-5 items-start">
           {/* LEFT: Image Selection Grid */}
           <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
             <Label className="text-xs text-gray-600 mb-2 block">
@@ -400,17 +399,17 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
               เลือกรูปจากแชทล่าสุด
             </Label>
             {loadingImages ? (
-              <div className="flex flex-wrap gap-2 max-h-[420px] overflow-y-auto overflow-x-hidden content-start">
+              <div className="flex flex-wrap gap-2 max-h-[220px] md:max-h-[320px] lg:max-h-[420px] overflow-y-auto overflow-x-hidden content-start">
                 {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(i => <Skeleton key={i} className="h-[66px] w-[66px] rounded-lg shrink-0" />)}
               </div>
             ) : recentImages.length > 0 ? (
-              <div className="flex flex-wrap gap-2 max-h-[420px] overflow-y-auto overflow-x-hidden content-start">
+              <div className="flex flex-wrap gap-2 max-h-[220px] md:max-h-[320px] lg:max-h-[420px] overflow-y-auto overflow-x-hidden content-start">
                 {recentImages.map((img) => {
                   const isSelected = selectedImageId === img.id
                   const imgUrl = img.url
                   if (!imgUrl || (!imgUrl.startsWith('http://') && !imgUrl.startsWith('https://'))) return null
                   return (
-                    <div key={img.id} className="relative h-[90px] w-[90px] shrink-0">
+                    <div key={img.id} className="relative h-[74px] w-[74px] md:h-[82px] md:w-[82px] lg:h-[90px] lg:w-[90px] shrink-0">
                       <button
                         type="button"
                         onClick={() => selectInboxImage(img)}
@@ -747,7 +746,7 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
             )}
 
             {/* Actions */}
-            <div className="flex gap-2 pt-1">
+            <div className="sticky bottom-0 z-10 -mx-4 mt-4 flex flex-wrap gap-2 border-t border-gray-200 bg-white/95 px-4 pb-1 pt-3 backdrop-blur sm:flex-nowrap">
               <Button variant="outline" className="h-9" onClick={onClose} disabled={uploading || verifying}>
                 ยกเลิก
               </Button>

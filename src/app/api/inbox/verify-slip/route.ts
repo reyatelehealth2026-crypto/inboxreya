@@ -1,6 +1,81 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 
+function normalizeAccountDigits(value: string) {
+  return (value || '').replace(/\D/g, '')
+}
+
+function isReceiverAccountMatch(actualAccount: string, expectedAccount: string) {
+  if (!actualAccount || !expectedAccount) return actualAccount === expectedAccount
+
+  const actualDigits = normalizeAccountDigits(actualAccount)
+  const expectedDigits = normalizeAccountDigits(expectedAccount)
+
+  if (!actualDigits || !expectedDigits) return actualAccount === expectedAccount
+  if (actualDigits === expectedDigits) return true
+
+  const looksMasked = /[xX*]/.test(actualAccount)
+  if (looksMasked && actualDigits.length >= 4) {
+    return expectedDigits.includes(actualDigits)
+  }
+
+  return false
+}
+
+function canonicalizeCompanyName(value: string) {
+  return (value || '')
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/[()\[\]{}.,:/\\\-]+/g, ' ')
+    .replace(/&/g, ' และ ')
+    .replace(/\bco\b/g, ' ')
+    .replace(/\bltd\b/g, ' ')
+    .replace(/\blimited\b/g, ' ')
+    .replace(/\bcompany\b/g, ' ')
+    .replace(/บริษัท/g, ' ')
+    .replace(/บจก/g, ' ')
+    .replace(/บมจ/g, ' ')
+    .replace(/หจก/g, ' ')
+    .replace(/จำกัด/g, ' ')
+    .replace(/จํากัด/g, ' ')
+    .replace(/มหาชน/g, ' ')
+    .replace(/health\s*care/g, ' healthcare ')
+    .replace(/เฮลท์\s*แคร์/g, ' healthcare ')
+    .replace(/ซี\s*เอ็น\s*วาย/g, ' cny ')
+    .replace(/ซี\s*เอน\s*วาย/g, ' cny ')
+    .replace(/c\s*n\s*y/g, ' cny ')
+    .replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function isReceiverNameMatch(actualName: string, expectedName: string) {
+  if (!actualName || !expectedName) return actualName === expectedName
+
+  const actualCanonical = canonicalizeCompanyName(actualName)
+  const expectedCanonical = canonicalizeCompanyName(expectedName)
+
+  if (!actualCanonical || !expectedCanonical) return actualCanonical === expectedCanonical
+  if (actualCanonical === expectedCanonical) return true
+
+  const actualJoined = actualCanonical.replace(/\s+/g, '')
+  const expectedJoined = expectedCanonical.replace(/\s+/g, '')
+  if (actualJoined === expectedJoined) return true
+  if (actualJoined.includes(expectedJoined) || expectedJoined.includes(actualJoined)) return true
+
+  const actualTokens = actualCanonical.split(' ').filter(Boolean)
+  const expectedTokens = expectedCanonical.split(' ').filter(Boolean)
+  const expectedTokenSet = new Set(expectedTokens)
+  const actualTokenSet = new Set(actualTokens)
+
+  const receiverIsMeaningfulSubset = actualTokens.length > 0 && actualTokens.every((token) => expectedTokenSet.has(token))
+  const expectedIsMeaningfulSubset = expectedTokens.length > 0 && expectedTokens.every((token) => actualTokenSet.has(token))
+
+  if (receiverIsMeaningfulSubset || expectedIsMeaningfulSubset) return true
+
+  return false
+}
+
 /**
  * POST /api/inbox/verify-slip
  *
@@ -101,18 +176,20 @@ export async function POST(request: NextRequest) {
       
       const receiverAccount = tx.receiver?.account || ''
       const receiverName = tx.receiver?.name || ''
+      const receiverAccountMatches = isReceiverAccountMatch(receiverAccount, EXPECTED_RECEIVER_ACCOUNT)
+      const receiverNameMatches = isReceiverNameMatch(receiverName, EXPECTED_RECEIVER_NAME)
       
-      if (receiverAccount && receiverAccount !== EXPECTED_RECEIVER_ACCOUNT) {
+      if (receiverAccount && !receiverAccountMatches) {
         warnings.push({
           type: 'receiver_account_mismatch',
-          message: `⚠️ บัญชีผู้รับไม่ตรงกับบริษัท\ncนพบ: ${receiverAccount}\nคาดหวัง: ${EXPECTED_RECEIVER_ACCOUNT}`,
+          message: `⚠️ บัญชีผู้รับอาจไม่ตรงกับบริษัท\nพบ: ${receiverAccount}\nคาดหวัง: ${EXPECTED_RECEIVER_ACCOUNT}`,
         })
       }
       
-      if (receiverName && receiverName !== EXPECTED_RECEIVER_NAME) {
+      if (receiverName && !receiverNameMatches) {
         warnings.push({
           type: 'receiver_name_mismatch',
-          message: `⚠️ ชื่อผู้รับไม่ตรงกับบริษัท\nพบ: ${receiverName}\nคาดหวัง: ${EXPECTED_RECEIVER_NAME}`,
+          message: `⚠️ ชื่อผู้รับอาจไม่ตรงกับบริษัท\nพบ: ${receiverName}\nคาดหวัง: ${EXPECTED_RECEIVER_NAME}`,
         })
       }
       
