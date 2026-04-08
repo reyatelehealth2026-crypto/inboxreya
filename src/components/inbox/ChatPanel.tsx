@@ -20,6 +20,7 @@ import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useTextExpansion, useInboxKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -469,15 +470,19 @@ function MessageBubble({
                   {slipForwardState === 'loading' ? 'กำลังบันทึก...' : slipForwardState === 'sent' ? 'บันทึกแล้ว' : slipForwardState === 'error' ? 'ลองใหม่' : 'บันทึกสลิป'}
                 </Button>
 
-                {showSlipModal && (
-                  <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-                    onClick={(e) => { if (e.target === e.currentTarget) setShowSlipModal(false) }}
-                  >
-                    <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md mx-4 max-h-[85vh] overflow-y-auto">
-                      <h3 className="text-base font-semibold text-gray-800 mb-4">ตรวจสอบ & บันทึกสลิป</h3>
+                <Dialog
+                  open={showSlipModal}
+                  onOpenChange={(isOpen) => {
+                    setShowSlipModal(isOpen)
+                    if (!isOpen) setSlipVerifyResult(null)
+                  }}
+                >
+                  <DialogContent className="!block !max-w-lg w-[min(92vw,32rem)] max-h-[90vh] overflow-y-auto p-6">
+                    <DialogHeader>
+                      <DialogTitle className="text-base text-gray-800">ตรวจสอบ & บันทึกสลิป</DialogTitle>
+                    </DialogHeader>
 
-                      <div className="space-y-4">
+                    <div className="space-y-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-600 mb-1">วันที่โอน</label>
                           <input
@@ -562,7 +567,7 @@ function MessageBubble({
                       </div>
 
                       {/* 3 Buttons: Cancel | Verify | Save */}
-                      <div className="flex gap-2 mt-6">
+                      <div className="sticky bottom-0 z-10 -mx-6 mt-6 flex flex-wrap gap-2 border-t border-gray-200 bg-white/95 px-6 pb-0 pt-4 backdrop-blur sm:flex-nowrap">
                         <button
                           type="button"
                           className="border border-gray-200 rounded-lg py-2.5 px-4 text-sm text-gray-600 hover:bg-gray-50"
@@ -679,8 +684,8 @@ function MessageBubble({
                         </button>
                       </div>
                     </div>
-                  </div>
-                )}
+                  </DialogContent>
+                </Dialog>
               </div>
             )}
           </div>
