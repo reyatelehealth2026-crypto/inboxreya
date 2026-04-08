@@ -27,6 +27,8 @@ export interface BroadcastTemplate {
   category: 'text' | 'flex' | 'image' | 'video'
   isActive: boolean
   createdAt: string
+  sourceId?: number
+  sourceTable?: 'quick_reply_templates' | 'flex_templates' | 'templates'
 }
 
 export interface FlexMessage {
