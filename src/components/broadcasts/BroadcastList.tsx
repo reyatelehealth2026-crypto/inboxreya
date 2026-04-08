@@ -24,7 +24,10 @@ import {
   Users, 
   BarChart3,
   AlertCircle,
-  Loader2
+  Loader2,
+  ImageIcon,
+  MessageSquareText,
+  Video
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -165,13 +168,32 @@ export function BroadcastList() {
                       const successRate = broadcast.totalRecipients > 0 
                         ? Math.round((broadcast.deliveredCount / broadcast.totalRecipients) * 100)
                         : 0
+                      const messageType = broadcast.mediaUrl
+                        ? (broadcast.content?.includes('[video') ? 'video' : 'image')
+                        : 'text'
+                      const MessageTypeIcon = messageType === 'image'
+                        ? ImageIcon
+                        : messageType === 'video'
+                        ? Video
+                        : MessageSquareText
                       
                       return (
                         <TableRow key={broadcast.id}>
-                          <TableCell className="max-w-[200px]">
-                            <p className="truncate font-medium">
-                              {broadcast.content || 'Flex Message'}
+                          <TableCell className="max-w-[260px]">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="gap-1">
+                                <MessageTypeIcon className="h-3 w-3" />
+                                {messageType}
+                              </Badge>
+                            </div>
+                            <p className="mt-2 truncate font-medium">
+                              {broadcast.content || 'Broadcast message'}
                             </p>
+                            {broadcast.mediaUrl && (
+                              <p className="mt-1 truncate text-xs text-muted-foreground">
+                                media: {broadcast.mediaUrl}
+                              </p>
+                            )}
                             {broadcast.scheduledAt && broadcast.status === 'scheduled' && (
                               <p className="text-xs text-muted-foreground">
                                 จะส่ง: {format(new Date(broadcast.scheduledAt), 'PPp', { locale: th })}
