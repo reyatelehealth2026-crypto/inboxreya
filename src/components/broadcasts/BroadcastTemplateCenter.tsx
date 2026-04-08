@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Edit3, Eye, FileText, ImageIcon, LayoutTemplate, Plus, RefreshCw, Search, Sparkles, Trash2, Wand2 } from 'lucide-react'
+import { Copy, Edit3, Eye, FileText, ImageIcon, LayoutTemplate, Plus, RefreshCw, Search, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import { useBroadcastTemplates, useDeleteBroadcastTemplate } from '@/hooks/use-broadcasts'
 import { BroadcastTemplate } from '@/types/broadcast'
 import { BroadcastTemplateCreateDialog } from '@/components/broadcasts/BroadcastTemplateCreateDialog'
@@ -84,6 +84,7 @@ export function BroadcastTemplateCenter() {
   const [activeTab, setActiveTab] = useState<'all' | BroadcastTemplate['category']>('all')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<BroadcastTemplate | null>(null)
+  const [duplicatingTemplate, setDuplicatingTemplate] = useState<BroadcastTemplate | null>(null)
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
   const { toast } = useToast()
   const { data, isLoading, isFetching, refetch } = useBroadcastTemplates({ search })
@@ -151,6 +152,19 @@ export function BroadcastTemplateCenter() {
         }}
         onSaved={(template) => {
           setEditingTemplate(null)
+          setSelectedId(template.id)
+        }}
+      />
+
+      <BroadcastTemplateCreateDialog
+        open={!!duplicatingTemplate}
+        template={duplicatingTemplate}
+        forceCreate
+        onOpenChange={(open) => {
+          if (!open) setDuplicatingTemplate(null)
+        }}
+        onSaved={(template) => {
+          setDuplicatingTemplate(null)
           setSelectedId(template.id)
         }}
       />
@@ -310,6 +324,10 @@ export function BroadcastTemplateCenter() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setDuplicatingTemplate(selectedTemplate)}>
+                    <Copy className="mr-2 h-4 w-4" />
+                    ทำสำเนา
+                  </Button>
                   {canManageSelectedTemplate ? (
                     <>
                       <Button variant="outline" size="sm" onClick={() => setEditingTemplate(selectedTemplate)}>

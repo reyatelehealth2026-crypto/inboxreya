@@ -25,6 +25,7 @@ interface BroadcastTemplateCreateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   template?: BroadcastTemplate | null
+  forceCreate?: boolean
   onSaved?: (template: BroadcastTemplate) => void
 }
 
@@ -84,7 +85,7 @@ function PreviewBlock({ type, content, mediaUrl, flexJson }: { type: TemplateTyp
   }
 }
 
-export function BroadcastTemplateCreateDialog({ open, onOpenChange, template, onSaved }: BroadcastTemplateCreateDialogProps) {
+export function BroadcastTemplateCreateDialog({ open, onOpenChange, template, forceCreate = false, onSaved }: BroadcastTemplateCreateDialogProps) {
   const [templateType, setTemplateType] = useState<TemplateType>('text')
   const [name, setName] = useState('')
   const [categoryLabel, setCategoryLabel] = useState('')
@@ -95,9 +96,9 @@ export function BroadcastTemplateCreateDialog({ open, onOpenChange, template, on
   const { toast } = useToast()
   const createTemplate = useCreateBroadcastTemplate()
   const updateTemplate = useUpdateBroadcastTemplate()
-  const isEditMode = !!template
+  const isEditMode = !!template && !forceCreate
   const canEditInCenter = template?.sourceTable === 'templates' || template?.sourceTable === 'flex_templates'
-  const isFlexEditMode = template?.sourceTable === 'flex_templates'
+  const isFlexEditMode = isEditMode && template?.sourceTable === 'flex_templates'
 
   useEffect(() => {
     if (!open) {
@@ -112,7 +113,8 @@ export function BroadcastTemplateCreateDialog({ open, onOpenChange, template, on
 
     if (template) {
       setTemplateType(template.category)
-      setName(template.name || '')
+      const baseName = template.name || ''
+      setName(forceCreate ? (baseName.includes('(copy)') ? baseName : `${baseName} (copy)`) : baseName)
       setCategoryLabel(template.description || '')
       setContent(template.category === 'text' ? template.content || '' : '')
       setMediaUrl(template.category === 'image' || template.category === 'video' ? template.mediaUrl || '' : '')
@@ -126,7 +128,7 @@ export function BroadcastTemplateCreateDialog({ open, onOpenChange, template, on
     setContent('')
     setMediaUrl('')
     setFlexJson('')
-  }, [open, template])
+  }, [open, template, forceCreate])
 
   const flexError = useMemo(() => {
     if (templateType !== 'flex' || !flexJson.trim()) return ''
@@ -201,7 +203,11 @@ export function BroadcastTemplateCreateDialog({ open, onOpenChange, template, on
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!block max-w-5xl p-0 overflow-hidden">
         <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle>{isEditMode ? 'แก้ไข Broadcast Template' : 'สร้าง Broadcast Template'}</DialogTitle>
+          <DialogTitle>
+            {forceCreate
+              ? 'ทำสำเนา Template'
+              : (isEditMode ? 'แก้ไข Broadcast Template' : 'สร้าง Broadcast Template')}
+          </DialogTitle>
           <DialogDescription>
             เริ่มจาก text / image / flex / video แบบง่ายก่อน แล้วค่อยต่อ duplicate / archive / publish ในเฟสถัดไป
           </DialogDescription>
