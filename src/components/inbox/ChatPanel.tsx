@@ -683,7 +683,6 @@ function MessageBubble({
                           บันทึกสลิป
                         </button>
                       </div>
-                    </div>
                   </DialogContent>
                 </Dialog>
               </div>
