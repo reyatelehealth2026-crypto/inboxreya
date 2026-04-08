@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Broadcast, BroadcastTemplate, CreateBroadcastInput, BroadcastStats, FlexMessage } from '@/types/broadcast'
 
-interface CreateBroadcastTemplateInput {
+export interface BroadcastTemplateMutationInput {
   name: string
   templateType: 'text' | 'image' | 'flex' | 'video'
   categoryLabel?: string
@@ -50,11 +50,15 @@ export function useBroadcastTemplates(params?: { search?: string }) {
   })
 }
 
+function invalidateBroadcastTemplateQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ['broadcast-templates'] })
+}
+
 export function useCreateBroadcastTemplate() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (data: CreateBroadcastTemplateInput) => {
+    mutationFn: async (data: BroadcastTemplateMutationInput) => {
       const res = await fetch(`${API_BASE}/broadcasts/templates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -69,7 +73,67 @@ export function useCreateBroadcastTemplate() {
       return res.json()
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['broadcast-templates'] })
+      invalidateBroadcastTemplateQueries(queryClient)
+    },
+  })
+}
+
+export function useUpdateBroadcastTemplate() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      sourceTable,
+      sourceId,
+      data,
+    }: {
+      sourceTable: 'templates' | 'flex_templates'
+      sourceId: number
+      data: BroadcastTemplateMutationInput
+    }) => {
+      const res = await fetch(`${API_BASE}/broadcasts/templates/${sourceTable}/${sourceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}))
+        throw new Error(error.error || 'Failed to update broadcast template')
+      }
+
+      return res.json()
+    },
+    onSuccess: () => {
+      invalidateBroadcastTemplateQueries(queryClient)
+    },
+  })
+}
+
+export function useDeleteBroadcastTemplate() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      sourceTable,
+      sourceId,
+    }: {
+      sourceTable: 'templates' | 'flex_templates'
+      sourceId: number
+    }) => {
+      const res = await fetch(`${API_BASE}/broadcasts/templates/${sourceTable}/${sourceId}`, {
+        method: 'DELETE',
+      })
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}))
+        throw new Error(error.error || 'Failed to delete broadcast template')
+      }
+
+      return res.json()
+    },
+    onSuccess: () => {
+      invalidateBroadcastTemplateQueries(queryClient)
     },
   })
 }

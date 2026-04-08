@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Eye, FileText, ImageIcon, LayoutTemplate, Plus, RefreshCw, Search, Sparkles, Wand2 } from 'lucide-react'
-import { useBroadcastTemplates } from '@/hooks/use-broadcasts'
+import { Edit3, Eye, FileText, ImageIcon, LayoutTemplate, Plus, RefreshCw, Search, Sparkles, Trash2, Wand2 } from 'lucide-react'
+import { useBroadcastTemplates, useDeleteBroadcastTemplate } from '@/hooks/use-broadcasts'
 import { BroadcastTemplate } from '@/types/broadcast'
 import { BroadcastTemplateCreateDialog } from '@/components/broadcasts/BroadcastTemplateCreateDialog'
 import { FlexPreview } from '@/components/inbox/FlexPreview'
@@ -13,7 +13,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Separator } from '@/components/ui/separator'
+import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
 const categoryLabels: Record<BroadcastTemplate['category'], string> = {
@@ -72,7 +83,11 @@ export function BroadcastTemplateCenter() {
   const [search, setSearch] = useState('')
   const [activeTab, setActiveTab] = useState<'all' | BroadcastTemplate['category']>('all')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [editingTemplate, setEditingTemplate] = useState<BroadcastTemplate | null>(null)
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const { toast } = useToast()
   const { data, isLoading, isFetching, refetch } = useBroadcastTemplates({ search })
+  const deleteTemplate = useDeleteBroadcastTemplate()
   const templates: BroadcastTemplate[] = data?.data || []
   const meta = data?.meta
 
@@ -94,18 +109,68 @@ export function BroadcastTemplateCenter() {
   }, [filteredTemplates, selectedId])
 
   const selectedTemplate = filteredTemplates.find((template) => template.id === selectedId) || null
+  const canManageSelectedTemplate = selectedTemplate?.sourceTable === 'templates' || selectedTemplate?.sourceTable === 'flex_templates'
+
+  const handleDeleteTemplate = async () => {
+    if (!selectedTemplate?.sourceTable || !selectedTemplate.sourceId || !canManageSelectedTemplate) return
+
+    try {
+      await deleteTemplate.mutateAsync({
+        sourceTable: selectedTemplate.sourceTable,
+        sourceId: selectedTemplate.sourceId,
+      })
+      toast({ title: 'ลบ template สำเร็จ' })
+      setIsDeleteOpen(false)
+      setSelectedId(null)
+    } catch (error) {
+      toast({
+        title: 'ลบ template ไม่สำเร็จ',
+        description: error instanceof Error ? error.message : 'กรุณาลองใหม่อีกครั้ง',
+        variant: 'destructive',
+      })
+    }
+  }
 
   return (
     <>
       <BroadcastTemplateCreateDialog
         open={isCreateOpen}
         onOpenChange={setIsCreateOpen}
-        onCreated={(templateId) => {
+        onSaved={(template) => {
           setSearch('')
           setActiveTab('all')
-          setSelectedId(templateId)
+          setSelectedId(template.id)
         }}
       />
+
+      <BroadcastTemplateCreateDialog
+        open={!!editingTemplate}
+        template={editingTemplate}
+        onOpenChange={(open) => {
+          if (!open) setEditingTemplate(null)
+        }}
+        onSaved={(template) => {
+          setEditingTemplate(null)
+          setSelectedId(template.id)
+        }}
+      />
+
+      <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ลบ template นี้?</AlertDialogTitle>
+            <AlertDialogDescription>
+              การลบจะมีผลกับ template กลางใน Broadcast Center โดยตรง และไม่สามารถกู้คืนได้จากหน้านี้
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteTemplate} className="bg-red-600 text-white hover:bg-red-700">
+              ยืนยันการลบ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
       <Card className="min-h-[620px]">
@@ -238,9 +303,30 @@ export function BroadcastTemplateCenter() {
                 <Badge variant="secondary">created {new Date(selectedTemplate.createdAt).toLocaleDateString('th-TH')}</Badge>
               </div>
 
-              <div>
-                <h3 className="text-lg font-semibold">{selectedTemplate.name}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{selectedTemplate.description || 'ไม่มีคำอธิบายเพิ่มเติม'}</p>
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold">{selectedTemplate.name}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{selectedTemplate.description || 'ไม่มีคำอธิบายเพิ่มเติม'}</p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {canManageSelectedTemplate ? (
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => setEditingTemplate(selectedTemplate)}>
+                        <Edit3 className="mr-2 h-4 w-4" />
+                        แก้ไข
+                      </Button>
+                      <Button variant="outline" size="sm" className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => setIsDeleteOpen(true)}>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        ลบ
+                      </Button>
+                    </>
+                  ) : selectedTemplate.sourceTable === 'quick_reply_templates' ? (
+                    <Button asChild variant="secondary" size="sm">
+                      <Link href="/inbox/templates">แก้ในหน้า Quick Reply เดิม</Link>
+                    </Button>
+                  ) : null}
+                </div>
               </div>
 
               <Separator />

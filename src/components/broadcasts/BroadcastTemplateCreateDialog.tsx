@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle, FileText, ImageIcon, LayoutTemplate, Video } from 'lucide-react'
-import { useCreateBroadcastTemplate } from '@/hooks/use-broadcasts'
-import { FlexMessage } from '@/types/broadcast'
+import { BroadcastTemplateMutationInput, useCreateBroadcastTemplate, useUpdateBroadcastTemplate } from '@/hooks/use-broadcasts'
+import { BroadcastTemplate, FlexMessage } from '@/types/broadcast'
 import { FlexPreview } from '@/components/inbox/FlexPreview'
 import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
@@ -24,7 +24,8 @@ import { Card, CardContent } from '@/components/ui/card'
 interface BroadcastTemplateCreateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreated?: (templateId: number) => void
+  template?: BroadcastTemplate | null
+  onSaved?: (template: BroadcastTemplate) => void
 }
 
 type TemplateType = 'text' | 'image' | 'flex' | 'video'
@@ -83,7 +84,7 @@ function PreviewBlock({ type, content, mediaUrl, flexJson }: { type: TemplateTyp
   }
 }
 
-export function BroadcastTemplateCreateDialog({ open, onOpenChange, onCreated }: BroadcastTemplateCreateDialogProps) {
+export function BroadcastTemplateCreateDialog({ open, onOpenChange, template, onSaved }: BroadcastTemplateCreateDialogProps) {
   const [templateType, setTemplateType] = useState<TemplateType>('text')
   const [name, setName] = useState('')
   const [categoryLabel, setCategoryLabel] = useState('')
@@ -93,6 +94,10 @@ export function BroadcastTemplateCreateDialog({ open, onOpenChange, onCreated }:
 
   const { toast } = useToast()
   const createTemplate = useCreateBroadcastTemplate()
+  const updateTemplate = useUpdateBroadcastTemplate()
+  const isEditMode = !!template
+  const canEditInCenter = template?.sourceTable === 'templates' || template?.sourceTable === 'flex_templates'
+  const isFlexEditMode = template?.sourceTable === 'flex_templates'
 
   useEffect(() => {
     if (!open) {
@@ -102,8 +107,26 @@ export function BroadcastTemplateCreateDialog({ open, onOpenChange, onCreated }:
       setContent('')
       setMediaUrl('')
       setFlexJson('')
+      return
     }
-  }, [open])
+
+    if (template) {
+      setTemplateType(template.category)
+      setName(template.name || '')
+      setCategoryLabel(template.description || '')
+      setContent(template.category === 'text' ? template.content || '' : '')
+      setMediaUrl(template.category === 'image' || template.category === 'video' ? template.mediaUrl || '' : '')
+      setFlexJson(template.category === 'flex' && template.flexContent ? JSON.stringify(template.flexContent, null, 2) : '')
+      return
+    }
+
+    setTemplateType('text')
+    setName('')
+    setCategoryLabel('')
+    setContent('')
+    setMediaUrl('')
+    setFlexJson('')
+  }, [open, template])
 
   const flexError = useMemo(() => {
     if (templateType !== 'flex' || !flexJson.trim()) return ''
@@ -139,8 +162,13 @@ export function BroadcastTemplateCreateDialog({ open, onOpenChange, onCreated }:
       return
     }
 
+    if (isEditMode && !canEditInCenter) {
+      toast({ title: 'template นี้ต้องไปแก้ในหน้า Quick Reply เดิม', variant: 'destructive' })
+      return
+    }
+
     try {
-      const payload = {
+      const payload: BroadcastTemplateMutationInput = {
         name: name.trim(),
         templateType,
         categoryLabel: categoryLabel.trim() || undefined,
@@ -149,13 +177,20 @@ export function BroadcastTemplateCreateDialog({ open, onOpenChange, onCreated }:
         flexContent: templateType === 'flex' ? JSON.parse(flexJson) : undefined,
       }
 
-      const response = await createTemplate.mutateAsync(payload)
-      toast({ title: 'สร้าง template สำเร็จ' })
-      onCreated?.(response.data?.id)
+      const response = isEditMode && template?.sourceTable && template.sourceId
+        ? await updateTemplate.mutateAsync({
+            sourceTable: template.sourceTable as 'templates' | 'flex_templates',
+            sourceId: template.sourceId,
+            data: payload,
+          })
+        : await createTemplate.mutateAsync(payload)
+
+      toast({ title: isEditMode ? 'บันทึก template สำเร็จ' : 'สร้าง template สำเร็จ' })
+      onSaved?.(response.data)
       onOpenChange(false)
     } catch (error) {
       toast({
-        title: 'สร้าง template ไม่สำเร็จ',
+        title: isEditMode ? 'บันทึก template ไม่สำเร็จ' : 'สร้าง template ไม่สำเร็จ',
         description: error instanceof Error ? error.message : 'กรุณาลองใหม่อีกครั้ง',
         variant: 'destructive',
       })
@@ -166,9 +201,9 @@ export function BroadcastTemplateCreateDialog({ open, onOpenChange, onCreated }:
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!block max-w-5xl p-0 overflow-hidden">
         <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle>สร้าง Broadcast Template</DialogTitle>
+          <DialogTitle>{isEditMode ? 'แก้ไข Broadcast Template' : 'สร้าง Broadcast Template'}</DialogTitle>
           <DialogDescription>
-            เริ่มจาก text / image / flex / video แบบง่ายก่อน แล้วค่อยต่อ edit / duplicate / publish ในเฟสถัดไป
+            เริ่มจาก text / image / flex / video แบบง่ายก่อน แล้วค่อยต่อ duplicate / archive / publish ในเฟสถัดไป
           </DialogDescription>
         </DialogHeader>
 
@@ -180,8 +215,12 @@ export function BroadcastTemplateCreateDialog({ open, onOpenChange, onCreated }:
                 <TabsList className="grid w-full grid-cols-4">
                   {typeOptions.map((option) => {
                     const Icon = option.icon
+                    const isDisabled = isFlexEditMode
+                      ? option.value !== 'flex'
+                      : (isEditMode && template?.sourceTable === 'templates' ? option.value === 'flex' : false)
+
                     return (
-                      <TabsTrigger key={option.value} value={option.value} className="gap-1">
+                      <TabsTrigger key={option.value} value={option.value} className="gap-1" disabled={isDisabled}>
                         <Icon className="h-4 w-4" />
                         <span className="hidden sm:inline">{option.label}</span>
                       </TabsTrigger>
@@ -254,8 +293,10 @@ export function BroadcastTemplateCreateDialog({ open, onOpenChange, onCreated }:
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               ยกเลิก
             </Button>
-            <Button type="submit" disabled={createTemplate.isPending}>
-              {createTemplate.isPending ? 'กำลังสร้าง...' : 'บันทึก template'}
+            <Button type="submit" disabled={createTemplate.isPending || updateTemplate.isPending}>
+              {createTemplate.isPending || updateTemplate.isPending
+                ? (isEditMode ? 'กำลังบันทึก...' : 'กำลังสร้าง...')
+                : (isEditMode ? 'บันทึกการแก้ไข' : 'บันทึก template')}
             </Button>
           </DialogFooter>
         </form>
