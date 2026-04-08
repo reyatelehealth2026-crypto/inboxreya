@@ -409,8 +409,7 @@ function BdoCard({
 
   const odooUrl = `${ODOO_BASE}/web#id=${bdo.bdo_id}&model=cny.bill.invoice.before.delivery&view_type=form`
   const soUrl = bdo.order_id ? `${ODOO_BASE}/web#id=${bdo.order_id}&model=sale.order&view_type=form` : null
-  const phpBase = process.env.NEXT_PUBLIC_PHP_API_URL || 'https://cny.re-ya.com'
-  const statementUrl = `${phpBase.replace(/\/$/, '')}/api/odoo-dashboard-api.php?action=statement_pdf&bdo_id=${bdo.bdo_id}`
+  const statementUrl = `/api/inbox/bdos/${bdo.bdo_id}/statement-pdf`
   const bdoRefLabel = bdo.bdo_name || `BDO-${bdo.bdo_id}`
   const customerLabel = bdo.customer_name || bdo.customer_ref || null
   const deliveryTypeLabel = bdo.delivery_type === 'company'
@@ -479,17 +478,6 @@ function BdoCard({
           <Calendar className="h-3 w-3" /> {dateStr}
         </span>
         {paymentLabel && <span>ชำระ: {paymentLabel}</span>}
-        {bdo.statement_pdf_path && (
-          <a
-            href={statementUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-sky-700 hover:underline"
-          >
-            <FileText className="h-3 w-3" />
-            Statement PDF
-          </a>
-        )}
       </div>
 
       {/* Row 3: Amount + Action */}
@@ -501,29 +489,43 @@ function BdoCard({
             <>฿{displayAmount?.toLocaleString('th-TH', { minimumFractionDigits: 0 }) || '0'}</>
           )}
         </span>
-        <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex flex-wrap justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
           {isPending && (
-            <>
-              <Button
-                size="sm"
-                className="h-7 text-xs gap-1 bg-[#06C755] hover:bg-[#05a547] text-white"
-                disabled={sendingBdoId === bdo.bdo_id}
-                onClick={onSendNotification}
-              >
-                <Send className="h-3 w-3" />
-                {sendingBdoId === bdo.bdo_id ? 'กำลังส่ง...' : 'ส่งแจ้งยอดผ่าน LINE'}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs gap-1 border-teal-300 text-teal-700 hover:bg-teal-50"
-                onClick={() => onAttachSlip(netToPay)}
-              >
-                <Paperclip className="h-3 w-3" />
-                แนบสลิป
-              </Button>
-            </>
+            <Button
+              size="sm"
+              className="h-7 text-xs gap-1 bg-[#06C755] hover:bg-[#05a547] text-white"
+              disabled={sendingBdoId === bdo.bdo_id}
+              onClick={onSendNotification}
+            >
+              <Send className="h-3 w-3" />
+              {sendingBdoId === bdo.bdo_id ? 'กำลังส่ง...' : 'ส่งแจ้งยอดผ่าน LINE'}
+            </Button>
           )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1 border-sky-300 text-sky-700 hover:bg-sky-50"
+            asChild
+          >
+            <a href={statementUrl} target="_blank" rel="noopener noreferrer" title={`ดู Statement PDF ของ ${bdoRefLabel}`}>
+              <FileText className="h-3 w-3" />
+              ดู PDF
+            </a>
+          </Button>
+
+          {isPending && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1 border-teal-300 text-teal-700 hover:bg-teal-50"
+              onClick={() => onAttachSlip(netToPay)}
+            >
+              <Paperclip className="h-3 w-3" />
+              แนบสลิป
+            </Button>
+          )}
+
           {isMatched && bdo.slip_upload_id && (
             <Button
               variant="ghost"
