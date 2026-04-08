@@ -1,25 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 
-const DEFAULT_STATEMENT_BASE_URL = 'https://stg-erp.cnyrxapp.com'
-
-function getStatementApiKey() {
-  return (
-    process.env.STG_ERP_STATEMENT_PDF_API_KEY ||
-    process.env.STG_ERP_API_KEY ||
-    process.env.ERP_API_KEY ||
-    ''
-  ).trim()
-}
-
-function buildFallbackUrl(bdoId: number) {
+function buildStatementUrl(bdoId: number) {
   const phpBase = process.env.PHP_API_URL || process.env.NEXT_PUBLIC_PHP_API_URL || 'https://cny.re-ya.com'
   return `${phpBase.replace(/\/$/, '')}/api/odoo-dashboard-api.php?action=statement_pdf&bdo_id=${bdoId}`
-}
-
-function buildPrimaryUrl(bdoId: number, apiKey: string) {
-  const baseUrl = (process.env.STG_ERP_STATEMENT_PDF_BASE_URL || DEFAULT_STATEMENT_BASE_URL).replace(/\/$/, '')
-  return `${baseUrl}/reya/bdo/statement-pdf/${bdoId}?api_key=${encodeURIComponent(apiKey)}`
 }
 
 async function fetchStatementPdf(url: string) {
@@ -49,8 +33,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Invalid BDO ID' }, { status: 400 })
     }
 
-    const apiKey = getStatementApiKey()
-    const upstreamUrl = apiKey ? buildPrimaryUrl(bdoId, apiKey) : buildFallbackUrl(bdoId)
+    const upstreamUrl = buildStatementUrl(bdoId)
     const upstreamRes = await fetchStatementPdf(upstreamUrl)
 
     if (!upstreamRes.ok) {
