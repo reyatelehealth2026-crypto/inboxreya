@@ -112,6 +112,14 @@ async function getOwnedTemplate(lineAccountId: number, sourceTable: 'templates' 
   })
 }
 
+function requireLineAccountId(lineAccountId: number | null | undefined) {
+  if (lineAccountId == null) {
+    return NextResponse.json({ success: false, error: 'User does not have a LINE account assigned' }, { status: 400 })
+  }
+
+  return lineAccountId
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ sourceTable: string; sourceId: string }> }
@@ -120,9 +128,11 @@ export async function GET(
     const authResult = await requireAuth(req)
     if (authResult instanceof NextResponse) return authResult
     const { user } = authResult
+    const lineAccountId = requireLineAccountId(user.lineAccountId)
+    if (lineAccountId instanceof NextResponse) return lineAccountId
 
     const parsedParams = paramsSchema.parse(await params)
-    const record = await getOwnedTemplate(user.lineAccountId, parsedParams.sourceTable, parsedParams.sourceId)
+    const record = await getOwnedTemplate(lineAccountId, parsedParams.sourceTable, parsedParams.sourceId)
 
     if (!record) {
       return NextResponse.json({ success: false, error: 'Template not found' }, { status: 404 })
@@ -150,6 +160,8 @@ export async function PATCH(
     const authResult = await requireAuth(req)
     if (authResult instanceof NextResponse) return authResult
     const { user } = authResult
+    const lineAccountId = requireLineAccountId(user.lineAccountId)
+    if (lineAccountId instanceof NextResponse) return lineAccountId
 
     const parsedParams = paramsSchema.parse(await params)
     const validated = updateBroadcastTemplateSchema.parse(await req.json())
@@ -169,7 +181,7 @@ export async function PATCH(
       }
 
       const existing = await prisma.templates.findFirst({
-        where: { id: parsedParams.sourceId, line_account_id: user.lineAccountId },
+        where: { id: parsedParams.sourceId, line_account_id: lineAccountId },
       })
 
       if (!existing) {
@@ -194,7 +206,7 @@ export async function PATCH(
     }
 
     const existing = await prisma.flex_templates.findFirst({
-      where: { id: parsedParams.sourceId, line_account_id: user.lineAccountId },
+      where: { id: parsedParams.sourceId, line_account_id: lineAccountId },
     })
 
     if (!existing) {
@@ -233,9 +245,11 @@ export async function DELETE(
     const authResult = await requireAuth(req)
     if (authResult instanceof NextResponse) return authResult
     const { user } = authResult
+    const lineAccountId = requireLineAccountId(user.lineAccountId)
+    if (lineAccountId instanceof NextResponse) return lineAccountId
 
     const parsedParams = paramsSchema.parse(await params)
-    const existing = await getOwnedTemplate(user.lineAccountId, parsedParams.sourceTable, parsedParams.sourceId)
+    const existing = await getOwnedTemplate(lineAccountId, parsedParams.sourceTable, parsedParams.sourceId)
 
     if (!existing) {
       return NextResponse.json({ success: false, error: 'Template not found' }, { status: 404 })
