@@ -1,0 +1,348 @@
+import prisma from '@/lib/prisma'
+import { pushLineMessage } from '@/lib/line-api'
+
+export type BroadcastMessageType = 'text' | 'image' | 'video' | 'flex' | 'multi'
+
+type LinePayloadMessage = Record<string, any>
+
+type BroadcastTarget =
+  | { mode: 'all' }
+  | { mode: 'manual'; customerIds: number[] }
+  | { mode: 'segment'; segmentId: number }
+  | { mode: 'tags'; tagIds: number[] }
+
+export interface BroadcastEnvelopeV2 {
+  version: 2
+  kind: 'composer_broadcast'
+  summaryText: string
+  messageType: BroadcastMessageType
+  messages: LinePayloadMessage[]
+  target: BroadcastTarget
+  template?: {
+    id?: number
+    sourceTable?: 'quick_reply_templates' | 'flex_templates' | 'templates'
+  }
+}
+
+export function normalizeFlexMessagePayload(input: unknown, fallbackAltText = 'Flex Message') {
+  if (!input) return null
+
+  const parsed = typeof input === 'string' ? JSON.parse(input) : input
+  if (!parsed || typeof parsed !== 'object') return null
+
+  const flex = parsed as Record<string, any>
+  if (flex.type === 'flex' && flex.contents) {
+    return {
+      type: 'flex',
+      altText: flex.altText || fallbackAltText,
+      contents: flex.contents,
+    }
+  }
+
+  if (flex.type === 'bubble' || flex.type === 'carousel') {
+    return {
+      type: 'flex',
+      altText: fallbackAltText,
+      contents: flex,
+    }
+  }
+
+  if (flex.contents && (flex.contents.type === 'bubble' || flex.contents.type === 'carousel')) {
+    return {
+      type: 'flex',
+      altText: flex.altText || fallbackAltText,
+      contents: flex.contents,
+    }
+  }
+
+  return null
+}
+
+export function buildBroadcastMessages(input: {
+  content?: string
+  mediaUrl?: string
+  messageType?: BroadcastMessageType | 'video'
+  flexContent?: unknown
+}) {
+  const content = input.content?.trim() || ''
+  const type = input.messageType || (input.flexContent ? 'flex' : input.mediaUrl ? 'image' : 'text')
+
+  if (type === 'flex') {
+    const flexMessage = normalizeFlexMessagePayload(input.flexContent, content || 'Flex Message')
+    if (!flexMessage) throw new Error('Invalid flexContent payload')
+    return {
+      summaryText: content || flexMessage.altText || 'Flex Message',
+      messageType: 'flex' as const,
+      messages: [flexMessage],
+    }
+  }
+
+  if (type === 'image') {
+    if (!input.mediaUrl) throw new Error('Image broadcast requires mediaUrl')
+    return {
+      summaryText: content || 'Image broadcast',
+      messageType: 'image' as const,
+      messages: [{
+        type: 'image',
+        originalContentUrl: input.mediaUrl,
+        previewImageUrl: input.mediaUrl,
+      }],
+    }
+  }
+
+  if (type === 'video') {
+    if (!input.mediaUrl) throw new Error('Video broadcast requires mediaUrl')
+    return {
+      summaryText: content || 'Video broadcast',
+      messageType: 'video' as const,
+      messages: [{
+        type: 'video',
+        originalContentUrl: input.mediaUrl,
+        // NOTE: ideally previewImageUrl should be an image URL; we fall back to mediaUrl until a dedicated thumbnail field exists.
+        previewImageUrl: input.mediaUrl,
+      }],
+    }
+  }
+
+  if (!content) throw new Error('Text broadcast requires content')
+  return {
+    summaryText: content,
+    messageType: 'text' as const,
+    messages: [{ type: 'text', text: content }],
+  }
+}
+
+export function buildBroadcastEnvelope(input: {
+  content?: string
+  mediaUrl?: string
+  messageType?: BroadcastMessageType | 'video'
+  flexContent?: unknown
+  templateId?: number
+  templateSourceTable?: 'quick_reply_templates' | 'flex_templates' | 'templates'
+  targetSegmentId?: number
+  targetCustomerIds?: number[]
+}): BroadcastEnvelopeV2 {
+  const built = buildBroadcastMessages(input)
+  const target: BroadcastTarget = input.targetSegmentId
+    ? { mode: 'segment', segmentId: input.targetSegmentId }
+    : input.targetCustomerIds && input.targetCustomerIds.length > 0
+    ? { mode: 'manual', customerIds: input.targetCustomerIds }
+    : { mode: 'all' }
+
+  return {
+    version: 2,
+    kind: 'composer_broadcast',
+    summaryText: built.summaryText,
+    messageType: built.messageType,
+    messages: built.messages,
+    target,
+    template: input.templateId || input.templateSourceTable
+      ? {
+          id: input.templateId,
+          sourceTable: input.templateSourceTable,
+        }
+      : undefined,
+  }
+}
+
+export function parseStoredBroadcast(content: string, mediaUrl?: string | null) {
+  try {
+    const parsed = JSON.parse(content)
+
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      parsed.version === 2 &&
+      parsed.kind === 'composer_broadcast' &&
+      Array.isArray(parsed.messages)
+    ) {
+      const envelope = parsed as BroadcastEnvelopeV2
+      return {
+        kind: 'v2' as const,
+        summaryText: envelope.summaryText,
+        messageType: envelope.messageType,
+        messages: envelope.messages,
+        target: envelope.target,
+        raw: envelope,
+      }
+    }
+
+    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.messages) && Array.isArray(parsed.tagIds)) {
+      const title = typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title.trim() : 'โปรโมชั่น'
+      const messages = parsed.messages as LinePayloadMessage[]
+      const firstType = typeof messages[0]?.type === 'string' ? messages[0].type : 'multi'
+      const messageType = firstType === 'flex' ? 'flex' : firstType === 'image' ? 'image' : firstType === 'video' ? 'video' : messages.length > 1 ? 'multi' : 'text'
+      return {
+        kind: 'legacy-tags' as const,
+        summaryText: title,
+        messageType,
+        messages,
+        target: { mode: 'tags', tagIds: parsed.tagIds as number[] } as BroadcastTarget,
+        raw: parsed,
+      }
+    }
+  } catch {
+    // fall through to legacy plain-text/media path
+  }
+
+  const built = buildBroadcastMessages({
+    content,
+    mediaUrl: mediaUrl || undefined,
+    messageType: mediaUrl ? (content.includes('[video') ? 'video' : 'image') : 'text',
+  })
+
+  return {
+    kind: 'legacy-plain' as const,
+    summaryText: built.summaryText,
+    messageType: built.messageType,
+    messages: built.messages,
+    target: { mode: 'all' } as BroadcastTarget,
+    raw: null,
+  }
+}
+
+async function resolveManualTargetUsers(lineAccountId: number, customerIds: number[]) {
+  if (customerIds.length === 0) return []
+  const users = await prisma.lineUser.findMany({
+    where: {
+      lineAccountId,
+      id: { in: customerIds },
+      lineUserId: { not: '' },
+    },
+    select: { id: true, lineUserId: true, lineAccountId: true },
+  })
+  return users.filter((u) => !!u.lineUserId)
+}
+
+async function resolveManualTargetUsersFromJoinTable(lineAccountId: number, broadcastId: number) {
+  const rows = await prisma.$queryRaw<Array<{ user_id: number }>>`
+    SELECT user_id FROM broadcast_recipients WHERE broadcast_id = ${broadcastId}
+  `
+  const customerIds = rows.map((row) => Number(row.user_id)).filter(Boolean)
+  return resolveManualTargetUsers(lineAccountId, customerIds)
+}
+
+async function resolveTagTargetUsers(lineAccountId: number, tagIds: number[]) {
+  if (tagIds.length === 0) return []
+  const assignments = await prisma.userTagAssignment.findMany({
+    where: {
+      tagId: { in: tagIds },
+      user: { lineAccountId },
+    },
+    select: {
+      userId: true,
+      user: { select: { lineUserId: true, lineAccountId: true } },
+    },
+    distinct: ['userId'],
+  })
+
+  return assignments
+    .map((assignment) => assignment.user)
+    .filter((user): user is { lineUserId: string; lineAccountId: number | null } => Boolean(user?.lineUserId))
+}
+
+async function resolveAllTargetUsers(lineAccountId: number) {
+  const users = await prisma.lineUser.findMany({
+    where: {
+      lineAccountId,
+      lineUserId: { not: '' },
+      isBlocked: false,
+    },
+    select: { lineUserId: true, lineAccountId: true },
+  })
+  return users.filter((u) => !!u.lineUserId)
+}
+
+export async function resolveBroadcastTargetUsers(params: {
+  broadcastId: number
+  lineAccountId: number
+  target: BroadcastTarget
+}) {
+  const { broadcastId, lineAccountId, target } = params
+
+  if (target.mode === 'manual') {
+    const direct = await resolveManualTargetUsers(lineAccountId, target.customerIds)
+    if (direct.length > 0) return direct
+    return resolveManualTargetUsersFromJoinTable(lineAccountId, broadcastId)
+  }
+
+  if (target.mode === 'tags') {
+    return resolveTagTargetUsers(lineAccountId, target.tagIds)
+  }
+
+  if (target.mode === 'segment') {
+    throw new Error('Segment broadcast sending is not implemented yet')
+  }
+
+  return resolveAllTargetUsers(lineAccountId)
+}
+
+export async function sendBroadcastRecord(broadcast: {
+  id: number
+  lineAccountId: number | null
+  content: string
+  mediaUrl?: string | null
+}) {
+  if (!broadcast.lineAccountId) {
+    throw new Error('Broadcast is missing lineAccountId')
+  }
+
+  const parsed = parseStoredBroadcast(broadcast.content, broadcast.mediaUrl)
+  if (!parsed.messages || parsed.messages.length === 0) {
+    throw new Error('Broadcast has no LINE messages to send')
+  }
+
+  const targetUsers = await resolveBroadcastTargetUsers({
+    broadcastId: broadcast.id,
+    lineAccountId: broadcast.lineAccountId,
+    target: parsed.target,
+  })
+
+  if (targetUsers.length === 0) {
+    throw new Error('No target users found for this broadcast')
+  }
+
+  let successCount = 0
+  let failCount = 0
+  const uniqueErrors = new Set<string>()
+
+  for (const targetUser of targetUsers) {
+    const result = await pushLineMessage(
+      targetUser.lineUserId,
+      parsed.messages as Parameters<typeof pushLineMessage>[1],
+      targetUser.lineAccountId ?? broadcast.lineAccountId
+    )
+
+    if (result.success) {
+      successCount += 1
+    } else {
+      failCount += 1
+      if (result.error) uniqueErrors.add(result.error)
+    }
+  }
+
+  return {
+    summaryText: parsed.summaryText,
+    messageType: parsed.messageType,
+    totalRecipients: targetUsers.length,
+    successCount,
+    failCount,
+    errors: Array.from(uniqueErrors),
+    finalStatus: failCount === targetUsers.length ? 'failed' : 'sent',
+  }
+}
+
+export function summarizeBroadcastForList(broadcast: {
+  content: string
+  mediaUrl?: string | null
+}) {
+  const parsed = parseStoredBroadcast(broadcast.content, broadcast.mediaUrl)
+  const primaryMediaMessage = parsed.messages.find((message) => message?.type === 'image' || message?.type === 'video') as { originalContentUrl?: string } | undefined
+  const primaryMediaUrl = primaryMediaMessage?.originalContentUrl || broadcast.mediaUrl || null
+
+  return {
+    summaryText: parsed.summaryText,
+    messageType: parsed.messageType,
+    mediaUrl: primaryMediaUrl,
+  }
+}

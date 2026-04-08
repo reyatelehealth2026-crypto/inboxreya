@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { BroadcastTemplate, CreateBroadcastInput, FlexMessage } from '@/types/broadcast'
-import { useBroadcastTemplates, useCreateBroadcast } from '@/hooks/use-broadcasts'
+import { useBroadcastTemplates, useCreateBroadcast, useSendBroadcast } from '@/hooks/use-broadcasts'
 import { TemplateSelector } from './TemplateSelector'
 import { FlexPreview } from '@/components/inbox/FlexPreview'
 import { Button } from '@/components/ui/button'
@@ -67,6 +67,7 @@ export function CreateBroadcastDialog({
   
   const { data: templatesData } = useBroadcastTemplates()
   const createBroadcast = useCreateBroadcast()
+  const sendBroadcast = useSendBroadcast()
   
   const templates = templatesData?.data || []
   
@@ -79,12 +80,11 @@ export function CreateBroadcastDialog({
   })
 
   const isCustomFlexSelected = selectedTemplate?.id === -1
-  const isTemplateSelectionSupported = !!selectedTemplate && !isCustomFlexSelected && selectedTemplate.category !== 'flex'
-  const isSubmissionSupported = isTemplateSelectionSupported
+  const isSubmissionSupported = !!selectedTemplate
   
   const onSubmit = async (values: CreateBroadcastForm) => {
     if (!isSubmissionSupported) {
-      setCustomFlexError('ตอนนี้ broadcast composer รองรับ text / image / video template ก่อน ส่วน flex และ custom flex จะตามมาเมื่อ write flow รองรับครบ')
+      setCustomFlexError('กรุณาเลือก template หรือ custom flex ก่อนส่ง broadcast')
       return
     }
 
@@ -94,13 +94,13 @@ export function CreateBroadcastDialog({
       messageType: selectedTemplate?.category,
       scheduledAt: sendNow ? undefined : values.scheduledAt?.toISOString(),
     }
-    
-    // Handle different template types
-    if (selectedTemplate?.id === -1) {
-      // Custom Flex
+
+    if (isCustomFlexSelected) {
       try {
         const flexContent: FlexMessage = JSON.parse(customFlexContent)
         input.flexContent = flexContent
+        input.content = flexContent.altText || 'Flex Message'
+        input.messageType = 'flex'
       } catch {
         setCustomFlexError('JSON ไม่ถูกต้อง')
         return
@@ -119,17 +119,22 @@ export function CreateBroadcastDialog({
         }
       }
     } else {
-      // Manual text input
       input.content = values.content
     }
-    
+
     try {
-      await createBroadcast.mutateAsync(input)
+      const response = await createBroadcast.mutateAsync(input)
+      const broadcastId = response?.data?.id
+
+      if (sendNow && broadcastId) {
+        await sendBroadcast.mutateAsync(broadcastId)
+      }
+
       onOpenChange(false)
       onSuccess?.()
       resetForm()
     } catch (error) {
-      console.error('Failed to create broadcast:', error)
+      console.error('Failed to create/send broadcast:', error)
     }
   }
   

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-middleware'
+import { buildBroadcastEnvelope, summarizeBroadcastForList } from '@/lib/broadcast-runtime'
 import { z } from 'zod'
 import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
@@ -8,6 +9,7 @@ const createBroadcastSchema = z.object({
   content: z.string().max(5000).optional(),
   mediaUrl: z.string().url().optional(),
   messageType: z.enum(['text', 'image', 'video', 'flex']).optional(),
+  flexContent: z.any().optional(),
   templateId: z.number().int().positive().optional(),
   templateSourceTable: z.enum(['templates', 'flex_templates', 'quick_reply_templates']).optional(),
   targetSegmentId: z.number().int().positive().optional(),
@@ -54,7 +56,19 @@ export async function GET(req: NextRequest) {
         ])
 
         return {
-          broadcasts,
+          broadcasts: broadcasts.map((broadcast) => {
+            const summary = summarizeBroadcastForList({
+              content: broadcast.content,
+              mediaUrl: broadcast.mediaUrl,
+            })
+
+            return {
+              ...broadcast,
+              content: summary.summaryText,
+              mediaUrl: summary.mediaUrl,
+              messageType: summary.messageType,
+            }
+          }),
           pagination: {
             page,
             limit,
@@ -88,14 +102,18 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
 
     const validated = createBroadcastSchema.parse(body)
-    const resolvedContent = validated.content?.trim() || (validated.mediaUrl ? `[${validated.messageType || 'image'} broadcast]` : '')
+    const envelope = buildBroadcastEnvelope({
+      content: validated.content,
+      mediaUrl: validated.mediaUrl,
+      messageType: validated.messageType,
+      flexContent: validated.flexContent,
+      templateId: validated.templateId,
+      templateSourceTable: validated.templateSourceTable,
+      targetSegmentId: validated.targetSegmentId,
+      targetCustomerIds: validated.targetCustomerIds,
+    })
 
-    if (!resolvedContent && !validated.mediaUrl) {
-      return NextResponse.json(
-        { success: false, error: 'Broadcast requires content or mediaUrl' },
-        { status: 400 }
-      )
-    }
+    const resolvedContent = JSON.stringify(envelope)
 
     // Calculate total recipients
     let totalRecipients = 0
@@ -110,8 +128,8 @@ export async function POST(req: NextRequest) {
       //   totalRecipients = segment.user_count || 0
       // }
       totalRecipients = 0;
-    } else if (body.targetCustomerIds && body.targetCustomerIds.length > 0) {
-      totalRecipients = body.targetCustomerIds.length
+    } else if (validated.targetCustomerIds && validated.targetCustomerIds.length > 0) {
+      totalRecipients = validated.targetCustomerIds.length
     } else {
       // Count all customers for this LINE account
       totalRecipients = await prisma.lineUser.count({
@@ -126,7 +144,7 @@ export async function POST(req: NextRequest) {
       data: {
         lineAccountId: session.user.lineAccountId as number,
         content: resolvedContent,
-        mediaUrl: validated.mediaUrl,
+        mediaUrl: validated.mediaUrl || null,
         targetSegmentId: validated.targetSegmentId,
         scheduledAt: validated.scheduledAt ? new Date(validated.scheduledAt) : null,
         totalRecipients,
@@ -139,10 +157,10 @@ export async function POST(req: NextRequest) {
     await cacheInvalidate('broadcasts:*')
 
     // Store target customer IDs if provided
-    if (body.targetCustomerIds && body.targetCustomerIds.length > 0) {
+    if (validated.targetCustomerIds && validated.targetCustomerIds.length > 0) {
       await prisma.$executeRaw`
         INSERT INTO broadcast_recipients (broadcast_id, user_id)
-        VALUES ${body.targetCustomerIds.map((userId: number) => `(${broadcast.id}, ${userId})`).join(', ')}
+        VALUES ${validated.targetCustomerIds.map((userId: number) => `(${broadcast.id}, ${userId})`).join(', ')}
       `
     }
 

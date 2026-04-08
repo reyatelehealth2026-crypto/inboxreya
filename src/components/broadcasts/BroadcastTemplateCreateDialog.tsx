@@ -170,7 +170,7 @@ export function BroadcastTemplateCreateDialog({ open, onOpenChange, template, fo
     }
 
     try {
-      const payload: BroadcastTemplateMutationInput = {
+      const payload = {
         name: name.trim(),
         templateType,
         categoryLabel: categoryLabel.trim() || undefined,
@@ -179,13 +179,16 @@ export function BroadcastTemplateCreateDialog({ open, onOpenChange, template, fo
         flexContent: templateType === 'flex' ? JSON.parse(flexJson) : undefined,
       }
 
-      const response = isEditMode && template?.sourceTable && template.sourceId
-        ? await updateTemplate.mutateAsync({
-            sourceTable: template.sourceTable as 'templates' | 'flex_templates',
-            sourceId: template.sourceId,
-            data: payload,
-          })
-        : await createTemplate.mutateAsync(payload)
+      let response
+      if (isEditMode && template?.sourceTable && template.sourceId) {
+        response = await updateTemplate.mutateAsync({
+          sourceTable: template.sourceTable,
+          sourceId: template.sourceId,
+          data: payload,
+        })
+      } else {
+        response = await createTemplate.mutateAsync(payload)
+      }
 
       toast({ title: isEditMode ? 'บันทึก template สำเร็จ' : 'สร้าง template สำเร็จ' })
       onSaved?.(response.data)
