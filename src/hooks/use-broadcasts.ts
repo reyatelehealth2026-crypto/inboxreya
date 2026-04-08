@@ -25,11 +25,16 @@ export function useBroadcasts(params?: { page?: number; limit?: number; status?:
 }
 
 // Fetch broadcast templates
-export function useBroadcastTemplates() {
+export function useBroadcastTemplates(params?: { search?: string }) {
+  const search = params?.search?.trim() || ''
+
   return useQuery({
-    queryKey: ['broadcast-templates'],
+    queryKey: ['broadcast-templates', { search }],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/broadcasts/templates`)
+      const searchParams = new URLSearchParams()
+      if (search) searchParams.set('search', search)
+      const suffix = searchParams.toString() ? `?${searchParams}` : ''
+      const res = await fetch(`${API_BASE}/broadcasts/templates${suffix}`)
       if (!res.ok) throw new Error('Failed to fetch templates')
       return res.json()
     },

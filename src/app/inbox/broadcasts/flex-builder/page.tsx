@@ -13,11 +13,11 @@ export default function FlexBuilderPage() {
         <div className="max-w-4xl mx-auto">
           {/* Header */}
           <div className="flex items-center gap-4 mb-6">
-            <Link href="/inbox/broadcasts">
-              <Button variant="ghost" size="icon">
+            <Button asChild variant="ghost" size="icon">
+              <Link href="/inbox/broadcasts">
                 <ArrowLeft className="w-5 h-5" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
             <div>
               <h1 className="text-2xl font-bold">Flex Builder</h1>
               <p className="text-sm text-muted-foreground mt-1">
@@ -63,12 +63,12 @@ export default function FlexBuilderPage() {
               </div>
 
               <div className="flex justify-center">
-                <Link href="/inbox/broadcasts">
-                  <Button variant="outline">
+                <Button asChild variant="outline">
+                  <Link href="/inbox/broadcasts">
                     <ArrowLeft className="w-4 h-4 mr-2" />
                     กลับไปหน้า Broadcast
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </div>
             </CardContent>
           </Card>

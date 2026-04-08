@@ -77,8 +77,17 @@ export function CreateBroadcastDialog({
       targetCustomerIds: [],
     },
   })
+
+  const isCustomFlexSelected = selectedTemplate?.id === -1
+  const isTemplateSelectionSupported = !!selectedTemplate && !isCustomFlexSelected && selectedTemplate.category === 'text'
+  const isSubmissionSupported = isTemplateSelectionSupported
   
   const onSubmit = async (values: CreateBroadcastForm) => {
+    if (!isSubmissionSupported) {
+      setCustomFlexError('ตอนนี้ broadcast composer รองรับการสร้างจาก text template ก่อน ส่วน image/flex จะตามมาในเฟสถัดไป')
+      return
+    }
+
     const input: CreateBroadcastInput = {
       templateId: selectedTemplate?.id,
       scheduledAt: sendNow ? undefined : values.scheduledAt?.toISOString(),
@@ -177,6 +186,23 @@ export function CreateBroadcastDialog({
                     selectedTemplateId={selectedTemplate?.id}
                     onSelect={setSelectedTemplate}
                   />
+
+                  {selectedTemplate && !isSubmissionSupported && (
+                    <Card className="border-amber-300 bg-amber-50">
+                      <CardContent className="p-4 text-sm text-amber-900">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                          <div className="space-y-1">
+                            <p className="font-medium">template ประเภทนี้ยังอยู่ในเฟส groundwork</p>
+                            <p>
+                              ตอนนี้ composer ส่งได้เสถียรกับ <strong>text template</strong> ก่อน ส่วน image/flex และ custom flex
+                              จะตามมาเมื่อ backend write flow รองรับครบ เพื่อไม่ให้กดแล้ว fail เงียบ
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                   
                   {/* Custom Flex Input */}
                   {selectedTemplate?.id === -1 && (
@@ -385,7 +411,7 @@ export function CreateBroadcastDialog({
                 <Button
                   type="button"
                   onClick={() => setStep(step + 1)}
-                  disabled={step === 1 && !selectedTemplate}
+                  disabled={step === 1 && !isSubmissionSupported}
                 >
                   ถัดไป
                   <ChevronRight className="w-4 h-4 ml-2" />
@@ -393,7 +419,7 @@ export function CreateBroadcastDialog({
               ) : (
                 <Button 
                   type="submit"
-                  disabled={createBroadcast.isPending || (!sendNow && !form.watch('scheduledAt'))}
+                  disabled={createBroadcast.isPending || !isSubmissionSupported || (!sendNow && !form.watch('scheduledAt'))}
                 >
                   {createBroadcast.isPending ? (
                     <>กำลังสร้าง...</>
