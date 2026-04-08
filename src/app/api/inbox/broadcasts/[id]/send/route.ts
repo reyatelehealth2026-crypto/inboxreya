@@ -52,7 +52,6 @@ export async function POST(
         status: finalStatus,
         sentAt: finalStatus === 'sent' ? new Date() : null,
         deliveredCount: result.successCount,
-        failedCount: result.failCount,
       },
     })
 

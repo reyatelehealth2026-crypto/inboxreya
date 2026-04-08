@@ -3,7 +3,7 @@ import { pushLineMessage } from '@/lib/line-api'
 
 export type BroadcastMessageType = 'text' | 'image' | 'video' | 'flex' | 'multi'
 
-type LinePayloadMessage = Record<string, any>
+type LinePayloadMessage = Record<string, unknown>
 
 type BroadcastTarget =
   | { mode: 'all' }

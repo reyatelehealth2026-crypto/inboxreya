@@ -72,7 +72,6 @@ export async function GET(request: NextRequest) {
             status: result.finalStatus,
             sentAt: result.finalStatus === 'sent' ? new Date() : null,
             deliveredCount: result.successCount,
-            failedCount: result.failCount,
             totalRecipients: result.totalRecipients,
           },
         });
