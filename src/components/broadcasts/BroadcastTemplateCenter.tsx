@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Eye, FileText, ImageIcon, LayoutTemplate, RefreshCw, Search, Sparkles, Wand2 } from 'lucide-react'
+import { Eye, FileText, ImageIcon, LayoutTemplate, Plus, RefreshCw, Search, Sparkles, Wand2 } from 'lucide-react'
 import { useBroadcastTemplates } from '@/hooks/use-broadcasts'
 import { BroadcastTemplate } from '@/types/broadcast'
+import { BroadcastTemplateCreateDialog } from '@/components/broadcasts/BroadcastTemplateCreateDialog'
 import { FlexPreview } from '@/components/inbox/FlexPreview'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -70,6 +71,7 @@ function MediaPreview({ url, type }: { url?: string; type: 'image' | 'video' }) 
 export function BroadcastTemplateCenter() {
   const [search, setSearch] = useState('')
   const [activeTab, setActiveTab] = useState<'all' | BroadcastTemplate['category']>('all')
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
   const { data, isLoading, isFetching, refetch } = useBroadcastTemplates({ search })
   const templates: BroadcastTemplate[] = data?.data || []
   const meta = data?.meta
@@ -94,7 +96,18 @@ export function BroadcastTemplateCenter() {
   const selectedTemplate = filteredTemplates.find((template) => template.id === selectedId) || null
 
   return (
-    <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+    <>
+      <BroadcastTemplateCreateDialog
+        open={isCreateOpen}
+        onOpenChange={setIsCreateOpen}
+        onCreated={(templateId) => {
+          setSearch('')
+          setActiveTab('all')
+          setSelectedId(templateId)
+        }}
+      />
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
       <Card className="min-h-[620px]">
         <CardHeader className="space-y-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -104,7 +117,11 @@ export function BroadcastTemplateCenter() {
                 รวม template จาก quick reply, generic templates และ flex templates เพื่อใช้กับ broadcast
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" onClick={() => setIsCreateOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                สร้าง template
+              </Button>
               <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
                 <RefreshCw className={cn('mr-2 h-4 w-4', isFetching && 'animate-spin')} />
                 รีเฟรช
@@ -247,8 +264,8 @@ export function BroadcastTemplateCenter() {
                     <div className="space-y-1">
                       <p className="font-medium text-foreground">สถานะของเฟสนี้</p>
                       <p>
-                        Template Center ตอนนี้เป็น <strong>read-only library + preview</strong> ก่อน เพื่อให้เห็นของจริงและเช็ก data flow
-                        จากหลาย source ได้ชัดเจน โดยยังไม่ทับ quick reply เดิม
+                        เฟสนี้เริ่มรองรับ <strong>create + library + preview</strong> ก่อน โดยแยก template กลางสำหรับ broadcast
+                        ออกจาก quick reply เดิม และยังคงกันไม่ให้ broadcast composer เขียนเคส image/flex ที่ backend ส่งจริงยังไม่ครบ
                       </p>
                     </div>
                   </div>
@@ -259,5 +276,6 @@ export function BroadcastTemplateCenter() {
         </CardContent>
       </Card>
     </div>
+    </>
   )
 }

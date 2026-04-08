@@ -1,7 +1,16 @@
 'use client'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Broadcast, BroadcastTemplate, CreateBroadcastInput, BroadcastStats } from '@/types/broadcast'
+import { Broadcast, BroadcastTemplate, CreateBroadcastInput, BroadcastStats, FlexMessage } from '@/types/broadcast'
+
+interface CreateBroadcastTemplateInput {
+  name: string
+  templateType: 'text' | 'image' | 'flex' | 'video'
+  categoryLabel?: string
+  content?: string
+  mediaUrl?: string
+  flexContent?: FlexMessage
+}
 
 const API_BASE = '/api/inbox'
 
@@ -37,6 +46,30 @@ export function useBroadcastTemplates(params?: { search?: string }) {
       const res = await fetch(`${API_BASE}/broadcasts/templates${suffix}`)
       if (!res.ok) throw new Error('Failed to fetch templates')
       return res.json()
+    },
+  })
+}
+
+export function useCreateBroadcastTemplate() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (data: CreateBroadcastTemplateInput) => {
+      const res = await fetch(`${API_BASE}/broadcasts/templates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}))
+        throw new Error(error.error || 'Failed to create broadcast template')
+      }
+
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['broadcast-templates'] })
     },
   })
 }

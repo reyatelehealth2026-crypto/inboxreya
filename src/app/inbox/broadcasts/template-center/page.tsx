@@ -20,7 +20,7 @@ export default function TemplateCenterPage() {
             <div>
               <h1 className="text-2xl font-bold">Template Center</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                หน้าใช้งานจริงของ template library สำหรับ broadcast — เริ่มจาก list, filter และ preview ก่อน
+                หน้าใช้งานจริงของ template library สำหรับ broadcast — ตอนนี้รองรับ list, filter, preview และ create flow ขั้นต้นแล้ว
               </p>
             </div>
           </div>
