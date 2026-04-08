@@ -61,6 +61,7 @@ export function TemplateSelector({
               <TabsTrigger value="text">ข้อความ</TabsTrigger>
               <TabsTrigger value="flex">Flex</TabsTrigger>
               <TabsTrigger value="image">รูปภาพ</TabsTrigger>
+              <TabsTrigger value="video">วิดีโอ</TabsTrigger>
             </TabsList>
             
             <ScrollArea className="h-[380px]">
@@ -166,6 +167,26 @@ export function TemplateSelector({
                   <div className="p-4 bg-muted rounded-lg">
                     <p className="text-sm font-medium mb-1">ข้อความ:</p>
                     <p className="text-sm whitespace-pre-wrap">{previewTemplate.content}</p>
+                  </div>
+                )}
+              </div>
+            ) : previewTemplate?.mediaUrl ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{previewTemplate.name}</span>
+                  <span>•</span>
+                  <span>{categoryLabels[previewTemplate.category]}</span>
+                </div>
+
+                {previewTemplate.category === 'image' ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={previewTemplate.mediaUrl} alt={previewTemplate.name} className="w-full rounded-xl border object-cover" />
+                ) : (
+                  <div className="space-y-2 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                    <p>ตัวอย่างวิดีโอในเฟสนี้จะแสดงเป็นลิงก์</p>
+                    <a href={previewTemplate.mediaUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-4 hover:underline">
+                      เปิดวิดีโอในแท็บใหม่
+                    </a>
                   </div>
                 )}
               </div>

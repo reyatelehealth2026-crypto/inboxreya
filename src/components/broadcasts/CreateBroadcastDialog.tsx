@@ -79,17 +79,19 @@ export function CreateBroadcastDialog({
   })
 
   const isCustomFlexSelected = selectedTemplate?.id === -1
-  const isTemplateSelectionSupported = !!selectedTemplate && !isCustomFlexSelected && selectedTemplate.category === 'text'
+  const isTemplateSelectionSupported = !!selectedTemplate && !isCustomFlexSelected && selectedTemplate.category !== 'flex'
   const isSubmissionSupported = isTemplateSelectionSupported
   
   const onSubmit = async (values: CreateBroadcastForm) => {
     if (!isSubmissionSupported) {
-      setCustomFlexError('ตอนนี้ broadcast composer รองรับการสร้างจาก text template ก่อน ส่วน image/flex จะตามมาในเฟสถัดไป')
+      setCustomFlexError('ตอนนี้ broadcast composer รองรับ text / image / video template ก่อน ส่วน flex และ custom flex จะตามมาเมื่อ write flow รองรับครบ')
       return
     }
 
     const input: CreateBroadcastInput = {
-      templateId: selectedTemplate?.id,
+      templateId: selectedTemplate?.sourceId,
+      templateSourceTable: selectedTemplate?.sourceTable,
+      messageType: selectedTemplate?.category,
       scheduledAt: sendNow ? undefined : values.scheduledAt?.toISOString(),
     }
     
@@ -112,6 +114,9 @@ export function CreateBroadcastDialog({
       }
       if (selectedTemplate.mediaUrl) {
         input.mediaUrl = selectedTemplate.mediaUrl
+        if (!input.content) {
+          input.content = selectedTemplate.description || selectedTemplate.name || `[${selectedTemplate.category} broadcast]`
+        }
       }
     } else {
       // Manual text input
@@ -195,8 +200,8 @@ export function CreateBroadcastDialog({
                           <div className="space-y-1">
                             <p className="font-medium">template ประเภทนี้ยังอยู่ในเฟส groundwork</p>
                             <p>
-                              ตอนนี้ composer ส่งได้เสถียรกับ <strong>text template</strong> ก่อน ส่วน image/flex และ custom flex
-                              จะตามมาเมื่อ backend write flow รองรับครบ เพื่อไม่ให้กดแล้ว fail เงียบ
+                              ตอนนี้ composer เดินได้เสถียรกับ <strong>text / image / video template</strong> ก่อน
+                              ส่วน <strong>flex และ custom flex</strong> จะตามมาเมื่อ backend write flow รองรับครบ เพื่อไม่ให้กดแล้ว fail เงียบ
                             </p>
                           </div>
                         </div>

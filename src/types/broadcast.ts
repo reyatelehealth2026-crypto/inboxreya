@@ -121,8 +121,10 @@ export interface FlexFiller {
 export interface CreateBroadcastInput {
   content?: string
   mediaUrl?: string
+  messageType?: 'text' | 'image' | 'video' | 'flex'
   flexContent?: FlexMessage
   templateId?: number
+  templateSourceTable?: 'quick_reply_templates' | 'flex_templates' | 'templates'
   targetSegmentId?: number
   targetCustomerIds?: number[]
   scheduledAt?: string

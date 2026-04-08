@@ -5,8 +5,11 @@ import { z } from 'zod'
 import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
 const createBroadcastSchema = z.object({
-  content: z.string().min(1).max(5000),
+  content: z.string().max(5000).optional(),
   mediaUrl: z.string().url().optional(),
+  messageType: z.enum(['text', 'image', 'video', 'flex']).optional(),
+  templateId: z.number().int().positive().optional(),
+  templateSourceTable: z.enum(['templates', 'flex_templates', 'quick_reply_templates']).optional(),
   targetSegmentId: z.number().int().positive().optional(),
   targetCustomerIds: z.array(z.number().int().positive()).optional(),
   scheduledAt: z.string().datetime().optional(),
@@ -85,6 +88,14 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
 
     const validated = createBroadcastSchema.parse(body)
+    const resolvedContent = validated.content?.trim() || (validated.mediaUrl ? `[${validated.messageType || 'image'} broadcast]` : '')
+
+    if (!resolvedContent && !validated.mediaUrl) {
+      return NextResponse.json(
+        { success: false, error: 'Broadcast requires content or mediaUrl' },
+        { status: 400 }
+      )
+    }
 
     // Calculate total recipients
     let totalRecipients = 0
@@ -114,7 +125,7 @@ export async function POST(req: NextRequest) {
     const broadcast = await prisma.broadcastMessageV2.create({
       data: {
         lineAccountId: session.user.lineAccountId as number,
-        content: validated.content,
+        content: resolvedContent,
         mediaUrl: validated.mediaUrl,
         targetSegmentId: validated.targetSegmentId,
         scheduledAt: validated.scheduledAt ? new Date(validated.scheduledAt) : null,
