@@ -7,6 +7,7 @@ import * as z from 'zod'
 import { BroadcastTemplate, CreateBroadcastInput, FlexMessage } from '@/types/broadcast'
 import { useBroadcastTemplates, useCreateBroadcast, useSendBroadcast } from '@/hooks/use-broadcasts'
 import { useTags } from '@/hooks/use-tags'
+import { useToast } from '@/hooks/use-toast'
 import { TemplateSelector } from './TemplateSelector'
 import { FlexPreview } from '@/components/inbox/FlexPreview'
 import { Button } from '@/components/ui/button'
@@ -69,6 +70,7 @@ export function CreateBroadcastDialog({
   const [targetMode, setTargetMode] = useState<'all' | 'tags'>('all')
   const [tagSearch, setTagSearch] = useState('')
 
+  const { toast } = useToast()
   const { data: templatesData } = useBroadcastTemplates()
   const { data: tags = [], isLoading: isTagsLoading } = useTags()
   const createBroadcast = useCreateBroadcast()
@@ -163,11 +165,19 @@ export function CreateBroadcastDialog({
         await sendBroadcast.mutateAsync(broadcastId)
       }
 
+      toast({
+        title: sendNow ? 'ส่ง Broadcast สำเร็จ' : 'บันทึก Broadcast สำเร็จ',
+      })
       onOpenChange(false)
       onSuccess?.()
       resetForm()
     } catch (error) {
       console.error('Failed to create/send broadcast:', error)
+      toast({
+        title: 'ส่ง Broadcast ไม่สำเร็จ',
+        description: error instanceof Error ? error.message : 'กรุณาลองใหม่อีกครั้ง',
+        variant: 'destructive',
+      })
     }
   }
 
