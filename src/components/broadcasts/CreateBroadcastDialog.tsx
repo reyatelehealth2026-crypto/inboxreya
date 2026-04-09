@@ -4,6 +4,20 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
+import { format } from 'date-fns'
+import { th } from 'date-fns/locale'
+import {
+  AlertCircle,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Loader2,
+  MessageSquare,
+  Send,
+  Tag,
+  Users,
+} from 'lucide-react'
 import { BroadcastTemplate, CreateBroadcastInput, FlexMessage } from '@/types/broadcast'
 import { useBroadcastTemplates, useCreateBroadcast, useSendBroadcast } from '@/hooks/use-broadcasts'
 import { useTags } from '@/hooks/use-tags'
@@ -19,31 +33,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form'
+import { Form } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Calendar } from '@/components/ui/calendar'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { cn } from '@/lib/utils'
-import { format } from 'date-fns'
-import { th } from 'date-fns/locale'
-import { CalendarIcon, Send, Clock, Users, MessageSquare, Layout, ChevronRight, ChevronLeft, AlertCircle, Tag, Loader2 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { cn } from '@/lib/utils'
 
 const createBroadcastSchema = z.object({
-  content: z.string().optional(),
-  scheduledAt: z.date().optional(),
   targetSegmentId: z.number().optional(),
   targetCustomerIds: z.array(z.number()).optional(),
   targetTagIds: z.array(z.number()).optional(),
@@ -64,43 +63,56 @@ export function CreateBroadcastDialog({
 }: CreateBroadcastDialogProps) {
   const [step, setStep] = useState(1)
   const [selectedTemplate, setSelectedTemplate] = useState<BroadcastTemplate | null>(null)
-  const [customFlexContent, setCustomFlexContent] = useState<string>('')
+  const [customFlexContent, setCustomFlexContent] = useState('')
   const [customFlexError, setCustomFlexError] = useState<string | null>(null)
-  const [sendNow, setSendNow] = useState(true)
+  const [sendMode, setSendMode] = useState<'now' | 'scheduled'>('now')
+  const [scheduledDate, setScheduledDate] = useState('')
+  const [scheduledTime, setScheduledTime] = useState('09:00')
   const [targetMode, setTargetMode] = useState<'all' | 'tags'>('all')
   const [tagSearch, setTagSearch] = useState('')
 
   const { toast } = useToast()
   const { data: templatesData } = useBroadcastTemplates()
-  const { data: tags = [], isLoading: isTagsLoading } = useTags()
+  const { data: tagsData, isLoading: isTagsLoading } = useTags()
   const createBroadcast = useCreateBroadcast()
   const sendBroadcast = useSendBroadcast()
 
   const templates = templatesData?.data || []
+  const tags = Array.isArray(tagsData) ? tagsData : []
+  const sendNow = sendMode === 'now'
+  const isSubmitting = createBroadcast.isPending || sendBroadcast.isPending
+  const isCustomFlexSelected = selectedTemplate?.id === -1
+  const isSubmissionSupported = !!selectedTemplate
+  const totalSteps = 3
 
   const form = useForm<CreateBroadcastForm>({
     resolver: zodResolver(createBroadcastSchema),
     defaultValues: {
-      content: '',
       targetCustomerIds: [],
       targetTagIds: [],
     },
   })
 
-  const isCustomFlexSelected = selectedTemplate?.id === -1
-  const isSubmissionSupported = !!selectedTemplate
   const selectedTagIds = form.watch('targetTagIds') || []
   const selectedTags = tags.filter((tag) => selectedTagIds.includes(Number(tag.id)))
   const filteredTags = tags.filter((tag) => {
     const search = tagSearch.trim().toLowerCase()
     if (!search) return true
+
     const haystack = [tag.name, tag.description]
       .filter(Boolean)
       .join(' ')
       .toLowerCase()
+
     return haystack.includes(search)
   })
   const isTargetSelectionValid = targetMode === 'all' || selectedTagIds.length > 0
+  const scheduledDateTime = !sendNow && scheduledDate
+    ? new Date(`${scheduledDate}T${scheduledTime}`)
+    : null
+  const hasValidScheduledDateTime = !scheduledDateTime
+    ? false
+    : !Number.isNaN(scheduledDateTime.getTime()) && scheduledDateTime > new Date()
 
   const toggleTargetTag = (tagId: number) => {
     const nextTargetTagIds = selectedTagIds.includes(tagId)
@@ -113,17 +125,49 @@ export function CreateBroadcastDialog({
     })
   }
 
-  const onSubmit = async (values: CreateBroadcastForm) => {
+  const resetForm = () => {
+    setStep(1)
+    setSelectedTemplate(null)
+    setCustomFlexContent('')
+    setCustomFlexError(null)
+    setSendMode('now')
+    setScheduledDate('')
+    setScheduledTime('09:00')
+    setTargetMode('all')
+    setTagSearch('')
+    form.reset()
+  }
+
+  const onSubmit = async () => {
     if (!isSubmissionSupported) {
       setCustomFlexError('กรุณาเลือก template หรือ custom flex ก่อนส่ง broadcast')
       return
+    }
+
+    if (!sendNow) {
+      if (!scheduledDateTime || Number.isNaN(scheduledDateTime.getTime())) {
+        toast({
+          title: 'กรุณาเลือกวันและเวลาที่ต้องการส่ง',
+          variant: 'destructive',
+        })
+        return
+      }
+
+      if (scheduledDateTime <= new Date()) {
+        toast({
+          title: 'เวลาที่ตั้งต้องมากกว่าปัจจุบัน',
+          description: 'กรุณาเลือกวันหรือเวลาส่งใหม่อีกครั้ง',
+          variant: 'destructive',
+        })
+        return
+      }
     }
 
     const input: CreateBroadcastInput = {
       templateId: selectedTemplate?.sourceId,
       templateSourceTable: selectedTemplate?.sourceTable,
       messageType: selectedTemplate?.category,
-      scheduledAt: sendNow ? undefined : values.scheduledAt?.toISOString(),
+      scheduledAt: sendNow ? undefined : scheduledDateTime?.toISOString(),
     }
 
     if (isCustomFlexSelected) {
@@ -140,17 +184,18 @@ export function CreateBroadcastDialog({
       if (selectedTemplate.flexContent) {
         input.flexContent = selectedTemplate.flexContent
       }
+
       if (selectedTemplate.content) {
         input.content = selectedTemplate.content
       }
+
       if (selectedTemplate.mediaUrl) {
         input.mediaUrl = selectedTemplate.mediaUrl
+
         if (!input.content) {
           input.content = selectedTemplate.description || selectedTemplate.name || `[${selectedTemplate.category} broadcast]`
         }
       }
-    } else {
-      input.content = values.content
     }
 
     if (targetMode === 'tags') {
@@ -166,7 +211,7 @@ export function CreateBroadcastDialog({
       }
 
       toast({
-        title: sendNow ? 'ส่ง Broadcast สำเร็จ' : 'บันทึก Broadcast สำเร็จ',
+        title: sendNow ? 'ส่ง Broadcast สำเร็จ' : 'บันทึก Broadcast ตามเวลาสำเร็จ',
       })
       onOpenChange(false)
       onSuccess?.()
@@ -181,23 +226,10 @@ export function CreateBroadcastDialog({
     }
   }
 
-  const resetForm = () => {
-    setStep(1)
-    setSelectedTemplate(null)
-    setCustomFlexContent('')
-    setCustomFlexError(null)
-    setSendNow(true)
-    setTargetMode('all')
-    setTagSearch('')
-    form.reset()
-  }
-
-  const totalSteps = 3
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] p-0 overflow-hidden">
-        <DialogHeader className="px-6 py-4 border-b">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden p-0">
+        <DialogHeader className="border-b px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
               <DialogTitle className="text-xl">สร้าง Broadcast ใหม่</DialogTitle>
@@ -205,20 +237,21 @@ export function CreateBroadcastDialog({
                 ส่งข้อความถึงลูกค้าหลายคนพร้อมกัน
               </DialogDescription>
             </div>
+
             <div className="flex items-center gap-2">
-              {Array.from({ length: totalSteps }).map((_, i) => (
+              {Array.from({ length: totalSteps }).map((_, index) => (
                 <div
-                  key={i}
+                  key={index}
                   className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors",
-                    step > i + 1
-                      ? "bg-primary text-primary-foreground"
-                      : step === i + 1
-                      ? "bg-primary/10 text-primary border-2 border-primary"
-                      : "bg-muted text-muted-foreground"
+                    'flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors',
+                    step > index + 1
+                      ? 'bg-primary text-primary-foreground'
+                      : step === index + 1
+                      ? 'border-2 border-primary bg-primary/10 text-primary'
+                      : 'bg-muted text-muted-foreground'
                   )}
                 >
-                  {step > i + 1 ? '✓' : i + 1}
+                  {step > index + 1 ? '✓' : index + 1}
                 </div>
               ))}
             </div>
@@ -226,14 +259,13 @@ export function CreateBroadcastDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex h-full flex-col">
             <ScrollArea className="flex-1 px-6 py-4">
-              {/* Step 1: Select Template */}
               {step === 1 && (
                 <div className="space-y-4">
-                  <h3 className="text-sm font-medium flex items-center gap-2">
-                    <MessageSquare className="w-4 h-4" />
-                    เลือกเทมเพลตหรือสร้างใหม่
+                  <h3 className="flex items-center gap-2 text-sm font-medium">
+                    <MessageSquare className="h-4 w-4" />
+                    เลือก template หรือสร้าง custom flex
                   </h3>
 
                   <TemplateSelector
@@ -242,55 +274,37 @@ export function CreateBroadcastDialog({
                     onSelect={setSelectedTemplate}
                   />
 
-                  {selectedTemplate && !isSubmissionSupported && (
-                    <Card className="border-amber-300 bg-amber-50">
-                      <CardContent className="p-4 text-sm text-amber-900">
-                        <div className="flex items-start gap-2">
-                          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                          <div className="space-y-1">
-                            <p className="font-medium">template ประเภทนี้ยังอยู่ในเฟส groundwork</p>
-                            <p>
-                              ตอนนี้ composer เดินได้เสถียรกับ <strong>text / image / video template</strong> ก่อน
-                              ส่วน <strong>flex และ custom flex</strong> จะตามมาเมื่อ backend write flow รองรับครบ เพื่อไม่ให้กดแล้ว fail เงียบ
-                            </p>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Custom Flex Input */}
                   {selectedTemplate?.id === -1 && (
                     <Card className="mt-4">
-                      <CardContent className="p-4 space-y-4">
+                      <CardContent className="space-y-4 p-4">
                         <label className="text-sm font-medium">Flex Message JSON</label>
                         <Textarea
                           value={customFlexContent}
-                          onChange={(e) => {
-                            setCustomFlexContent(e.target.value)
+                          onChange={(event) => {
+                            setCustomFlexContent(event.target.value)
                             setCustomFlexError(null)
+
                             try {
-                              JSON.parse(e.target.value)
+                              JSON.parse(event.target.value)
                             } catch {
                               setCustomFlexError('JSON ไม่ถูกต้อง')
                             }
                           }}
-                          placeholder={`{\n  "type": "flex",\n  "altText": "ข้อความ",\n  "contents": {\n    "type": "bubble",\n    ...\n  }\n}`}
-                          className="font-mono text-sm min-h-[200px]"
+                          placeholder={`{\n  "type": "flex",\n  "altText": "ข้อความ",\n  "contents": {\n    "type": "bubble"\n  }\n}`}
+                          className="min-h-[200px] font-mono text-sm"
                         />
 
                         {customFlexError && (
-                          <div className="flex items-center gap-2 text-destructive text-sm">
-                            <AlertCircle className="w-4 h-4" />
+                          <div className="flex items-center gap-2 text-sm text-destructive">
+                            <AlertCircle className="h-4 w-4" />
                             {customFlexError}
                           </div>
                         )}
 
-                        {/* Preview Custom Flex */}
                         {customFlexContent && !customFlexError && (
                           <div className="mt-4">
-                            <p className="text-sm font-medium mb-2">ตัวอย่าง:</p>
-                            <div className="bg-gradient-to-br from-[#7494a5] to-[#5a7a8a] p-4 rounded-xl">
+                            <p className="mb-2 text-sm font-medium">ตัวอย่าง:</p>
+                            <div className="rounded-xl bg-gradient-to-br from-[#7494a5] to-[#5a7a8a] p-4">
                               <FlexPreview flex={JSON.parse(customFlexContent)} />
                             </div>
                           </div>
@@ -301,11 +315,10 @@ export function CreateBroadcastDialog({
                 </div>
               )}
 
-              {/* Step 2: Select Target */}
               {step === 2 && (
                 <div className="space-y-6">
-                  <h3 className="text-sm font-medium flex items-center gap-2">
-                    <Users className="w-4 h-4" />
+                  <h3 className="flex items-center gap-2 text-sm font-medium">
+                    <Users className="h-4 w-4" />
                     เลือกกลุ่มเป้าหมาย
                   </h3>
 
@@ -318,7 +331,7 @@ export function CreateBroadcastDialog({
                     <TabsContent value="all" className="space-y-4">
                       <Card>
                         <CardContent className="p-6 text-center">
-                          <Users className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
+                          <Users className="mx-auto mb-3 h-12 w-12 text-muted-foreground" />
                           <p className="font-medium">ส่งถึงลูกค้าทั้งหมด</p>
                           <p className="text-sm text-muted-foreground">
                             ส่งข้อความถึงลูกค้าทุกคนที่เคยติดต่อ
@@ -329,7 +342,7 @@ export function CreateBroadcastDialog({
 
                     <TabsContent value="tags" className="space-y-4">
                       <Card>
-                        <CardContent className="p-4 space-y-4">
+                        <CardContent className="space-y-4 p-4">
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Tag className="h-4 w-4" />
                             เลือกอย่างน้อย 1 Tag เพื่อส่ง broadcast เฉพาะกลุ่ม
@@ -337,7 +350,7 @@ export function CreateBroadcastDialog({
 
                           <Input
                             value={tagSearch}
-                            onChange={(e) => setTagSearch(e.target.value)}
+                            onChange={(event) => setTagSearch(event.target.value)}
                             placeholder="ค้นหา Tag จากชื่อหรือคำอธิบาย"
                           />
 
@@ -368,7 +381,9 @@ export function CreateBroadcastDialog({
                                       onClick={() => toggleTargetTag(numericTagId)}
                                       className={cn(
                                         'flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors',
-                                        isSelected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:border-primary/40 hover:bg-muted/40'
+                                        isSelected
+                                          ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                                          : 'hover:border-primary/40 hover:bg-muted/40'
                                       )}
                                     >
                                       <div className="flex items-center gap-3">
@@ -404,98 +419,125 @@ export function CreateBroadcastDialog({
                 </div>
               )}
 
-              {/* Step 3: Schedule & Confirm */}
               {step === 3 && (
                 <div className="space-y-6">
-                  <h3 className="text-sm font-medium flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
+                  <h3 className="flex items-center gap-2 text-sm font-medium">
+                    <Clock className="h-4 w-4" />
                     ตั้งเวลาส่ง
                   </h3>
 
                   <div className="space-y-4">
-                    <div className="flex gap-4">
-                      <Button
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <button
                         type="button"
-                        variant={sendNow ? 'default' : 'outline'}
-                        className="flex-1"
-                        onClick={() => setSendNow(true)}
+                        onClick={() => setSendMode('now')}
+                        className={cn(
+                          'rounded-xl border-2 p-4 text-left transition-all',
+                          sendNow
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border hover:border-primary/40'
+                        )}
                       >
-                        <Send className="w-4 h-4 mr-2" />
-                        ส่งทันที
-                      </Button>
-                      <Button
+                        <div className="mb-1 flex items-center gap-2">
+                          <Send className={cn('h-4 w-4', sendNow ? 'text-primary' : 'text-muted-foreground')} />
+                          <span className={cn('text-sm font-semibold', sendNow ? 'text-primary' : 'text-foreground')}>
+                            ส่งทันที
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          สร้าง broadcast แล้วส่งไปยังกลุ่มเป้าหมายทันที
+                        </p>
+                      </button>
+
+                      <button
                         type="button"
-                        variant={!sendNow ? 'default' : 'outline'}
-                        className="flex-1"
-                        onClick={() => setSendNow(false)}
+                        onClick={() => setSendMode('scheduled')}
+                        className={cn(
+                          'rounded-xl border-2 p-4 text-left transition-all',
+                          !sendNow
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border hover:border-primary/40'
+                        )}
                       >
-                        <Clock className="w-4 h-4 mr-2" />
-                        ตั้งเวลา
-                      </Button>
+                        <div className="mb-1 flex items-center gap-2">
+                          <Calendar className={cn('h-4 w-4', !sendNow ? 'text-primary' : 'text-muted-foreground')} />
+                          <span className={cn('text-sm font-semibold', !sendNow ? 'text-primary' : 'text-foreground')}>
+                            ตั้งเวลาส่ง
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          บันทึกคิว broadcast และส่งอัตโนมัติตามวันเวลาที่กำหนด
+                        </p>
+                      </button>
                     </div>
 
                     {!sendNow && (
-                      <FormField
-                        control={form.control}
-                        name="scheduledAt"
-                        render={({ field }) => (
-                          <FormItem className="flex flex-col">
-                            <FormLabel>วันและเวลาที่ต้องการส่ง</FormLabel>
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <FormControl>
-                                  <Button
-                                    variant="outline"
-                                    className={cn(
-                                      "w-full pl-3 text-left font-normal",
-                                      !field.value && "text-muted-foreground"
-                                    )}
-                                  >
-                                    {field.value ? (
-                                      format(field.value, "PPP p", { locale: th })
-                                    ) : (
-                                      <span>เลือกวันและเวลา</span>
-                                    )}
-                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                  </Button>
-                                </FormControl>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-0" align="start">
-                                <Calendar
-                                  mode="single"
-                                  selected={field.value}
-                                  onSelect={field.onChange}
-                                  disabled={(date) => date < new Date()}
-                                  initialFocus
-                                />
-                                <div className="p-3 border-t">
-                                  <Input
-                                    type="time"
-                                    onChange={(e) => {
-                                      const [hours, minutes] = e.target.value.split(':')
-                                      const newDate = new Date(field.value || new Date())
-                                      newDate.setHours(parseInt(hours), parseInt(minutes))
-                                      field.onChange(newDate)
-                                    }}
-                                  />
-                                </div>
-                              </PopoverContent>
-                            </Popover>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                      <Card className="border-border bg-muted/30">
+                        <CardContent className="space-y-4 p-4">
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium">วันที่ส่ง</p>
+                            <Input
+                              type="date"
+                              value={scheduledDate}
+                              onChange={(event) => setScheduledDate(event.target.value)}
+                              min={new Date().toISOString().split('T')[0]}
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium">เวลาที่ส่ง</p>
+                            <Input
+                              type="time"
+                              value={scheduledTime}
+                              onChange={(event) => setScheduledTime(event.target.value)}
+                            />
+                          </div>
+
+                          {scheduledDateTime && !Number.isNaN(scheduledDateTime.getTime()) ? (
+                            <div
+                              className={cn(
+                                'flex items-start gap-2 rounded-lg border p-3 text-xs',
+                                hasValidScheduledDateTime
+                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                  : 'border-amber-200 bg-amber-50 text-amber-700'
+                              )}
+                            >
+                              <Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                              <span>
+                                {hasValidScheduledDateTime ? 'กำหนดส่ง:' : 'เวลาที่เลือกอยู่ในอดีต:'}{' '}
+                                <strong>{format(scheduledDateTime, 'PPP p', { locale: th })}</strong>
+                              </span>
+                            </div>
+                          ) : null}
+                        </CardContent>
+                      </Card>
                     )}
                   </div>
 
-                  {/* Summary */}
                   <Card className="bg-muted">
-                    <CardContent className="p-4 space-y-2">
+                    <CardContent className="space-y-2 p-4">
                       <p className="font-medium">สรุป</p>
-                      <div className="text-sm space-y-1">
-                        <p><span className="text-muted-foreground">เทมเพลต:</span> {selectedTemplate?.name || 'ข้อความธรรมดา'}</p>
-                        <p><span className="text-muted-foreground">กลุ่มเป้าหมาย:</span> {targetMode === 'tags' ? (selectedTags.length > 0 ? selectedTags.map((tag) => tag.name).join(', ') : 'ยังไม่ได้เลือก Tag') : 'ลูกค้าทั้งหมด'}</p>
-                        <p><span className="text-muted-foreground">เวลาส่ง:</span> {sendNow ? 'ทันที' : 'ตามที่กำหนด'}</p>
+                      <div className="space-y-1 text-sm">
+                        <p>
+                          <span className="text-muted-foreground">Template:</span>{' '}
+                          {selectedTemplate?.name || 'Broadcast'}
+                        </p>
+                        <p>
+                          <span className="text-muted-foreground">กลุ่มเป้าหมาย:</span>{' '}
+                          {targetMode === 'tags'
+                            ? selectedTags.length > 0
+                              ? selectedTags.map((tag) => tag.name).join(', ')
+                              : 'ยังไม่ได้เลือก Tag'
+                            : 'ลูกค้าทั้งหมด'}
+                        </p>
+                        <p>
+                          <span className="text-muted-foreground">เวลาส่ง:</span>{' '}
+                          {sendNow
+                            ? 'ส่งทันที'
+                            : scheduledDateTime && !Number.isNaN(scheduledDateTime.getTime())
+                            ? format(scheduledDateTime, 'PPP p', { locale: th })
+                            : 'ยังไม่ได้เลือกวันเวลา'}
+                        </p>
                       </div>
                     </CardContent>
                   </Card>
@@ -503,14 +545,14 @@ export function CreateBroadcastDialog({
               )}
             </ScrollArea>
 
-            <DialogFooter className="px-6 py-4 border-t gap-2">
+            <DialogFooter className="gap-2 border-t px-6 py-4">
               {step > 1 && (
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setStep(step - 1)}
                 >
-                  <ChevronLeft className="w-4 h-4 mr-2" />
+                  <ChevronLeft className="mr-2 h-4 w-4" />
                   ย้อนกลับ
                 </Button>
               )}
@@ -522,23 +564,23 @@ export function CreateBroadcastDialog({
                   disabled={(step === 1 && !isSubmissionSupported) || (step === 2 && !isTargetSelectionValid)}
                 >
                   ถัดไป
-                  <ChevronRight className="w-4 h-4 ml-2" />
+                  <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>
               ) : (
                 <Button
                   type="submit"
-                  disabled={createBroadcast.isPending || !isSubmissionSupported || !isTargetSelectionValid || (!sendNow && !form.watch('scheduledAt'))}
+                  disabled={isSubmitting || !isSubmissionSupported || !isTargetSelectionValid || (!sendNow && !hasValidScheduledDateTime)}
                 >
-                  {createBroadcast.isPending ? (
-                    <>กำลังสร้าง...</>
+                  {isSubmitting ? (
+                    <>กำลังดำเนินการ...</>
                   ) : sendNow ? (
                     <>
-                      <Send className="w-4 h-4 mr-2" />
+                      <Send className="mr-2 h-4 w-4" />
                       ส่ง Broadcast
                     </>
                   ) : (
                     <>
-                      <Clock className="w-4 h-4 mr-2" />
+                      <Calendar className="mr-2 h-4 w-4" />
                       ตั้งเวลา Broadcast
                     </>
                   )}

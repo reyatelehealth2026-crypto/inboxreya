@@ -1,0 +1,1884 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>REYA_USER_GUIDE_TH_COMPLETE</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css" />
+</head>
+<body>
+<nav id="TOC" role="doc-toc">
+<ul>
+<li><a href="#คมอการใชงาน-reya" id="toc-คมอการใชงาน-reya"><span
+class="toc-section-number">1</span> 📘 คู่มือการใช้งาน REYA</a>
+<ul>
+<li><a href="#ระบบจดการ-line-oa-สำหรบพนกงาน-และฝายขาย"
+id="toc-ระบบจดการ-line-oa-สำหรบพนกงาน-และฝายขาย"><span
+class="toc-section-number">1.1</span> ระบบจัดการ LINE OA สำหรับพนักงาน
+และฝ่ายขาย</a></li>
+<li><a href="#สารบญ" id="toc-สารบญ"><span
+class="toc-section-number">1.2</span> 📑 สารบัญ</a></li>
+<li><a href="#เขาสระบบ" id="toc-เขาสระบบ"><span
+class="toc-section-number">1.3</span> 🔐 เข้าสู่ระบบ</a>
+<ul>
+<li><a href="#ขนตอนการเขาสระบบ" id="toc-ขนตอนการเขาสระบบ"><span
+class="toc-section-number">1.3.1</span> ขั้นตอนการเข้าสู่ระบบ</a></li>
+<li><a href="#ความปลอดภย---สำคญ" id="toc-ความปลอดภย---สำคญ"><span
+class="toc-section-number">1.3.2</span> ⚠️ ความปลอดภัย - สำคัญ!</a></li>
+<li><a href="#ลมรหสผาน" id="toc-ลมรหสผาน"><span
+class="toc-section-number">1.3.3</span> ลืมรหัสผ่าน?</a></li>
+</ul></li>
+<li><a href="#dashboard---หนาแรก" id="toc-dashboard---หนาแรก"><span
+class="toc-section-number">1.4</span> 📊 Dashboard - หน้าแรก</a>
+<ul>
+<li><a href="#ภาพรวมของ-dashboard" id="toc-ภาพรวมของ-dashboard"><span
+class="toc-section-number">1.4.1</span> ภาพรวมของ Dashboard</a></li>
+<li><a href="#สวนประกอบของ-dashboard"
+id="toc-สวนประกอบของ-dashboard"><span
+class="toc-section-number">1.4.2</span> ส่วนประกอบของ Dashboard</a></li>
+<li><a href="#วาทตองสงเกต" id="toc-วาทตองสงเกต"><span
+class="toc-section-number">1.4.3</span> 🎯 ว่าที่ต้องสังเกต</a></li>
+</ul></li>
+<li><a href="#inbox---ตอบลกคา" id="toc-inbox---ตอบลกคา"><span
+class="toc-section-number">1.5</span> 💬 Inbox - ตอบลูกค้า</a>
+<ul>
+<li><a href="#inbox-คออะไร" id="toc-inbox-คออะไร"><span
+class="toc-section-number">1.5.1</span> 🎯 Inbox คืออะไร?</a></li>
+<li><a href="#โครงสราง-inbox" id="toc-โครงสราง-inbox"><span
+class="toc-section-number">1.5.2</span> โครงสร้าง Inbox</a></li>
+<li><a href="#การกรองและคนหา" id="toc-การกรองและคนหา"><span
+class="toc-section-number">1.5.3</span> ⚙️ การกรองและค้นหา</a></li>
+<li><a href="#วธตอบลกคา---ขนตอนละเอยด"
+id="toc-วธตอบลกคา---ขนตอนละเอยด"><span
+class="toc-section-number">1.5.4</span> 💬 วิธีตอบลูกค้า -
+ขั้นตอนละเอียด</a></li>
+<li><a href="#ตด-tag-ลกคา---ขนตอนละเอยด"
+id="toc-ตด-tag-ลกคา---ขนตอนละเอยด"><span
+class="toc-section-number">1.5.5</span> 🏷️ ติด Tag ลูกค้า -
+ขั้นตอนละเอียด</a></li>
+<li><a href="#assign-มอบหมายงาน" id="toc-assign-มอบหมายงาน"><span
+class="toc-section-number">1.5.6</span> 👤 Assign (มอบหมายงาน)</a></li>
+<li><a href="#เปลยน-status---ปดการสนทนา"
+id="toc-เปลยน-status---ปดการสนทนา"><span
+class="toc-section-number">1.5.7</span> 🔄 เปลี่ยน Status -
+ปิดการสนทนา</a></li>
+<li><a href="#สวนเสรม-attachments-notes-vip"
+id="toc-สวนเสรม-attachments-notes-vip"><span
+class="toc-section-number">1.5.8</span> 📎 ส่วนเสริม: Attachments, Notes,
+VIP</a></li>
+</ul></li>
+<li><a href="#customers---ขอมลลกคา" id="toc-customers---ขอมลลกคา"><span
+class="toc-section-number">1.6</span> 👥 Customers - ข้อมูลลูกค้า</a>
+<ul>
+<li><a href="#customers-module-คออะไร"
+id="toc-customers-module-คออะไร"><span
+class="toc-section-number">1.6.1</span> 🎯 Customers Module
+คืออะไร?</a></li>
+<li><a href="#ดขอมลลกคา" id="toc-ดขอมลลกคา"><span
+class="toc-section-number">1.6.2</span> ⚙️ ดูข้อมูลลูกค้า</a></li>
+<li><a href="#ขอมลทเกบ-customer-data"
+id="toc-ขอมลทเกบ-customer-data"><span
+class="toc-section-number">1.6.3</span> 📝 ข้อมูลที่เก็บ (Customer
+Data)</a></li>
+<li><a href="#คนหาลกคา-1" id="toc-คนหาลกคา-1"><span
+class="toc-section-number">1.6.4</span> 🔍 ค้นหาลูกค้า</a></li>
+<li><a href="#export-ขอมล" id="toc-export-ขอมล"><span
+class="toc-section-number">1.6.5</span> 📊 Export ข้อมูล</a></li>
+<li><a href="#ดประวตลกคา" id="toc-ดประวตลกคา"><span
+class="toc-section-number">1.6.6</span> 👁️ ดูประวัติลูกค้า</a></li>
+</ul></li>
+<li><a href="#tags-segments---จำแนกลกคา"
+id="toc-tags-segments---จำแนกลกคา"><span
+class="toc-section-number">1.7</span> 🏷️ Tags &amp; Segments -
+จำแนกลูกค้า</a>
+<ul>
+<li><a href="#tags-vs-segments---ตางกนยงไง"
+id="toc-tags-vs-segments---ตางกนยงไง"><span
+class="toc-section-number">1.7.1</span> 🎯 Tags vs Segments -
+ต่างกันยังไง?</a></li>
+<li><a href="#วธ-tag-ในขณะตอบ" id="toc-วธ-tag-ในขณะตอบ"><span
+class="toc-section-number">1.7.2</span> 📝 วิธี Tag (ในขณะตอบ)</a></li>
+<li><a href="#วธ-segment-สรางลวงหนา"
+id="toc-วธ-segment-สรางลวงหนา"><span
+class="toc-section-number">1.7.3</span> 🎯 วิธี Segment
+(สร้างล่วงหน้า)</a></li>
+</ul></li>
+<li><a href="#templates---ตอบเรว" id="toc-templates---ตอบเรว"><span
+class="toc-section-number">1.8</span> 📝 Templates - ตอบเร็ว</a>
+<ul>
+<li><a href="#templates-คออะไร" id="toc-templates-คออะไร"><span
+class="toc-section-number">1.8.1</span> 🎯 Templates คืออะไร?</a></li>
+<li><a href="#ตวอยาง-template-ทด" id="toc-ตวอยาง-template-ทด"><span
+class="toc-section-number">1.8.2</span> ✨ ตัวอย่าง Template ที่ดี</a></li>
+<li><a href="#สราง-template-ใหม" id="toc-สราง-template-ใหม"><span
+class="toc-section-number">1.8.3</span> 📋 สร้าง Template ใหม่</a></li>
+<li><a href="#ใช-template-ในขณะตอบ" id="toc-ใช-template-ในขณะตอบ"><span
+class="toc-section-number">1.8.4</span> 🚀 ใช้ Template ในขณะตอบ</a></li>
+<li><a href="#แก-template" id="toc-แก-template"><span
+class="toc-section-number">1.8.5</span> ✏️ แก้ Template</a></li>
+<li><a href="#ลบ-template" id="toc-ลบ-template"><span
+class="toc-section-number">1.8.6</span> 🗑️ ลบ Template</a></li>
+<li><a href="#template-best-practices"
+id="toc-template-best-practices"><span
+class="toc-section-number">1.8.7</span> 💡 Template Best
+Practices</a></li>
+</ul></li>
+<li><a href="#broadcasts---สงขอความแบบ-batch"
+id="toc-broadcasts---สงขอความแบบ-batch"><span
+class="toc-section-number">1.9</span> 📢 Broadcasts - ส่งข้อความแบบ
+Batch</a>
+<ul>
+<li><a href="#broadcasts-คออะไร" id="toc-broadcasts-คออะไร"><span
+class="toc-section-number">1.9.1</span> 🎯 Broadcasts คืออะไร?</a></li>
+<li><a href="#ขนตอนสราง-broadcast---ละเอยด"
+id="toc-ขนตอนสราง-broadcast---ละเอยด"><span
+class="toc-section-number">1.9.2</span> ⚙️ ขั้นตอนสร้าง Broadcast -
+ละเอียด</a></li>
+<li><a href="#broadcast-tips---ตองร"
+id="toc-broadcast-tips---ตองร"><span
+class="toc-section-number">1.9.3</span> ⚠️ Broadcast Tips -
+ต้องรู้!</a></li>
+<li><a href="#ด-analytics-ของ-broadcast"
+id="toc-ด-analytics-ของ-broadcast"><span
+class="toc-section-number">1.9.4</span> 📊 ดู Analytics ของ
+Broadcast</a></li>
+</ul></li>
+<li><a href="#analytics---ดผลลพธ" id="toc-analytics---ดผลลพธ"><span
+class="toc-section-number">1.10</span> 📈 Analytics - ดูผลลัพธ์</a>
+<ul>
+<li><a href="#analytics-คออะไร" id="toc-analytics-คออะไร"><span
+class="toc-section-number">1.10.1</span> 🎯 Analytics คืออะไร?</a></li>
+<li><a href="#สวนประกอบของ-analytics"
+id="toc-สวนประกอบของ-analytics"><span
+class="toc-section-number">1.10.2</span> 📊 ส่วนประกอบของ
+Analytics</a></li>
+<li><a href="#ด-analytics---ขนตอน" id="toc-ด-analytics---ขนตอน"><span
+class="toc-section-number">1.10.3</span> 🔍 ดู Analytics - ขั้นตอน</a></li>
+<li><a href="#kpi-สำคญทตองด" id="toc-kpi-สำคญทตองด"><span
+class="toc-section-number">1.10.4</span> 🎯 KPI สำคัญที่ต้องดู</a></li>
+<li><a href="#อาน-analytics-ใหด" id="toc-อาน-analytics-ใหด"><span
+class="toc-section-number">1.10.5</span> 💡 อ่าน Analytics ให้ดี</a></li>
+</ul></li>
+<li><a href="#auto-reply---ตอบอตโนมต"
+id="toc-auto-reply---ตอบอตโนมต"><span
+class="toc-section-number">1.11</span> 🤖 Auto-Reply - ตอบอัตโนมัติ</a>
+<ul>
+<li><a href="#auto-reply-คออะไร" id="toc-auto-reply-คออะไร"><span
+class="toc-section-number">1.11.1</span> 🎯 Auto-Reply คืออะไร?</a></li>
+<li><a href="#ตง-auto-reply---ขนตอน"
+id="toc-ตง-auto-reply---ขนตอน"><span
+class="toc-section-number">1.11.2</span> ⚙️ ตั้ง Auto-Reply -
+ขั้นตอน</a></li>
+<li><a href="#ตวอยาง-auto-reply-ทด" id="toc-ตวอยาง-auto-reply-ทด"><span
+class="toc-section-number">1.11.3</span> 🎯 ตัวอย่าง Auto-Reply
+ที่ดี</a></li>
+<li><a href="#แก-auto-reply" id="toc-แก-auto-reply"><span
+class="toc-section-number">1.11.4</span> ✏️ แก้ Auto-Reply</a></li>
+<li><a href="#ปด-auto-reply" id="toc-ปด-auto-reply"><span
+class="toc-section-number">1.11.5</span> 🔄 ปิด Auto-Reply</a></li>
+<li><a href="#auto-reply-best-practices"
+id="toc-auto-reply-best-practices"><span
+class="toc-section-number">1.11.6</span> 💡 Auto-Reply Best
+Practices</a></li>
+</ul></li>
+<li><a href="#tips-workflows" id="toc-tips-workflows"><span
+class="toc-section-number">1.12</span> 💡 Tips &amp; Workflows</a>
+<ul>
+<li><a href="#workflow-ตอบลกคาอยางไรใหเรว-triage-inbox"
+id="toc-workflow-ตอบลกคาอยางไรใหเรว-triage-inbox"><span
+class="toc-section-number">1.12.1</span> 🎯 Workflow: ตอบลูกค้าอย่างไรให้เร็ว
+(Triage Inbox)</a></li>
+<li><a href="#response-time-target" id="toc-response-time-target"><span
+class="toc-section-number">1.12.2</span> ⏱️ Response Time
+Target</a></li>
+<li><a href="#keyboard-shortcuts-เรวขน"
+id="toc-keyboard-shortcuts-เรวขน"><span
+class="toc-section-number">1.12.3</span> ⚡ Keyboard Shortcuts
+(เร็วขึ้น!)</a></li>
+<li><a href="#template-best-practices-1"
+id="toc-template-best-practices-1"><span
+class="toc-section-number">1.12.4</span> 📋 Template Best
+Practices</a></li>
+<li><a href="#workflow-ฝายขาย-สอง-broadcast-สำหรบยอดขาย"
+id="toc-workflow-ฝายขาย-สอง-broadcast-สำหรบยอดขาย"><span
+class="toc-section-number">1.12.5</span> 🔧 Workflow: ฝ่ายขาย ส่อง
+Broadcast สำหรับยอดขาย</a></li>
+</ul></li>
+<li><a href="#faq-troubleshooting" id="toc-faq-troubleshooting"><span
+class="toc-section-number">1.13</span> ❓ FAQ &amp; Troubleshooting</a>
+<ul>
+<li><a href="#inbox" id="toc-inbox"><span
+class="toc-section-number">1.13.1</span> 💬 Inbox</a></li>
+<li><a href="#tags" id="toc-tags"><span
+class="toc-section-number">1.13.2</span> 🏷️ Tags</a></li>
+<li><a href="#broadcasts" id="toc-broadcasts"><span
+class="toc-section-number">1.13.3</span> 📢 Broadcasts</a></li>
+<li><a href="#analytics" id="toc-analytics"><span
+class="toc-section-number">1.13.4</span> 📈 Analytics</a></li>
+<li><a href="#ปญหาทวไปและวธแก" id="toc-ปญหาทวไปและวธแก"><span
+class="toc-section-number">1.13.5</span> 🛠️ ปัญหาทั่วไปและวิธีแก้</a></li>
+</ul></li>
+<li><a href="#ความชวยเหลอและตดตอ" id="toc-ความชวยเหลอและตดตอ"><span
+class="toc-section-number">1.14</span> 🔗 ความช่วยเหลือและติดต่อ</a>
+<ul>
+<li><a href="#settings-สำคญทตองร" id="toc-settings-สำคญทตองร"><span
+class="toc-section-number">1.14.1</span> 🔐 Settings สำคัญที่ต้องรู้</a></li>
+</ul></li>
+<li><a href="#quick-contacts-resources"
+id="toc-quick-contacts-resources"><span
+class="toc-section-number">1.15</span> 📞 Quick Contacts &amp;
+Resources</a>
+<ul>
+<li><a href="#additional-resources" id="toc-additional-resources"><span
+class="toc-section-number">1.15.1</span> 📚 Additional
+Resources</a></li>
+<li><a href="#resources" id="toc-resources"><span
+class="toc-section-number">1.15.2</span> 📚 Resources</a></li>
+</ul></li>
+<li><a href="#checklist-สำหรบพนกงานใหม"
+id="toc-checklist-สำหรบพนกงานใหม"><span
+class="toc-section-number">1.16</span> ✅ Checklist
+สำหรับพนักงานใหม่</a></li>
+<li><a href="#training-learning-path"
+id="toc-training-learning-path"><span
+class="toc-section-number">1.17</span> 🎓 Training &amp; Learning
+Path</a>
+<ul>
+<li><a href="#สำหรบพนกงานใหม-week-1-2"
+id="toc-สำหรบพนกงานใหม-week-1-2"><span
+class="toc-section-number">1.17.1</span> สำหรับพนักงานใหม่ (Week
+1-2)</a></li>
+<li><a href="#สำหรบ-sales-team-focus-broadcasts"
+id="toc-สำหรบ-sales-team-focus-broadcasts"><span
+class="toc-section-number">1.17.2</span> สำหรับ Sales Team (Focus:
+Broadcasts)</a></li>
+</ul></li>
+<li><a href="#support-help" id="toc-support-help"><span
+class="toc-section-number">1.18</span> 📞 Support &amp; Help</a>
+<ul>
+<li><a href="#หากมปญหา" id="toc-หากมปญหา"><span
+class="toc-section-number">1.18.1</span> หากมีปัญหา</a></li>
+<li><a href="#ผทสามารถชวยเหลอ" id="toc-ผทสามารถชวยเหลอ"><span
+class="toc-section-number">1.18.2</span> ผู้ที่สามารถช่วยเหลือ</a></li>
+</ul></li>
+<li><a href="#document-info" id="toc-document-info"><span
+class="toc-section-number">1.19</span> 📝 Document Info</a>
+<ul>
+<li><a href="#updates-maintenance" id="toc-updates-maintenance"><span
+class="toc-section-number">1.19.1</span> Updates &amp;
+Maintenance</a></li>
+</ul></li>
+<li><a href="#สรป-7-สงทตองจำ" id="toc-สรป-7-สงทตองจำ"><span
+class="toc-section-number">1.20</span> 🌟 สรุป: 7 สิ่งที่ต้องจำ</a></li>
+<li><a href="#document-improvements-future"
+id="toc-document-improvements-future"><span
+class="toc-section-number">1.21</span> 📌 Document Improvements
+(Future)</a></li>
+</ul></li>
+</ul>
+</nav>
+<h1 data-number="1" id="คมอการใชงาน-reya"><span
+class="header-section-number">1</span> 📘 คู่มือการใช้งาน REYA</h1>
+<h2 data-number="1.1" id="ระบบจดการ-line-oa-สำหรบพนกงาน-และฝายขาย"><span
+class="header-section-number">1.1</span> ระบบจัดการ LINE OA สำหรับพนักงาน
+และฝ่ายขาย</h2>
+<p><strong>เอกสารฉบับสมบูรณ์</strong> - เขียนอย่างละเอียด พร้อมขั้นตอน ตัวอย่าง
+และรูปประกอบ</p>
+<hr />
+<h2 data-number="1.2" id="สารบญ"><span
+class="header-section-number">1.2</span> 📑 สารบัญ</h2>
+<ol type="1">
+<li><a href="#-เข้าสู่ระบบ">🔐 เข้าสู่ระบบ</a></li>
+<li><a href="#-dashboard--หน้าแรก">📊 Dashboard - หน้าแรก</a></li>
+<li><a href="#-inbox--ตอบลูกค้า">💬 Inbox - ตอบลูกค้า</a></li>
+<li><a href="#-customers--ข้อมูลลูกค้า">👥 Customers - ข้อมูลลูกค้า</a></li>
+<li><a href="#️-tags--segments--จำแนกลูกค้า">🏷️ Tags &amp; Segments -
+จำแนกลูกค้า</a></li>
+<li><a href="#-templates--ตอบเร็ว">📝 Templates - ตอบเร็ว</a></li>
+<li><a href="#-broadcasts--ส่งข้อความแบบ-batch">📢 Broadcasts -
+ส่งข้อความแบบ Batch</a></li>
+<li><a href="#-analytics--ดูผลลัพธ์">📈 Analytics - ดูผลลัพธ์</a></li>
+<li><a href="#-auto-reply--ตอบอัตโนมัติ">🤖 Auto-Reply - ตอบอัตโนมัติ</a></li>
+<li><a href="#-tips--workflows">💡 Tips &amp; Workflows</a></li>
+<li><a href="#-faq--troubleshooting">❓ FAQ &amp;
+Troubleshooting</a></li>
+</ol>
+<hr />
+<h2 data-number="1.3" id="เขาสระบบ"><span
+class="header-section-number">1.3</span> 🔐 เข้าสู่ระบบ</h2>
+<h3 data-number="1.3.1" id="ขนตอนการเขาสระบบ"><span
+class="header-section-number">1.3.1</span> ขั้นตอนการเข้าสู่ระบบ</h3>
+<p><strong>สถานการณ์</strong>: เป็นครั้งแรกที่เข้าใช้ REYA หรือลืมรหัสผ่าน</p>
+<h4 data-number="1.3.1.1" id="วธการ"><span
+class="header-section-number">1.3.1.1</span> วิธีการ:</h4>
+<pre><code>1. เปิดเบราว์เซอร์ (Chrome, Firefox, Safari)
+2. พิมพ์ URL: https://reya.example.com
+3. หน้าจอ Login จะแสดง
+4. ใส่ Username (ชื่อผู้ใช้ที่ได้รับจาก Admin)
+5. ใส่ Password (รหัสผ่าน)
+6. กด &quot;Sign In&quot; หรือกด Enter
+7. ระบบตรวจสอบ → เข้าสู่ Dashboard</code></pre>
+<p><strong>[Screenshot: Login Page - username/password
+fields]</strong></p>
+<h3 data-number="1.3.2" id="ความปลอดภย---สำคญ"><span
+class="header-section-number">1.3.2</span> ⚠️ ความปลอดภัย - สำคัญ!</h3>
+<table>
+<thead>
+<tr>
+<th>สิ่งที่ต้องทำ</th>
+<th>สิ่งที่ห้าม</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>✅ ใช้รหัสผ่านที่แรง (8 ตัวอักษร+)</td>
+<td>❌ แชร์รหัสผ่านกับใคร</td>
+</tr>
+<tr>
+<td>✅ ออกจากระบบทุกครั้งหลังเสร็จ</td>
+<td>❌ ทิ้ง Browser เปิด</td>
+</tr>
+<tr>
+<td>✅ บอก Admin ถ้าลืมรหัสผ่าน</td>
+<td>❌ เขียนรหัสผ่านบน Post-it</td>
+</tr>
+<tr>
+<td>✅ ใช้ Username ที่เป็นอย่างหนึ่งอย่างเดียว</td>
+<td>❌ ใช้ Account ของคนอื่น</td>
+</tr>
+</tbody>
+</table>
+<h3 data-number="1.3.3" id="ลมรหสผาน"><span
+class="header-section-number">1.3.3</span> ลืมรหัสผ่าน?</h3>
+<pre><code>1. คลิก &quot;Forgot Password?&quot; ที่หน้า Login
+2. ใส่ Email ที่ลงทะเบียน
+3. ตรวจสอบ Email เพื่อรับลิงก์รีเซ็ต
+4. คลิกลิงก์ → ตั้งรหัสผ่านใหม่
+5. ลองเข้าสู่ระบบอีกครั้ง</code></pre>
+<hr />
+<h2 data-number="1.4" id="dashboard---หนาแรก"><span
+class="header-section-number">1.4</span> 📊 Dashboard - หน้าแรก</h2>
+<h3 data-number="1.4.1" id="ภาพรวมของ-dashboard"><span
+class="header-section-number">1.4.1</span> ภาพรวมของ Dashboard</h3>
+<p>เมื่อคุณเข้าสู่ระบบ หน้าแรก Dashboard จะแสดง <strong>สถิติหลักของวันนี้
+และสัปดาห์นี้</strong></p>
+<p><strong>[Screenshot: Dashboard Overview]</strong></p>
+<h3 data-number="1.4.2" id="สวนประกอบของ-dashboard"><span
+class="header-section-number">1.4.2</span> ส่วนประกอบของ Dashboard</h3>
+<h4 data-number="1.4.2.1" id="สถตดานบน-kpi-cards"><span
+class="header-section-number">1.4.2.1</span> 1️⃣ <strong>สถิติด้านบน (KPI
+Cards)</strong></h4>
+<pre><code>┌─────────────────────────────────────────┐
+│ 📱 Conversations | 👤 Customers        │
+│     124          |     1,245           │
+├─────────────────────────────────────────┤
+│ 📨 Unread | ⏱️ Response Time (avg)     │
+│    18     |     8 นาที                 │
+└─────────────────────────────────────────┘</code></pre>
+<ul>
+<li><strong>Conversations</strong>: การสนทนาทั้งหมด (ที่มีข้อความ)</li>
+<li><strong>Customers</strong>: จำนวนลูกค้าทั้งหมด</li>
+<li><strong>Unread</strong>: ข้อความที่ยังไม่ได้อ่าน (ต้องตอบ!)</li>
+<li><strong>Response Time</strong>: เวลาตอบสนองเฉลี่ยของคุณ</li>
+</ul>
+<h4 data-number="1.4.2.2" id="กราฟสถต"><span
+class="header-section-number">1.4.2.2</span> 2️⃣
+<strong>กราฟสถิติ</strong></h4>
+<pre><code>📈 Messages per Day (7 วันล่าสุด)
+- แสดงจำนวนข้อความเข้า-ออก
+- ช่วยดูแนวโน้ม (เพิ่ม/ลด)
+
+📊 Channel Breakdown
+- LINE OA ได้กี่เปอร์เซ็นต์?
+- ช่องอื่น ๆ?</code></pre>
+<h4 data-number="1.4.2.3" id="menu-ดานซาย-sidebar"><span
+class="header-section-number">1.4.2.3</span> 3️⃣ <strong>Menu ด้านซ้าย
+(Sidebar)</strong></h4>
+<pre><code>🏠 Dashboard
+💬 Inbox
+👥 Customers
+🏷️ Tags
+👥📊 Segments
+📝 Templates
+📢 Broadcasts
+📈 Analytics
+🤖 Auto-Reply
+👨‍👩‍👧‍👦 Groups
+🛒 Orders
+⚙️ Settings</code></pre>
+<h3 data-number="1.4.3" id="วาทตองสงเกต"><span
+class="header-section-number">1.4.3</span> 🎯 ว่าที่ต้องสังเกต</h3>
+<table>
+<thead>
+<tr>
+<th>สำหรับ</th>
+<th>สิ่งที่ต้องดู</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>พนักงาน</strong></td>
+<td>Unread count (มีงานใหม่ไหม?)</td>
+</tr>
+<tr>
+<td><strong>พนักงาน</strong></td>
+<td>Response Time (ตอบเร็วไหม?)</td>
+</tr>
+<tr>
+<td><strong>ฝ่ายขาย</strong></td>
+<td>Conversations (ดีลกำลังดำเนินอยู่)</td>
+</tr>
+<tr>
+<td><strong>ฝ่ายขาย</strong></td>
+<td>Messages per Day (ขายเข้า)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 data-number="1.5" id="inbox---ตอบลกคา"><span
+class="header-section-number">1.5</span> 💬 Inbox - ตอบลูกค้า</h2>
+<h3 data-number="1.5.1" id="inbox-คออะไร"><span
+class="header-section-number">1.5.1</span> 🎯 Inbox คืออะไร?</h3>
+<p><strong>Inbox = จุดรวมของการสนทนาทั้งหมด</strong> - เมื่อลูกค้าส่งข้อความมา
+LINE OA คุณจะเห็นที่นี่</p>
+<p>นี่คือที่สำคัญที่สุดสำหรับ <strong>พนักงาน</strong> และ
+<strong>ฝ่ายขาย</strong></p>
+<p><strong>[Screenshot: Inbox Overview - list +
+conversation]</strong></p>
+<h3 data-number="1.5.2" id="โครงสราง-inbox"><span
+class="header-section-number">1.5.2</span> โครงสร้าง Inbox</h3>
+<pre><code>┌─────────────────────────────────────────────────┐
+│ INBOX                                           │
+├──────────────────┬──────────────────────────────┤
+│  Left Panel      │   Right Panel                │
+│  (Customer List) │   (Conversation)             │
+│                  │                              │
+│ • John (Unread)  │ John:                        │
+│ • Sarah          │ &quot;สินค้าหมดแล้วไหมคะ?&quot;        │
+│ • Mike (VIP)     │ Me: &quot;เดี๋ยวเช็คให้ค่ะ...&quot;   │
+│ • Lisa           │                              │
+│                  │ [Input Field]                │
+└──────────────────┴──────────────────────────────┘</code></pre>
+<h3 data-number="1.5.3" id="การกรองและคนหา"><span
+class="header-section-number">1.5.3</span> ⚙️ การกรองและค้นหา</h3>
+<h4 data-number="1.5.3.1" id="status-filter-บนสด"><span
+class="header-section-number">1.5.3.1</span> 1️⃣ <strong>Status Filter
+(บนสุด)</strong></h4>
+<pre><code>All Conversations
+├─ All (ทั้งหมด)
+├─ 🟢 Open (ใหม่ - ต้องตอบ)
+├─ 🟡 In Progress (กำลังจัดการ)
+├─ 🔵 Closed (จบสรรพแล้ว)
+└─ 🔴 Reopened (ลูกค้าตอบกลับ)</code></pre>
+<p><strong>กลยุทธ์</strong>: เริ่มจาก <strong>Open</strong> → ตอบทั้งหมด →
+เปลี่ยนเป็น <strong>Closed</strong></p>
+<h4 data-number="1.5.3.2" id="คนหาลกคา"><span
+class="header-section-number">1.5.3.2</span> 2️⃣
+<strong>ค้นหาลูกค้า</strong></h4>
+<pre><code>🔍 Search Bar (ด้านบน)
+- พิมพ์ชื่อลูกค้า: &quot;John&quot;
+- พิมพ์เบอร์โทร: &quot;081234567&quot;
+- พิมพ์ Tag: &quot;VIP&quot;</code></pre>
+<h4 data-number="1.5.3.3" id="filter-by-assignment-ขนสง"><span
+class="header-section-number">1.5.3.3</span> 3️⃣ <strong>Filter by
+Assignment (ขั้นสูง)</strong></h4>
+<pre><code>โปรดดู Settings &gt; Filter
+├─ Assigned to me (งานของฉัน)
+├─ Assigned to [Name] (งานของคนอื่น)
+├─ Unassigned (ยังไม่มีคนรับ)</code></pre>
+<h3 data-number="1.5.4" id="วธตอบลกคา---ขนตอนละเอยด"><span
+class="header-section-number">1.5.4</span> 💬 วิธีตอบลูกค้า -
+ขั้นตอนละเอียด</h3>
+<p><strong>สถานการณ์</strong>: เพิ่งเห็นว่า John ส่องข้อความ
+“สินค้าหมดแล้วไหมคะ?”</p>
+<h4 data-number="1.5.4.1" id="ขนตอน-1-เปดการสนทนา"><span
+class="header-section-number">1.5.4.1</span> ขั้นตอน 1: เปิดการสนทนา</h4>
+<pre><code>1. ดูรายชื่อด้านซ้าย → คลิก &quot;John&quot;
+2. ด้านขวาจะแสดงการสนทนาทั้งหมด
+3. ข้อความล่าสุดคือ &quot;สินค้าหมดแล้วไหมคะ?&quot;</code></pre>
+<p><strong>[Screenshot: Click on customer in list]</strong></p>
+<h4 data-number="1.5.4.2" id="ขนตอน-2-อานโปรไฟลลกคา-สำคญ"><span
+class="header-section-number">1.5.4.2</span> ขั้นตอน 2: อ่านโปรไฟล์ลูกค้า
+(สำคัญ!)</h4>
+<pre><code>ด้านขวาบน → คลิก &quot;👤 Customer Profile&quot;
+จะแสดง:
+  • ชื่อและเบอร์โทร
+  • ซื้อครั้งล่าสุด: [date]
+  • Tags: VIP, ติดตาม
+  • ประวัติการซื้อ: [products]</code></pre>
+<p><strong>💡 Pro Tip</strong>: อ่าน Profile ก่อนตอบ! ลูกค้า VIP ต้องตอบเร็ว
+ๆ</p>
+<p><strong>[Screenshot: Customer Profile Panel]</strong></p>
+<h4 data-number="1.5.4.3" id="ขนตอน-3-ตอบขอความ"><span
+class="header-section-number">1.5.4.3</span> ขั้นตอน 3: ตอบข้อความ</h4>
+<pre><code>1. เลื่อนไปล่างสุด → เห็น Input Field
+2. คลิก Input → พิมพ์คำตอบ
+3. เลือก 1 จาก 3 วิธี:
+
+   วิธี A: ตอบสั้น ๆ
+   ┌──────────────────────────┐
+   │ &quot;ครับ มีจำนวนพอค่ะ&quot;    │
+   └──────────────────────────┘
+   
+   วิธี B: ใช้ Template (เร็ว!)
+   ┌──────────────────────────┐
+   │ / (typing slash)        │
+   │ • Template: &quot;สินค้า&quot;     │
+   │ • Template: &quot;ติดตาม&quot;     │
+   └──────────────────────────┘
+   
+   วิธี C: ตอบยาว ๆ
+   ┌──────────────────────────┐
+   │ &quot;ค่ะ สินค้า [ชื่อ]      │
+   │ มีจำนวนพอ ราคา [ราคา]  │
+   │ สั่งได้เลยค่ะ&quot;          │
+   └──────────────────────────┘</code></pre>
+<h4 data-number="1.5.4.4" id="ขนตอน-4-สงขอความ"><span
+class="header-section-number">1.5.4.4</span> ขั้นตอน 4: ส่งข้อความ</h4>
+<pre><code>หลังพิมพ์เสร็จ:
+
+วิธี 1: คลิก &quot;Send&quot; button
+วิธี 2: กด Ctrl+Enter (เร็วกว่า!)
+วิธี 3: กด Enter (ถ้าตั้งค่าแล้ว)</code></pre>
+<p><strong>[Screenshot: Input field + Send button]</strong></p>
+<h3 data-number="1.5.5" id="ตด-tag-ลกคา---ขนตอนละเอยด"><span
+class="header-section-number">1.5.5</span> 🏷️ ติด Tag ลูกค้า -
+ขั้นตอนละเอียด</h3>
+<p><strong>เหตุผล</strong>: Tags ช่วยจัดหมวดหมู่ลูกค้า และ <strong>สำคัญมากสำหรับ
+Broadcasts</strong></p>
+<p><strong>ตัวอย่าง Tag</strong>:</p>
+<pre><code>VIP          ← ลูกค้าเก่า / ซื้อเยอะ
+ติดตาม        ← ต้องติดตามต่อ
+อุ่น (Warm)   ← อาจจะซื้อได้ในอนาคต
+ร้อน (Hot)   ← ต้องการสินค้าเร็ว ๆ นี้!
+เย็น (Cold)  ← ไม่ตอบกลับมานาน
+ใหม่         ← ลูกค้าใหม่
+ปัญหา        ← มีปัญหาต้องแก้</code></pre>
+<h4 data-number="1.5.5.1" id="วธ-tag"><span
+class="header-section-number">1.5.5.1</span> วิธี Tag:</h4>
+<pre><code>1. เปิดการสนทนา (เช่น John)
+2. ดานขวาบน → คลิก &quot;🏷️ Tag&quot; button
+3. Popup หรือ Dropdown จะแสดง
+4. เลือก Tag (เช่น &quot;VIP&quot;)
+5. ถ้าต้องหลายอัน → คลิกอีก (เช่น + &quot;ร้อน&quot;)
+6. บันทึก / Done</code></pre>
+<p><strong>[Screenshot: Tag selection popup]</strong></p>
+<h4 data-number="1.5.5.2" id="เมอไหรตอง-tag"><span
+class="header-section-number">1.5.5.2</span> 🎯 เมื่อไหร่ต้อง Tag?</h4>
+<table>
+<thead>
+<tr>
+<th>ลูกค้า</th>
+<th>Tag</th>
+<th>เหตุผล</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ซื้อ 100,000 บาท/เดือน</td>
+<td>VIP</td>
+<td>ต้องใจใจ</td>
+</tr>
+<tr>
+<td>ถาม แต่ยังไม่ซื้อ</td>
+<td>อุ่น</td>
+<td>เผื่อซื้อหลัง</td>
+</tr>
+<tr>
+<td>ซื้อ 3 วันนี้</td>
+<td>ร้อน</td>
+<td>อาจซื้ออีก</td>
+</tr>
+<tr>
+<td>ไม่ตอบมา 1 เดือน</td>
+<td>เย็น</td>
+<td>ต้องติดตาม</td>
+</tr>
+<tr>
+<td>เพิ่งสมัครใหม่</td>
+<td>ใหม่</td>
+<td>ต้อง Onboard</td>
+</tr>
+<tr>
+<td>บ่นปัญหาสินค้า</td>
+<td>ปัญหา</td>
+<td>ต้องแก้ ASAP</td>
+</tr>
+</tbody>
+</table>
+<h3 data-number="1.5.6" id="assign-มอบหมายงาน"><span
+class="header-section-number">1.5.6</span> 👤 Assign (มอบหมายงาน)</h3>
+<p><strong>สถานการณ์</strong>: ลูกค้า Mike ส่องข้อความยาว แต่คุณยุ่ง → ต้อง Assign
+ให้เจ้าหน้าที่อื่น</p>
+<h4 data-number="1.5.6.1" id="วธ-assign"><span
+class="header-section-number">1.5.6.1</span> วิธี Assign:</h4>
+<pre><code>1. เปิดการสนทนา Mike
+2. ด้านขวาบน → คลิก &quot;👤 Assign&quot;
+3. เลือกชื่อเจ้าหน้าที่:
+   ├─ John
+   ├─ Sarah
+   └─ [เจ้าหน้าที่คนอื่น]
+4. เลือก → บันทึก</code></pre>
+<p><strong>[Screenshot: Assign popup]</strong></p>
+<h4 data-number="1.5.6.2" id="assign-faq"><span
+class="header-section-number">1.5.6.2</span> ❓ Assign FAQ:</h4>
+<pre><code>Q: Assign ได้กี่คน?
+A: 1 การสนทนา = 1 คนเท่านั้น
+   (ไม่สามารถ Assign ให้หลายคน)
+
+Q: ตัวเองสามารถ Assign ให้ตัวเองได้ไหม?
+A: ได้ (ส่วนใหญ่แล้ว คุณเป็นคนจัดการอยู่แล้ว)
+
+Q: Assign ให้คนที่หยุดงาน?
+A: ไม่ควร ลองมองหาคนอื่นที่ available</code></pre>
+<p><strong>💡 Pro Tip</strong>: - Assign ให้คนที่มี experience ลูกค้า VIP -
+ไม่ควร Assign ให้คนใหม่ลูกค้า VIP</p>
+<h3 data-number="1.5.7" id="เปลยน-status---ปดการสนทนา"><span
+class="header-section-number">1.5.7</span> 🔄 เปลี่ยน Status -
+ปิดการสนทนา</h3>
+<p><strong>Status</strong> = สถานะของการสนทนา</p>
+<pre><code>🟢 Open      = ลูกค้าส่งข้อความมา ต้องตอบ
+🟡 In Prog   = กำลังจัดการ (อย่างช่า)
+🔵 Closed    = จบสรรพแล้ว (ลูกค้าพอใจ)
+🔴 Reopened  = ลูกค้าตอบกลับ (ต้องตอบอีก)</code></pre>
+<h4 data-number="1.5.7.1" id="วธ"><span
+class="header-section-number">1.5.7.1</span> วิธี:</h4>
+<pre><code>1. เปิดการสนทนา
+2. ด้านขวาบน → คลิก &quot;Status&quot;
+3. เลือก:
+   └─ Change to: &quot;Closed&quot; ✓
+4. บันทึก</code></pre>
+<p><strong>[Screenshot: Status dropdown]</strong></p>
+<h4 data-number="1.5.7.2" id="เมอไหรปด"><span
+class="header-section-number">1.5.7.2</span> 🎯 เมื่อไหร่ปิด?</h4>
+<pre><code>✅ ปิดเมื่อ:
+  • ลูกค้าพอใจ + ตอบแล้ว
+  • ลูกค้าสั่งซื้อเสร็จ
+  • แก้ปัญหาแล้ว
+
+❌ อย่าปิดเมื่อ:
+  • ยังรอการตอบลูกค้า
+  • ยังเตรียมสินค้า</code></pre>
+<h3 data-number="1.5.8" id="สวนเสรม-attachments-notes-vip"><span
+class="header-section-number">1.5.8</span> 📎 ส่วนเสริม: Attachments,
+Notes, VIP</h3>
+<h4 data-number="1.5.8.1" id="แนบไฟลรป"><span
+class="header-section-number">1.5.8.1</span> 📎 แนบไฟล์/รูป</h4>
+<pre><code>1. อยู่ Input Field
+2. คลิก &quot;📎 Attach&quot; icon
+3. เลือกไฟล์ (รูป/PDF/ไฟล์)
+4. กดส่ง</code></pre>
+<p><strong>[Screenshot: Attachment button]</strong></p>
+<h4 data-number="1.5.8.2" id="notes-หมายเหตสวนตว"><span
+class="header-section-number">1.5.8.2</span> 📌 Notes
+(หมายเหตุส่วนตัว)</h4>
+<pre><code>1. ด้านขวาบน → คลิก &quot;📌 Notes&quot;
+2. พิมพ์หมายเหตุ:
+   &quot;ลูกค้านี้ต้องการแบบเฉพาะ - ลองสีแดง&quot;
+3. บันทึก</code></pre>
+<p><strong>[Screenshot: Notes panel]</strong></p>
+<h4 data-number="1.5.8.3" id="mark-as-vip"><span
+class="header-section-number">1.5.8.3</span> ⭐ Mark as VIP</h4>
+<pre><code>1. ด้านขวาบน → คลิก &quot;⭐ Mark as VIP&quot;
+2. ลูกค้าจะมี VIP badge
+3. ทุกคนจะรู้ว่าสำคัญ</code></pre>
+<hr />
+<h2 data-number="1.6" id="customers---ขอมลลกคา"><span
+class="header-section-number">1.6</span> 👥 Customers - ข้อมูลลูกค้า</h2>
+<h3 data-number="1.6.1" id="customers-module-คออะไร"><span
+class="header-section-number">1.6.1</span> 🎯 Customers Module
+คืออะไร?</h3>
+<p><strong>Customers = ฐานข้อมูลลูกค้าทั้งหมด</strong> - เก็บข้อมูลส่วนตัว
+ประวัติการซื้อ Tags ทั้งหมด</p>
+<p><strong>[Screenshot: Customers main page]</strong></p>
+<h3 data-number="1.6.2" id="ดขอมลลกคา"><span
+class="header-section-number">1.6.2</span> ⚙️ ดูข้อมูลลูกค้า</h3>
+<h4 data-number="1.6.2.1" id="วธ-1-ผาน-inbox"><span
+class="header-section-number">1.6.2.1</span> วิธี 1: ผ่าน Inbox</h4>
+<pre><code>1. ไป Inbox → เลือกลูกค้า (เช่น John)
+2. ด้านขวาบน → คลิก &quot;👤 Customer Profile&quot;
+3. แสดง:
+   • ชื่อ-นามสกุล
+   • เบอร์โทร / Email
+   • ประวัติการซื้อ (ซื้อครั้งล่าสุด, ราคาสุดท้าย)
+   • Tags ของลูกค้า
+   • Notes ที่เขียนไว้</code></pre>
+<p><strong>[Screenshot: Customer profile in Inbox]</strong></p>
+<h4 data-number="1.6.2.2" id="วธ-2-ผาน-menu-customers"><span
+class="header-section-number">1.6.2.2</span> วิธี 2: ผ่าน Menu
+Customers</h4>
+<pre><code>Menu ซ้าย → &quot;👥 Customers&quot;
+แสดง:
+  • List ลูกค้าทั้งหมด
+  • สามารถค้นหา/ค้นหาตามชื่อ/เบอร์โทร
+  • กรองตามสถานะ (Active/Inactive)</code></pre>
+<p><strong>[Screenshot: Customers list page]</strong></p>
+<h3 data-number="1.6.3" id="ขอมลทเกบ-customer-data"><span
+class="header-section-number">1.6.3</span> 📝 ข้อมูลที่เก็บ (Customer
+Data)</h3>
+<pre><code>┌───────────────────────────────────────┐
+│ Basic Info:                           │
+│ • ชื่อ-สกุล                          │
+│ • เบอร์โทร                           │
+│ • Email                               │
+│ • Source (LINE OA / FB / Other)      │
+│                                       │
+│ Interaction:                          │
+│ • ซื้อครั้งล่าสุด (Last Purchase)    │
+│ • ราคา / เนื้อหา                    │
+│ • Response Time (ตอบเร็วไหม)        │
+│                                       │
+│ Tagging:                              │
+│ • Tags (VIP, ติดตาม, ร้อน, ฯลฯ)    │
+│ • Notes (หมายเหตุส่วนตัว)            │
+└───────────────────────────────────────┘</code></pre>
+<h3 data-number="1.6.4" id="คนหาลกคา-1"><span
+class="header-section-number">1.6.4</span> 🔍 ค้นหาลูกค้า</h3>
+<pre><code>Menu → Customers
+┌─────────────────────┐
+│ 🔍 Search:          │
+│ [______________]    │
+│                     │
+│ ✓ Name (ชื่อ)      │
+│ ✓ Phone (เบอร์)     │
+│ ✓ Email             │
+│ ✓ Tags (ป้ายชื่อ)   │
+└─────────────────────┘</code></pre>
+<h3 data-number="1.6.5" id="export-ขอมล"><span
+class="header-section-number">1.6.5</span> 📊 Export ข้อมูล</h3>
+<pre><code>ด้านบน → คลิก &quot;📥 Export&quot;
+เลือก Format:
+  [ ] CSV
+  [ ] Excel
+  [ ] PDF
+  
+ดาวน์โหลด → ใช้ใน Excel/Google Sheets</code></pre>
+<h3 data-number="1.6.6" id="ดประวตลกคา"><span
+class="header-section-number">1.6.6</span> 👁️ ดูประวัติลูกค้า</h3>
+<pre><code>1. ไป Customers → เลือกลูกค้า
+2. ดานขวา → Tab &quot;📜 Conversation History&quot;
+3. แสดง: ข้อความทั้งหมดที่เคยคุย
+   (เรียงเวลา เก่า → ใหม่)</code></pre>
+<p><strong>[Screenshot: Conversation history]</strong></p>
+<hr />
+<h2 data-number="1.7" id="tags-segments---จำแนกลกคา"><span
+class="header-section-number">1.7</span> 🏷️ Tags &amp; Segments -
+จำแนกลูกค้า</h2>
+<h3 data-number="1.7.1" id="tags-vs-segments---ตางกนยงไง"><span
+class="header-section-number">1.7.1</span> 🎯 Tags vs Segments -
+ต่างกันยังไง?</h3>
+<p><strong>สถานการณ์</strong>: บ่อยมาก! “ฉันควร Tag หรือ Segment ลูกค้า?”</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>ลักษณะ</th>
+<th>Tags 🏷️</th>
+<th>Segments 👥📊</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>คือ</strong></td>
+<td>ป้ายชื่อส่วนตัว</td>
+<td>กลุ่มลูกค้า</td>
+</tr>
+<tr>
+<td><strong>ตั้งค่าตรงไหน</strong></td>
+<td>Inbox (ขณะตอบ)</td>
+<td>Menu &gt; Segments (ล่วงหน้า)</td>
+</tr>
+<tr>
+<td><strong>ปกติใช้</strong></td>
+<td>คลิกคนละอัน</td>
+<td>ส่ง Broadcast</td>
+</tr>
+<tr>
+<td><strong>ตัวอย่าง</strong></td>
+<td>VIP, ติดตาม, ร้อน</td>
+<td>“ลูกค้า Bangkok ซื้อเกิน 50K”</td>
+</tr>
+<tr>
+<td><strong>ลบได้ไหม</strong></td>
+<td>ได้ (ไม่ถাวร)</td>
+<td>ได้</td>
+</tr>
+<tr>
+<td><strong>จำนวน</strong></td>
+<td>1 คนได้หลายอัน (VIP+ร้อน)</td>
+<td>1 คน อยู่ได้หลาย Segment ถ้าตรงเงื่อนไข</td>
+</tr>
+</tbody>
+</table>
+<h3 data-number="1.7.2" id="วธ-tag-ในขณะตอบ"><span
+class="header-section-number">1.7.2</span> 📝 วิธี Tag (ในขณะตอบ)</h3>
+<pre><code>🟡 ตัวอย่างจริง:
+
+ลูกค้า: &quot;ผมต้องการสีดำ 10 ตัว ช่วยทำให้เร็ว&quot;
+คุณ: 
+  1. ตอบ: &quot;ได้ค่ะ หลังพรุ่งนี้เก็บให้ค่ะ&quot;
+  2. + Tag: &quot;ร้อน&quot; (ตัวอักษรระหว่างจัดเก็บ)
+  3. + Tag: &quot;VIP&quot; (ถ้าเก่า ซื้อเยอะ)
+  
+ทำเสร็จ ✓</code></pre>
+<h3 data-number="1.7.3" id="วธ-segment-สรางลวงหนา"><span
+class="header-section-number">1.7.3</span> 🎯 วิธี Segment
+(สร้างล่วงหน้า)</h3>
+<p><strong>Segments = กลุ่มลูกค้าตามเงื่อนไข</strong> (สร้างเป็นการถาวร
+ใช้ตลอด)</p>
+<h4 data-number="1.7.3.1" id="ตวอยาง-segments"><span
+class="header-section-number">1.7.3.1</span> ตัวอย่าง Segments:</h4>
+<pre><code>Segment 1: &quot;Bangkok VIP&quot;
+  └─ ต่อเงื่อนไข: City = Bangkok AND Tag = VIP
+     (ใช้ส่อง Broadcast &quot;ลดราคา Bangkok เท่านั้น&quot;)
+
+Segment 2: &quot;ซื้อเกิน 50K&quot;
+  └─ ต่อเงื่อนไข: Total Purchase &gt; 50,000 บาท
+     (ใช้ส่อง Broadcast &quot;ยินดี VIP&quot;)
+
+Segment 3: &quot;ไม่ตอบ 1 เดือน&quot;
+  └─ ต่อเงื่อนไข: Last Interaction &lt; 30 days
+     (ใช้ Broadcast &quot;เขยิบ&quot; ให้กลับมา)</code></pre>
+<h4 data-number="1.7.3.2" id="สราง-segment-ใหม"><span
+class="header-section-number">1.7.3.2</span> สร้าง Segment ใหม่:</h4>
+<pre><code>1. Menu ซ้าย → &quot;👥📊 Segments&quot;
+2. คลิก &quot;🆕 Create Segment&quot;
+3. ตั้งชื่อ: &quot;Bangkok VIP&quot;
+4. เลือกเงื่อนไข:
+   ┌─────────────────────────────┐
+   │ Condition 1:                │
+   │ [City] [=] [Bangkok]        │
+   │                             │
+   │ AND                         │
+   │                             │
+   │ Condition 2:                │
+   │ [Tag] [contains] [VIP]      │
+   └─────────────────────────────┘
+5. Preview: &quot;จะได้ 45 ลูกค้า&quot;
+6. บันทึก ✓</code></pre>
+<p><strong>[Screenshot: Create Segment form]</strong></p>
+<h4 data-number="1.7.3.3" id="ใช-segment-สอง-broadcast"><span
+class="header-section-number">1.7.3.3</span> ใช้ Segment ส่อง
+Broadcast:</h4>
+<pre><code>Broadcasts → New Campaign
+Target Audience:
+  [ ] All
+  [ ] By Tags
+  [✓] By Segments
+      └─ เลือก &quot;Bangkok VIP&quot;
+      
+Ready to send to 45 customers ✓</code></pre>
+<hr />
+<h2 data-number="1.8" id="templates---ตอบเรว"><span
+class="header-section-number">1.8</span> 📝 Templates - ตอบเร็ว</h2>
+<h3 data-number="1.8.1" id="templates-คออะไร"><span
+class="header-section-number">1.8.1</span> 🎯 Templates คืออะไร?</h3>
+<p><strong>Templates = แม่แบบตอบเร็ว</strong> - แก้ไขเล็กน้อย → ส่งได้เลย</p>
+<p><strong>[Screenshot: Template list]</strong></p>
+<h3 data-number="1.8.2" id="ตวอยาง-template-ทด"><span
+class="header-section-number">1.8.2</span> ✨ ตัวอย่าง Template ที่ดี</h3>
+<pre><code>Template 1: &quot;สินค้าหมดหรือยัง&quot;
+─────────────────────────────
+สวัสดีค่ะ {name}
+
+เรา{product}มีจำนวนพอค่ะ ราคา {price} บาท
+ขออนุญาตเก็บให้ค่ะ (รับภายใน {delivery_days} วัน)
+
+สั่งได้เลยค่ะ ⭐
+
+
+Template 2: &quot;ส่งรูปสินค้า&quot;
+─────────────────────────────
+{name} คะ
+
+ลองดูรูปสินค้าที่คุณถามนะคะ
+[Image: product.jpg]
+
+ราคา: {price} บาท
+รายละเอียด: [LINK]
+
+สั่งได้เลยค่ะ 😊
+
+
+Template 3: &quot;ตอบลูกค้าใหม่&quot;
+─────────────────────────────
+สวัสดีค่ะ {name}
+
+ยินดีต้อนรับเข้าสู่เครือข่ายเราค่ะ! 🎉
+
+เราขายสินค้า:
+• Shirt (สีต่าง ๆ) 899 บาท
+• Pants (หลายไซส์) 1,290 บาท
+• Accessories 290-590 บาท
+
+สนใจสินค้าอะไรบ้างคะ?</code></pre>
+<h3 data-number="1.8.3" id="สราง-template-ใหม"><span
+class="header-section-number">1.8.3</span> 📋 สร้าง Template ใหม่</h3>
+<h4 data-number="1.8.3.1" id="step-1-เขา-templates"><span
+class="header-section-number">1.8.3.1</span> Step 1: เข้า Templates</h4>
+<pre><code>Menu ซ้าย → &quot;📝 Templates&quot;
+แสดง: List ของ Template ที่มี
+ปุ่ม: &quot;🆕 Create Template&quot;</code></pre>
+<p><strong>[Screenshot: Templates page]</strong></p>
+<h4 data-number="1.8.3.2" id="step-2-สรางใหม"><span
+class="header-section-number">1.8.3.2</span> Step 2: สร้างใหม่</h4>
+<pre><code>1. คลิก &quot;🆕 Create Template&quot;
+2. ตั้งชื่อ: &quot;สินค้าหมดหรือยัง&quot;
+   (ชื่อเพื่อจำ มีความหมาย)
+3. เขียนเนื้อหา:
+   ┌──────────────────────────┐
+   │ สวัสดีค่ะ {name}         │
+   │                          │
+   │ สินค้า {product}         │
+   │ ราคา {price} บาท         │
+   │ มีจำนวนพอค่ะ            │
+   │                          │
+   │ สั่งได้เลยค่ะ ⭐        │
+   └──────────────────────────┘
+4. บันทึก</code></pre>
+<p><strong>[Screenshot: Template editor]</strong></p>
+<h4 data-number="1.8.3.3" id="step-3-ตวแปร-variables"><span
+class="header-section-number">1.8.3.3</span> Step 3: ตัวแปร
+(Variables)</h4>
+<pre><code>ใช้ {variable} เพื่อใส่ข้อมูลอัตโนมัติ:
+
+{name}           = ชื่อลูกค้า
+{phone}          = เบอร์โทรลูกค้า
+{product}        = ชื่อสินค้า
+{price}          = ราคา
+{tag}            = Tag ของลูกค้า
+{created_date}   = วันสั่งซื้อ
+
+ตัวอย่าง:
+&quot;สวัสดีค่ะ {name} สินค้า {product} ราคา {price}&quot;
+→ &quot;สวัสดีค่ะ John สินค้า Shirt ราคา 899&quot;</code></pre>
+<h4 data-number="1.8.3.4" id="ตวแปรขาด-empty-variables"><span
+class="header-section-number">1.8.3.4</span> ⚠️ ตัวแปรขาด (Empty
+Variables):</h4>
+<pre><code>ถ้าลูกค้า John ไม่มี {phone}:
+&quot;ติดต่อ {phone}&quot; 
+→ &quot;ติดต่อ [ไม่ได้ระบุ]&quot;
+  (หรือปล่อยว่างไป)
+
+วิธีแก้:
+1. ตรวจข้อมูลลูกค้าให้ครบ (Customers)
+2. ใช้ Conditional: ตรวจว่ามี {phone} ไหม
+3. Default value: &quot;ติดต่อ [ถามด้านล่าง]&quot;</code></pre>
+<p><strong>[Screenshot: Variables list]</strong></p>
+<h3 data-number="1.8.4" id="ใช-template-ในขณะตอบ"><span
+class="header-section-number">1.8.4</span> 🚀 ใช้ Template ในขณะตอบ</h3>
+<p><strong>สถานการณ์</strong>: ลูกค้า John ถาม “ของมีไหม?”</p>
+<h4 data-number="1.8.4.1" id="วธ-1-typing-slash"><span
+class="header-section-number">1.8.4.1</span> วิธี 1: Typing Slash</h4>
+<pre><code>1. ไปที่ Input Field
+2. พิมพ์ &quot;/&quot; (slash)
+3. List Template จะแสดง:
+   ├─ สินค้าหมดหรือยัง
+   ├─ ส่งรูปสินค้า
+   ├─ ตอบลูกค้าใหม่
+   └─ [อื่น ๆ]
+4. เลือก Template
+5. Template จะ Insert → แก้ไข {name} ฯลฯ
+6. ส่ง</code></pre>
+<p><strong>[Screenshot: Template dropdown]</strong></p>
+<h4 data-number="1.8.4.2" id="วธ-2-dropdown-menu"><span
+class="header-section-number">1.8.4.2</span> วิธี 2: Dropdown Menu</h4>
+<pre><code>1. Input Field → คลิก &quot;📝 Template&quot; button
+2. เลือก Template จาก List
+3. Insert → แก้ไข → ส่ง</code></pre>
+<h3 data-number="1.8.5" id="แก-template"><span
+class="header-section-number">1.8.5</span> ✏️ แก้ Template</h3>
+<pre><code>1. ไป Templates
+2. เลือก Template ที่ต้อง Edit
+3. คลิก &quot;✏️ Edit&quot;
+4. แก้ไข
+5. บันทึก</code></pre>
+<h3 data-number="1.8.6" id="ลบ-template"><span
+class="header-section-number">1.8.6</span> 🗑️ ลบ Template</h3>
+<pre><code>1. ไป Templates
+2. เลือก Template
+3. คลิก &quot;🗑️ Delete&quot;
+4. ยืนยัน</code></pre>
+<h3 data-number="1.8.7" id="template-best-practices"><span
+class="header-section-number">1.8.7</span> 💡 Template Best
+Practices</h3>
+<pre><code>✅ ทำให้ดี:
+  1. ชื่อ Template ชัดเจน
+  2. ใช้ {name} {product} {price}
+  3. ตรวจสอบ Typo
+  4. ทดลองก่อนบันทึก
+  5. อัปเดตเมื่อแพง-ถูก
+
+❌ อย่าทำ:
+  1. Template สั้นเกิน (ลูกค้าพัง)
+  2. Hardcode ราคา (ลืมปรับ)
+  3. Template เหมือนกับคนอื่น
+  4. ใช้ Template เก่าจากปีที่แล้ว</code></pre>
+<hr />
+<h2 data-number="1.9" id="broadcasts---สงขอความแบบ-batch"><span
+class="header-section-number">1.9</span> 📢 Broadcasts - ส่งข้อความแบบ
+Batch</h2>
+<h3 data-number="1.9.1" id="broadcasts-คออะไร"><span
+class="header-section-number">1.9.1</span> 🎯 Broadcasts คืออะไร?</h3>
+<p><strong>Broadcasts = ส่งข้อความให้หลาย ๆ คนพร้อมกัน</strong></p>
+<p>ตัวอย่าง:</p>
+<pre><code>• ส่ง &quot;สินค้าใหม่เข้าแล้ว&quot; ให้ VIP 50 คน
+• ส่ง &quot;ลดราคา 50%&quot; ให้ลูกค้า Bangkok
+• ส่ง &quot;เพิ่มเติมมา&quot; ให้เป็นลูกค้า [warm]</code></pre>
+<p><strong>[Screenshot: Broadcast overview]</strong></p>
+<h3 data-number="1.9.2" id="ขนตอนสราง-broadcast---ละเอยด"><span
+class="header-section-number">1.9.2</span> ⚙️ ขั้นตอนสร้าง Broadcast -
+ละเอียด</h3>
+<p><strong>สถานการณ์</strong>: ฝ่ายขายต้องส่ง “ของใหม่เข้า” ให้ลูกค้า VIP</p>
+<h4 data-number="1.9.2.1" id="step-1-เขา-broadcasts"><span
+class="header-section-number">1.9.2.1</span> Step 1: เข้า Broadcasts</h4>
+<pre><code>Menu ซ้าย → &quot;📢 Broadcasts&quot;
+หน้าจอแสดง:
+  • List ของ Campaign ที่ส่งไปแล้ว
+  • ปุ่ม &quot;🆕 New Campaign&quot;</code></pre>
+<p><strong>[Screenshot: Broadcasts main page]</strong></p>
+<h4 data-number="1.9.2.2" id="step-2-สราง-campaign-ใหม"><span
+class="header-section-number">1.9.2.2</span> Step 2: สร้าง Campaign
+ใหม่</h4>
+<pre><code>1. คลิก &quot;🆕 New Campaign&quot;
+2. Popup หรือ Form แสดง
+3. ตั้งชื่อ Campaign:
+   📝 &quot;VIP - ของใหม่&quot; ✓
+   (ชื่อเพื่อจำ ต่อไป)</code></pre>
+<p><strong>[Screenshot: Create Campaign form]</strong></p>
+<h4 data-number="1.9.2.3" id="step-3-เลอก-target-audience-สำคญ"><span
+class="header-section-number">1.9.2.3</span> Step 3: เลือก Target
+Audience (สำคัญ!)</h4>
+<pre><code>เลือก 1 วิธี:
+
+[ ] All Customers
+    └─ ส่งให้ทุกคน (Unfiltered)
+
+[ ] By Tags
+    ├─ เลือก 1 Tag ได้อย่างเดียว
+    ├─ VIP
+    ├─ ติดตาม
+    └─ ร้อน
+    
+[ ] By Segments
+    ├─ Bangkok
+    ├─ ซื้อเกิน 50K
+    └─ ใหม่
+
+[ ] Custom
+    └─ เลือกแบบสูง (Advanced)</code></pre>
+<h4 data-number="1.9.2.4" id="tag-selection-faq"><span
+class="header-section-number">1.9.2.4</span> ❓ Tag Selection FAQ:</h4>
+<pre><code>Q: ส่องให้ VIP + ร้อน พร้อมกันได้ไหม?
+A: ส่วน &quot;By Tags&quot; → เลือก 1 Tag เท่านั้น
+   Solution:
+   • Option 1: ส่อง 2 ครั้ง (VIP → ร้อน)
+   • Option 2: สร้าง Segment &quot;VIP+ร้อน&quot; แล้วใช้ &quot;By Segments&quot;
+
+Q: ทำไงให้ส่องให้ VIP AND ซื้อเกิน 50K?
+A: ใช้ Segments!
+   Menu &gt; Create Segment &quot;VIP-50K+&quot;
+   └─ Condition: Tag=VIP AND Total Purchase &gt; 50K
+   แล้วใช้ Broadcast &quot;By Segments&quot; &gt; &quot;VIP-50K+&quot;</code></pre>
+<p><strong>ตัวอย่าง</strong>: เราต้องส่งให้ VIP</p>
+<pre><code>เลือก &quot;By Tags&quot;
+  ✓ VIP (50 ลูกค้า)</code></pre>
+<p><strong>[Screenshot: Target audience selection]</strong></p>
+<h4 data-number="1.9.2.5" id="step-4-เขยนขอความ"><span
+class="header-section-number">1.9.2.5</span> Step 4: เขียนข้อความ</h4>
+<pre><code>เลือก:
+  [ ] Text
+  [ ] Template
+  [ ] Flex
+  
+ตัวอย่าง (Text):
+┌──────────────────────────────┐
+│ 📝 Message Content:          │
+│                              │
+│ สวัสดีค่ะ!                  │
+│                              │
+│ ของใหม่เข้ามาแล้ว:          │
+│ • Shirt Red (899 บาท)       │
+│ • Shirt Blue (899 บาท)      │
+│                              │
+│ สั่งเลยค่ะ ⭐              │
+│                              │
+│ 👉 [LINK]                    │
+└──────────────────────────────┘</code></pre>
+<p><strong>[Screenshot: Message editor]</strong></p>
+<h4 data-number="1.9.2.6" id="step-5-preview"><span
+class="header-section-number">1.9.2.6</span> Step 5: Preview</h4>
+<pre><code>คลิก &quot;👁️ Preview&quot;
+ดูว่า:
+  • ข้อความชัดไหม?
+  • ปลายบรรทัดหลุดไหม?
+  • ลิงก์ทำงานไหม?</code></pre>
+<p><strong>[Screenshot: Preview result]</strong></p>
+<h4 data-number="1.9.2.7" id="step-6-สง"><span
+class="header-section-number">1.9.2.7</span> Step 6: ส่ง</h4>
+<pre><code>2 วิธี:
+
+[✓] Send Now
+    └─ ส่งทันที (เก็บไม่ได้!)
+
+[⏲️] Schedule
+    ├─ เลือกวัน-เวลา
+    └─ ส่งเมื่อถึงเวลา
+    
+กด &quot;Send&quot; → เสร็จ ✓</code></pre>
+<p><strong>[Screenshot: Send options]</strong></p>
+<h3 data-number="1.9.3" id="broadcast-tips---ตองร"><span
+class="header-section-number">1.9.3</span> ⚠️ Broadcast Tips -
+ต้องรู้!</h3>
+<pre><code>❌ ข้อผิดพลาดบ่อย:
+  1. ส่งข้อความซ้ำวันเดียว
+     → ลูกค้ารำคาญ
+  2. ส่อง Target = 0
+     → ไม่ส่อไป
+  3. ข้อความยาวเกิน 2000 ตัว
+     → LINE ตัดออก
+  4. ลิงก์ผิด
+     → ลูกค้ากระทืบ
+     
+✅ ทำให้ถูกต้อง:
+  • ดู Preview ตลอด
+  • ตรวจสอบ Target
+  • ทดลองส่งให้ตัวเองก่อน
+  • ใช้ Template เก่า ๆ ที่ดี</code></pre>
+<h3 data-number="1.9.4" id="ด-analytics-ของ-broadcast"><span
+class="header-section-number">1.9.4</span> 📊 ดู Analytics ของ
+Broadcast</h3>
+<p><strong>สถานการณ์</strong>: ส่อง Broadcast “ลดราคา 50%” เสร็จแล้ว
+อยากดูผลว่า ส่อนไป? ลูกค้าเปิดดู?</p>
+<h4 data-number="1.9.4.1" id="วธ-1"><span
+class="header-section-number">1.9.4.1</span> วิธี:</h4>
+<pre><code>1. Menu ซ้าย → &quot;📢 Broadcasts&quot;
+2. เลือก Campaign ที่ส่อนไปแล้ว (เช่น &quot;ลดราคา 50%&quot;)
+3. คลิก → เปิดรายละเอียด
+4. ดู Stats:</code></pre>
+<p><strong>[Screenshot: Broadcast analytics]</strong></p>
+<h4 data-number="1.9.4.2" id="stats-ทด"><span
+class="header-section-number">1.9.4.2</span> Stats ที่ดู:</h4>
+<pre><code>┌─────────────────────────────────────┐
+│ Broadcast: &quot;ลดราคา 50%&quot;            │
+│ วันที่ส่อง: 2026-04-05             │
+├─────────────────────────────────────┤
+│ 📤 Sent: 150 ลูกค้า                │
+│    → ส่อนไปกี่คน                   │
+│                                     │
+│ ✅ Delivered: 145 (97%)            │
+│    → ได้รับจริง ๆ กี่คน (ไม่ block) │
+│                                     │
+│ 👁️ Opened: 110 (73%)               │
+│    → เปิดดูกี่คน (ที่เรามั่นใจ)    │
+│                                     │
+│ 🖱️ Clicked: 65 (43%)               │
+│    → คลิกลิงก์ / Button กี่คน      │
+│                                     │
+│ 💳 Conversion: 15 orders (10%)     │
+│    → ขายได้กี่ดีล (ถ้า integrate)  │
+└─────────────────────────────────────┘</code></pre>
+<h4 data-number="1.9.4.3" id="คาทตองเฝา"><span
+class="header-section-number">1.9.4.3</span> 🎯 ค่าที่ต้องเฝ้า:</h4>
+<pre><code>✅ ดี:
+  • Delivered &gt; 90% (ส่อนไปแล้ว)
+  • Opened &gt; 60% (ลูกค้าเข้ามาดู)
+  • Clicked &gt; 35% (จริงจังอยากสั่ง)
+  • Conversion &gt; 8% (ขายจริง)
+
+⚠️ ต้องปรับ:
+  • Delivered &lt; 80% → ลูกค้า block OA?
+  • Opened &lt; 40% → ข้อความไม่น่าสนใจ
+  • Clicked &lt; 20% → Link ไม่ชัด? ราคาแพง?
+  • Conversion &lt; 3% → ข้อความไม่ตรงต้องการ</code></pre>
+<h4 data-number="1.9.4.4" id="ตวอยาง-real-campaign"><span
+class="header-section-number">1.9.4.4</span> 📈 ตัวอย่าง Real
+Campaign:</h4>
+<pre><code>Campaign 1: &quot;VIP - ของใหม่&quot;
+├─ Sent: 50
+├─ Delivered: 48 (96%) ✅
+├─ Opened: 42 (87%) ✅ ดีมาก!
+├─ Clicked: 28 (58%) ✅ ดี
+└─ Conversion: 12 (24%) 🎉 ยอดเยี่ยม!
+   → ต้องทำแบบนี้อีก
+
+Campaign 2: &quot;ลดราคา 50%&quot;
+├─ Sent: 150
+├─ Delivered: 145 (97%) ✅
+├─ Opened: 110 (73%) ✅ ดี
+├─ Clicked: 65 (43%) ⚠️ ต่ำ
+└─ Conversion: 15 (10%) ⚠️ ต่ำ
+   → Clicked ต่ำ → Link ไม่ชัด? ลองเปลี่ยน Copy</code></pre>
+<h4 data-number="1.9.4.5" id="ปรบปรง-campaign"><span
+class="header-section-number">1.9.4.5</span> 💡 ปรับปรุง Campaign:</h4>
+<pre><code>ถ้า Opened ต่ำ (&lt; 50%):
+  • ข้อความไม่น่าสนใจ
+  • ลองเปลี่ยน Subject/Preview
+  • ลดข้อความยาว
+
+ถ้า Clicked ต่ำ (&lt; 30%):
+  • Link ไม่ชัด
+  • ลองใส่ Button ที่ชัด
+  • ข้อความไม่ตรง
+
+ถ้า Conversion ต่ำ (&lt; 5%):
+  • ราคาแพง?
+  • ลูกค้ากำลังหา competitor?
+  • ส่อนเวลาผิด (เก่ิน)</code></pre>
+<hr />
+<h2 data-number="1.10" id="analytics---ดผลลพธ"><span
+class="header-section-number">1.10</span> 📈 Analytics - ดูผลลัพธ์</h2>
+<h3 data-number="1.10.1" id="analytics-คออะไร"><span
+class="header-section-number">1.10.1</span> 🎯 Analytics คืออะไร?</h3>
+<p><strong>Analytics = ดูว่าการทำงานเป็นยังไง</strong> - สถิติ Inbox,
+Broadcast, Response Time</p>
+<p><strong>[Screenshot: Analytics dashboard]</strong></p>
+<h3 data-number="1.10.2" id="สวนประกอบของ-analytics"><span
+class="header-section-number">1.10.2</span> 📊 ส่วนประกอบของ
+Analytics</h3>
+<h4 data-number="1.10.2.1" id="overview-stats"><span
+class="header-section-number">1.10.2.1</span> 1️⃣ <strong>Overview
+Stats</strong></h4>
+<pre><code>┌─────────────────────────────────────┐
+│ 📱 Total Messages    │ 12,450       │
+├─────────────────────────────────────┤
+│ ✅ Conversations     │ 854          │
+│ ⏱️ Avg Response Time │ 8 นาที       │
+│ 😊 Satisfaction %    │ 94%          │
+└─────────────────────────────────────┘</code></pre>
+<h4 data-number="1.10.2.2" id="inbox-performance"><span
+class="header-section-number">1.10.2.2</span> 2️⃣ <strong>Inbox
+Performance</strong></h4>
+<pre><code>📈 Messages Per Day (7 วัน)
+  Day 1: 150 messages
+  Day 2: 145 messages
+  Day 3: 180 messages ← สูงสุด
+  Day 4: 165 messages
+  ...
+
+📊 Response Time Distribution
+  0-5 min:  40% (ดีมาก!)
+  5-15 min: 35% (ดี)
+  15-60 min: 20% (พอใช้)
+  &gt;60 min:  5% (ต้องปรับ)</code></pre>
+<h4 data-number="1.10.2.3" id="broadcast-stats"><span
+class="header-section-number">1.10.2.3</span> 3️⃣ <strong>Broadcast
+Stats</strong></h4>
+<pre><code>Broadcast: &quot;VIP - ของใหม่&quot; (วันที่ส่ง: 2026-04-05)
+├─ Sent: 50 ลูกค้า
+├─ Delivered: 48 ✓
+├─ Opened: 42 (87%)
+├─ Clicked: 28 (58%)
+└─ Conversion: 12 orders (24%)
+
+Broadcast: &quot;ลดราคา 50%&quot; (วันที่ส่ง: 2026-04-04)
+├─ Sent: 150 ลูกค้า
+├─ Delivered: 145 ✓
+├─ Opened: 110 (73%)
+├─ Clicked: 65 (43%)
+└─ Conversion: 15 orders (10%)</code></pre>
+<h3 data-number="1.10.3" id="ด-analytics---ขนตอน"><span
+class="header-section-number">1.10.3</span> 🔍 ดู Analytics - ขั้นตอน</h3>
+<h4 data-number="1.10.3.1" id="step-1-เขา-analytics"><span
+class="header-section-number">1.10.3.1</span> Step 1: เข้า Analytics</h4>
+<pre><code>Menu ซ้าย → &quot;📈 Analytics&quot;</code></pre>
+<p><strong>[Screenshot: Analytics page]</strong></p>
+<h4 data-number="1.10.3.2" id="step-2-เลอก-date-range"><span
+class="header-section-number">1.10.3.2</span> Step 2: เลือก Date
+Range</h4>
+<pre><code>ด้านบน → คลิก &quot;📅 Date Range&quot;
+เลือก:
+  [ ] Today (วันนี้)
+  [ ] This Week (สัปดาห์นี้)
+  [ ] This Month (เดือนนี้)
+  [ ] Last 7 Days (7 วันล่าสุด)
+  [ ] Last 30 Days (30 วันล่าสุด)
+  [ ] Custom (กำหนดเอง)</code></pre>
+<p><strong>[Screenshot: Date picker]</strong></p>
+<h4 data-number="1.10.3.3" id="step-3-ดกราฟ"><span
+class="header-section-number">1.10.3.3</span> Step 3: ดูกราฟ</h4>
+<pre><code>1. Messages per Day → เทรนด์ข้อความ
+2. Response Time → ตอบเร็วไหม
+3. Broadcast Performance → ส่อง Broadcast ส่อนไป
+4. Top Conversations → ลูกค้าใดสนทนามากสุด</code></pre>
+<h4 data-number="1.10.3.4" id="step-4-export-report"><span
+class="header-section-number">1.10.3.4</span> Step 4: Export Report</h4>
+<pre><code>ด้านบน → คลิก &quot;📥 Export&quot;
+เลือก Format:
+  [ ] PDF
+  [ ] CSV
+  [ ] Excel
+
+ดาวน์โหลด → ใช้ในการรายงาน</code></pre>
+<p><strong>[Screenshot: Export button]</strong></p>
+<h3 data-number="1.10.4" id="kpi-สำคญทตองด"><span
+class="header-section-number">1.10.4</span> 🎯 KPI สำคัญที่ต้องดู</h3>
+<table>
+<thead>
+<tr>
+<th>KPI</th>
+<th>เป้าหมาย</th>
+<th>สิ่งที่หมายถึง</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Response Time</strong></td>
+<td>&lt; 30 นาที</td>
+<td>ตอบลูกค้าเร็ว</td>
+</tr>
+<tr>
+<td><strong>Messages/Day</strong></td>
+<td>↑ สูงขึ้น</td>
+<td>มีลูกค้ามากขึ้น</td>
+</tr>
+<tr>
+<td><strong>Broadcast Opened</strong></td>
+<td>&gt; 70%</td>
+<td>ลูกค้าสนใจ</td>
+</tr>
+<tr>
+<td><strong>Broadcast Clicked</strong></td>
+<td>&gt; 40%</td>
+<td>อยากคลิก</td>
+</tr>
+<tr>
+<td><strong>Conversion Rate</strong></td>
+<td>&gt; 10%</td>
+<td>ขายได้</td>
+</tr>
+<tr>
+<td><strong>Satisfaction</strong></td>
+<td>&gt; 90%</td>
+<td>ลูกค้าพอใจ</td>
+</tr>
+</tbody>
+</table>
+<h3 data-number="1.10.5" id="อาน-analytics-ใหด"><span
+class="header-section-number">1.10.5</span> 💡 อ่าน Analytics ให้ดี</h3>
+<pre><code>🔍 สัปดาห์นี้เห็น:
+  • Response Time สูง (20 นาที)
+    → ต้องตอบเร็วขึ้น
+  
+  • Broadcast Opened ต่ำ (55%)
+    → ข้อความไม่น่าสนใจ เปลี่ยน Copy
+  
+  • Conversion ดี (15%)
+    → ทำถูกทาง ต่อให้ดี
+
+📊 เทียบกับสัปดาห์ที่แล้ว:
+  • Messages ↑ 20% → ปกติ (ฤดูกาล)
+  • Response Time ↑ → หนักมาก ต้องจ้างคนเพิ่ม
+  • Satisfaction ↓ 5% → ปัญหาอะไร?</code></pre>
+<hr />
+<h2 data-number="1.11" id="auto-reply---ตอบอตโนมต"><span
+class="header-section-number">1.11</span> 🤖 Auto-Reply - ตอบอัตโนมัติ</h2>
+<h3 data-number="1.11.1" id="auto-reply-คออะไร"><span
+class="header-section-number">1.11.1</span> 🎯 Auto-Reply คืออะไร?</h3>
+<p><strong>Auto-Reply = ตอบกลับอัตโนมัติเมื่อออกจากงาน</strong></p>
+<p>ตัวอย่าง:</p>
+<pre><code>เวลา 18:00 ปิด Auto-Reply ON
+ลูกค้า John ส่อง: &quot;สินค้าหมดหรือยัง?&quot;
+→ REYA ส่องโอโต้: &quot;ขณะนี้ไม่ว่าง ตอบหลังพรุ่งนี้นะค่ะ&quot;
+
+วันรุ่งขึ้น เวลา 9:00 เข้ามา
+→ ปิด Auto-Reply OFF
+→ ลูกค้าส่อง ได้ตอบจริง</code></pre>
+<p><strong>[Screenshot: Auto-Reply setting]</strong></p>
+<h3 data-number="1.11.2" id="ตง-auto-reply---ขนตอน"><span
+class="header-section-number">1.11.2</span> ⚙️ ตั้ง Auto-Reply -
+ขั้นตอน</h3>
+<h4 data-number="1.11.2.1" id="step-1-เขา-settings"><span
+class="header-section-number">1.11.2.1</span> Step 1: เข้า Settings</h4>
+<pre><code>Menu ซ้าย → &quot;⚙️ Settings&quot;
+ด้านขวา → &quot;🤖 Auto-Reply&quot;</code></pre>
+<p><strong>[Screenshot: Settings &gt; Auto-Reply]</strong></p>
+<h4 data-number="1.11.2.2" id="step-2-เปด-auto-reply"><span
+class="header-section-number">1.11.2.2</span> Step 2: เปิด
+Auto-Reply</h4>
+<pre><code>Switch: 🔴 OFF → 🟢 ON</code></pre>
+<h4 data-number="1.11.2.3" id="step-3-เขยนขอความ"><span
+class="header-section-number">1.11.2.3</span> Step 3: เขียนข้อความ</h4>
+<pre><code>┌──────────────────────────────────┐
+│ Auto-Reply Message:              │
+│                                  │
+│ สวัสดีค่ะ {name}                │
+│                                  │
+│ เรากำลังออกนอกที่ทำงานขณะนี้    │
+│ ตอบกลับให้เร็ว ๆ ในวันรุ่งขึ้น    │
+│ ค่ะ                              │
+│                                  │
+│ ขอบคุณค่ะ 🙏                    │
+└──────────────────────────────────┘</code></pre>
+<p><strong>[Screenshot: Message editor]</strong></p>
+<h4 data-number="1.11.2.4" id="step-4-ตงเวลา-ทางเลอก"><span
+class="header-section-number">1.11.2.4</span> Step 4: ตั้งเวลา
+(ทางเลือก)</h4>
+<pre><code>[ ] Always Active
+    └─ เปิดตลอด (ไม่มีเวลา)
+
+[✓] Schedule Time
+    ├─ Start: 18:00 (หลังเลิกงาน)
+    ├─ End: 09:00 (เข้างาน)
+    ├─ Timezone: Asia/Bangkok
+    └─ Apply on weekends: [✓]</code></pre>
+<p><strong>[Screenshot: Schedule settings]</strong></p>
+<h4 data-number="1.11.2.5" id="step-5-บนทก"><span
+class="header-section-number">1.11.2.5</span> Step 5: บันทึก</h4>
+<pre><code>คลิก &quot;💾 Save&quot;
+→ Auto-Reply เปิดตั้งแต่นี้</code></pre>
+<h3 data-number="1.11.3" id="ตวอยาง-auto-reply-ทด"><span
+class="header-section-number">1.11.3</span> 🎯 ตัวอย่าง Auto-Reply ที่ดี</h3>
+<h4 data-number="1.11.3.1" id="ตวอยาง-1-หลงเลกงาน"><span
+class="header-section-number">1.11.3.1</span> ตัวอย่าง 1: หลังเลิกงาน</h4>
+<pre><code>สวัสดีค่ะ {name} 🙏
+
+เรากำลังออกนอกที่ทำงานในขณะนี้
+(หลังเวลา 18:00)
+
+ตอบกลับให้เร็ว ๆ ตอนเช้าพรุ่งนี้นะค่ะ
+ขอบคุณที่ติดต่อเรา 😊
+
+Line OA: @company-support
+Phone: 02-xxx-xxxx</code></pre>
+<h4 data-number="1.11.3.2" id="ตวอยาง-2-วนหยด"><span
+class="header-section-number">1.11.3.2</span> ตัวอย่าง 2: วันหยุด</h4>
+<pre><code>สวัสดีค่ะ 🎉
+
+วันนี้เป็นวันหยุด ตัวแทนเรา
+จะตอบกลับให้ในวันถัดไปค่ะ
+
+ขอขอบคุณที่รอนะคะ 🙏</code></pre>
+<h4 data-number="1.11.3.3" id="ตวอยาง-3-ปญหาเรงดวน"><span
+class="header-section-number">1.11.3.3</span> ตัวอย่าง 3: ปัญหาเร่งด่วน</h4>
+<pre><code>สวัสดีค่ะ {name}
+
+ถ้าเป็นปัญหาเร่งด่วน
+โปรดติดต่อ: 02-xxx-xxxx
+
+สำหรับคำถามทั่วไป ฉันจะตอบเร็ว ๆ ค่ะ
+ขอบคุณ 😊</code></pre>
+<h3 data-number="1.11.4" id="แก-auto-reply"><span
+class="header-section-number">1.11.4</span> ✏️ แก้ Auto-Reply</h3>
+<pre><code>1. ไป Settings &gt; Auto-Reply
+2. แก้ข้อความ
+3. บันทึก</code></pre>
+<h3 data-number="1.11.5" id="ปด-auto-reply"><span
+class="header-section-number">1.11.5</span> 🔄 ปิด Auto-Reply</h3>
+<pre><code>Switch: 🟢 ON → 🔴 OFF
+Auto-Reply ปิด ทุกข้อความตอนนี้จะไปหา</code></pre>
+<h3 data-number="1.11.6" id="auto-reply-best-practices"><span
+class="header-section-number">1.11.6</span> 💡 Auto-Reply Best
+Practices</h3>
+<pre><code>✅ ทำให้ดี:
+  1. เปิดตลอดเมื่อหยุด
+  2. ชี้ลิงก์ / เบอร์ติดต่ออื่น
+  3. ให้เวลา &quot;ตอบเมื่อไหร่&quot;
+  4. ใช้ {name} ให้ลูกค้ารู้สึกมีค่า
+  5. ขอบคุณลูกค้า
+
+❌ อย่าทำ:
+  1. ทิ้ง ON ทั้งสัปดาห์
+  2. ข้อความเล็กเกิน / ยาวเกิน
+  3. ไม่มีอื่นติดต่อ
+  4. ใช้ข้อความสูงเกิน / หยาบ</code></pre>
+<hr />
+<h2 data-number="1.12" id="tips-workflows"><span
+class="header-section-number">1.12</span> 💡 Tips &amp; Workflows</h2>
+<h3 data-number="1.12.1"
+id="workflow-ตอบลกคาอยางไรใหเรว-triage-inbox"><span
+class="header-section-number">1.12.1</span> 🎯 Workflow:
+ตอบลูกค้าอย่างไรให้เร็ว (Triage Inbox)</h3>
+<p><strong>สถานการณ์</strong>: เช้าเปิด Inbox เห็น 20 ข้อความใหม่ -
+ต้องจัดลำดับความสำคัญให้รวดเร็ว</p>
+<h4 data-number="1.12.1.1" id="workflow"><span
+class="header-section-number">1.12.1.1</span> Workflow:</h4>
+<pre><code>Time: 9:00 AM - เปิด Inbox
+
+Step 1: ดูสถิติ (2 นาที)
+  └─ 20 Unread → ต้อง Triage
+
+Step 2: Triage (5 นาที)
+  ┌─────────────────────────────┐
+  │ Unread ทั้งหมด:             │
+  ├─────────────────────────────┤
+  │ VIP (3) → ตอบทันที         │
+  │ ร้อน (5) → ตอบ 10 นาที    │
+  │ ปกติ (12) → ตอบ 30 นาที   │
+  └─────────────────────────────┘
+
+Step 3: ตอบ VIP ก่อน (10 นาที)
+  1. John: &quot;ของมีไหม?&quot;
+     → Template: &quot;Check สต็อก&quot;
+  2. Sarah: &quot;ราคาเท่าไร?&quot;
+     → Template: &quot;ราคา&quot;
+  3. Mike: &quot;ใหญ่ขึ้นไหม?&quot;
+     → ตอบส่วนตัว
+
+Step 4: Assign งาน (5 นาที)
+  └─ &quot;ร้อน&quot; 5 ข้อ → Assign Sarah
+     &quot;ปกติ&quot; 12 ข้อ → Assign John
+
+Step 5: ดูโล่งแล้ว ✓</code></pre>
+<h3 data-number="1.12.2" id="response-time-target"><span
+class="header-section-number">1.12.2</span> ⏱️ Response Time Target</h3>
+<pre><code>🎯 ตอบภายใน 15 นาที = ดีมาก
+✅ ตอบภายใน 30 นาที = ดี
+⚠️ ตอบภายใน 1 ชั่วโมง = พอใช้
+❌ ตอบเกิน 1 ชั่วโมง = ช้า</code></pre>
+<h3 data-number="1.12.3" id="keyboard-shortcuts-เรวขน"><span
+class="header-section-number">1.12.3</span> ⚡ Keyboard Shortcuts
+(เร็วขึ้น!)</h3>
+<pre><code>Ctrl+K          = ค้นหา Customer
+Tab             = ไปการสนทนาถัดไป
+Ctrl+Enter      = ส่งข้อความ
+/               = ใช้ Template</code></pre>
+<h3 data-number="1.12.4" id="template-best-practices-1"><span
+class="header-section-number">1.12.4</span> 📋 Template Best
+Practices</h3>
+<pre><code>✅ ทำให้ดี:
+  • Template ยาว แต่ครบ
+  • มี {name} {phone} {product} {price}
+  • ตรวจสอบก่อนบันทึก
+  • Update เมื่อราคา/สินค้าเปลี่ยน
+  • ใช้ Emoji อย่างถูกต้อง (😊 ⭐ 🎉)
+  
+❌ อย่าทำ:
+  • Template สั้นเกิน (ลูกค้าพัง)
+  • Typo หรือ Emoji ผิด
+  • ใช้ Template เก่าที่ลืมปรับ
+  • Hardcode ราคา (ลืมปรับตรง)</code></pre>
+<h3 data-number="1.12.5"
+id="workflow-ฝายขาย-สอง-broadcast-สำหรบยอดขาย"><span
+class="header-section-number">1.12.5</span> 🔧 Workflow: ฝ่ายขาย ส่อง
+Broadcast สำหรับยอดขาย</h3>
+<p><strong>สถานการณ์</strong>: อาทิตย์นี้ต้องส่อง Broadcast “ลดราคา”
+เพื่อเพิ่มยอดขาย</p>
+<pre><code>ขั้นตอน:
+1. ตั้งแผน (ก่อน 2 วัน)
+   └─ ชื่อ Broadcast: &quot;ลดราคาวิกเอนด์&quot;
+   └─ Target: ลูกค้าซื้อเก่า (Tag &quot;warm&quot;) 
+   └─ ข้อความ: &quot;ลด 20% เพียง 3 วัน&quot;
+
+2. สร้าง Campaign
+   └─ Templates: เลือก &quot;ส่วนลด&quot;
+   └─ Target: &quot;warm&quot; + &quot;ใหม่&quot; = 85 ลูกค้า
+
+3. Preview ตรวจสอบ
+   └─ ข้อความชัด? ลิงก์ถูก? ราคาถูก?
+
+4. ส่อง
+   └─ Schedule ตามจังหวะ (เช้า? บ่าย?)
+
+5. ตรวจสอบผลลัพธ์ (ต่อวัน)
+   └─ Opened: 80%+ = ดี
+   └─ Clicked: 50%+ = ดี
+   └─ Sales: +15% = ยอดเยี่ยม!</code></pre>
+<hr />
+<h2 data-number="1.13" id="faq-troubleshooting"><span
+class="header-section-number">1.13</span> ❓ FAQ &amp;
+Troubleshooting</h2>
+<h3 data-number="1.13.1" id="inbox"><span
+class="header-section-number">1.13.1</span> 💬 Inbox</h3>
+<p><strong>Q: ข้อความจาก LINE ไม่เห็นใน Inbox?</strong></p>
+<pre><code>A: 1. Refresh page (F5)
+   2. ตรวจสอบ Filter (Status/Tag)
+   3. หาคนในด้านซ้าย
+   4. ติดต่อ Admin ถ้ายัง</code></pre>
+<p><strong>Q: ตอบลูกค้าแล้ว แต่เขายังเห็น Unread?</strong></p>
+<pre><code>A: ปกติ ไม่ต้องห่วง
+   (ลูกค้าเห็น Badge ถ้าไม่ได้อ่าน
+    ระบบตั้งเองเมื่อ Click)</code></pre>
+<p><strong>Q: ลูกค้า Reopen หลังจาก Closed?</strong></p>
+<pre><code>A: ปกติ ลูกค้าตอบกลับ
+   → Status เปลี่ยนเป็น Reopened
+   → ต้องตอบอีก</code></pre>
+<h3 data-number="1.13.2" id="tags"><span
+class="header-section-number">1.13.2</span> 🏷️ Tags</h3>
+<p><strong>Q: Tag ส่วนไหนเก็บ?</strong></p>
+<pre><code>A: Menu &gt; Settings &gt; Tags
+   (แต่ Tag ขณะตอบ ที่ Inbox)</code></pre>
+<p><strong>Q: ลบ Tag ลูกค้าได้ไหม?</strong></p>
+<pre><code>A: ได้
+   1. เปิดการสนทนา
+   2. คลิก Tag
+   3. เลือก &quot;Remove&quot;</code></pre>
+<h3 data-number="1.13.3" id="broadcasts"><span
+class="header-section-number">1.13.3</span> 📢 Broadcasts</h3>
+<p><strong>Q: ส่อง Broadcast เสร็จแล้ว แต่ไม่ไปถึง?</strong></p>
+<pre><code>A: ตรวจสอบ:
+   1. Target = 0 ลูกค้า?
+      → เลือก Tag/Segment อื่น
+   2. ข้อความยาวเกิน?
+      → ตัดสั้นลง
+   3. ลิงก์ผิด?
+      → Copy-Paste อีกครั้ง</code></pre>
+<p><strong>Q: ส่อง Scheduled แล้ว อยากยกเลิก?</strong></p>
+<pre><code>A: 1. ไป Broadcasts
+   2. เลือก Campaign ที่ Scheduled
+   3. คลิก &quot;❌ Cancel&quot;</code></pre>
+<h3 data-number="1.13.4" id="analytics"><span
+class="header-section-number">1.13.4</span> 📈 Analytics</h3>
+<p><strong>Q: ดู Broadcast ส่อนไป ได้ไหม?</strong></p>
+<pre><code>A: ได้
+   1. ไป Broadcasts
+   2. คลิก Campaign ที่ส่อนไปแล้ว
+   3. ดู Stats:
+      • Sent: กี่คน
+      • Opened: กี่คน เปิดดู
+      • Clicked: กี่คน คลิก</code></pre>
+<h3 data-number="1.13.5" id="ปญหาทวไปและวธแก"><span
+class="header-section-number">1.13.5</span> 🛠️ ปัญหาทั่วไปและวิธีแก้</h3>
+<p><strong>Q: ข้อความส่งไปแล้ว ลูกค้าว่ากันว่าไม่ได้รับ?</strong></p>
+<pre><code>A: 1. ตรวจสอบว่าส่อนไปจริงหรือ
+      (ไป Broadcasts → ดู Delivered status)
+   2. ลูกค้า Block ไลน์ OA?
+      (ลอง Comment ใน LINE OA)
+   3. ลูกค้า Follow OA ไหม?
+      (หลายคนไม่ Follow → ไม่ได้เนื้อหา)
+   4. ติดต่อ Admin</code></pre>
+<p><strong>Q: ตอบลูกค้า VIP แล้ว แต่ยังเห็น “Unread”?</strong></p>
+<pre><code>A: ปกติ ตัวอักษรด้านบน:
+   • Unread = ยังมี Unread message
+   • Replied = ตอบแล้ว
+   
+   ถ้าลูกค้าตอบกลับ → เปลี่ยนเป็น Unread อีก
+   (คลิก Unread → เปลี่ยน Status เป็น &quot;Read&quot;)</code></pre>
+<p><strong>Q: Tag ลูกค้าแล้ว ตอบลูกค้าอีก ครั้ง ทำไม Tag หายไป?</strong></p>
+<pre><code>A: ไม่หายไป Tag คงอยู่
+   ตรวจสอบ:
+   1. เปิดการสนทนา
+   2. ดาน Profile → ดู Tags
+   3. Tag ยังอยู่ ✓</code></pre>
+<p><strong>Q: ลูกค้าส่องข้อความจำนวนมาก อ่านไม่ทัน?</strong></p>
+<pre><code>A: ใช้ Workflow Triage:
+   1. ดูสถานะ: Open/In Progress/Closed
+   2. เลือก &quot;Open&quot; ก่อน (เพิ่งส่องมา)
+   3. Sort by &quot;Most Recent&quot; (ล่าสุด)
+   4. Assign งานให้คนอื่น</code></pre>
+<p><strong>Q: Template ไม่เห็นรูป / Attachment ไม่ทำงาน?</strong></p>
+<pre><code>A: 1. ลองรีโหลด (F5)
+   2. ใช้ Browser อื่น (Chrome / Safari / Firefox)
+   3. ล้าง Cache:
+      Ctrl+Shift+Delete (Chrome)
+      Cmd+Shift+Delete (Mac)
+   4. ติดต่อ Support</code></pre>
+<p><strong>Q: Response Time สูง (ตอบช้า) แล้วยาว จะเพิ่มเร็ว?</strong></p>
+<pre><code>A: 1. ใช้ Template เพิ่มเติม
+   2. ทำ Workflow &quot;Triage&quot; ให้ดี
+   3. Assign งานให้คนอื่น
+   4. ตั้งค่า Auto-Reply หลังเลิกงาน
+   5. ใช้ Shortcuts: Ctrl+K, /, Tab</code></pre>
+<p><strong>Q: Broadcast ยาวเกิน ข้อความหลุดออก?</strong></p>
+<pre><code>A: LINE มีลิมิต ~2000 ตัวอักษร
+   วิธีแก้:
+   1. ตัดข้อความสั้นลง
+   2. แบ่งเป็น 2 Broadcast
+   3. ใช้ Flex Message (พับได้)
+   4. ใช้ Link/QR Code (เก็บยาว ๆ)</code></pre>
+<hr />
+<h2 data-number="1.14" id="ความชวยเหลอและตดตอ"><span
+class="header-section-number">1.14</span> 🔗 ความช่วยเหลือและติดต่อ</h2>
+<h3 data-number="1.14.1" id="settings-สำคญทตองร"><span
+class="header-section-number">1.14.1</span> 🔐 Settings สำคัญที่ต้องรู้</h3>
+<p><strong>Security Settings:</strong></p>
+<pre><code>Menu &gt; Settings &gt; Security
+├─ ✓ 2-Factor Authentication (ใช้ไหม?)
+├─ ✓ Change Password (ปลอดภัย)
+└─ ✓ Session Timeout (ออกอัตโนมัติเมื่อไร?)</code></pre>
+<p><strong>Notification Settings:</strong></p>
+<pre><code>Menu &gt; Settings &gt; Notifications
+├─ [ ] Email Alerts (ขึ้นข้อความใหม่)
+├─ [ ] Sound Notification (เสียง)
+└─ [ ] Desktop Notification (Popup)</code></pre>
+<p><strong>Team Settings (Admin only):</strong></p>
+<pre><code>Menu &gt; Settings &gt; Team
+├─ เพิ่ม/ลบพนักงาน
+├─ กำหนด Role (Admin/Staff)
+├─ ตั้ง Permissions
+└─ ส่วนลด/ราคา</code></pre>
+<hr />
+<h2 data-number="1.15" id="quick-contacts-resources"><span
+class="header-section-number">1.15</span> 📞 Quick Contacts &amp;
+Resources</h2>
+<pre><code>👨‍💼 Admin:           contact@company.com
+📧 Support:          support@company.com
+💬 LINE OA Support:  @company-support
+🔧 Technical Issue:  tech-support@company.com
+📱 Emergency:        02-xxx-xxxx</code></pre>
+<h3 data-number="1.15.1" id="additional-resources"><span
+class="header-section-number">1.15.1</span> 📚 Additional Resources</h3>
+<pre><code>🌐 Main Portal:      https://reya.example.com
+📖 Video Tutorials:  [YouTube channel link]
+📋 Knowledge Base:   [Wiki/FAQ site]
+💬 Slack Community:  #reya-users
+📞 Training:         [Training schedule]</code></pre>
+<h3 data-number="1.15.2" id="resources"><span
+class="header-section-number">1.15.2</span> 📚 Resources</h3>
+<pre><code>🌐 Main:         https://reya.example.com
+📖 Wiki:         [wiki link]
+🎥 Video Tuts:   [youtube link]
+💬 Slack Group:  #reya-support</code></pre>
+<hr />
+<h2 data-number="1.16" id="checklist-สำหรบพนกงานใหม"><span
+class="header-section-number">1.16</span> ✅ Checklist
+สำหรับพนักงานใหม่</h2>
+<p>ก่อนเริ่มใช้ REYA ต้องเรียนและสมบูรณ์:</p>
+<pre><code>Day 1:
+  [ ] ล็อกอิน REYA ได้
+  [ ] อ่าน Dashboard ทำความเข้าใจ
+  [ ] ตอบลูกค้า 5 คน ด้วย Template
+  [ ] Tag ลูกค้า (ทำความเข้าใจ Tags)
+  
+Day 2-3:
+  [ ] Assign งานให้คนอื่นได้
+  [ ] เปลี่ยน Status (Close conversation)
+  [ ] เขียน Template ใหม่ 1-2 ตัว
+  [ ] ดู Analytics ของตัวเอง
+  
+Week 1:
+  [ ] ตอบลูกค้า 50+ คน
+  [ ] Response Time &lt; 30 นาที
+  [ ] Tag และ Assign งานเป็นปกติ
+  [ ] ที่ปรึกษาได้ที่ Lead/Admin</code></pre>
+<hr />
+<h2 data-number="1.17" id="training-learning-path"><span
+class="header-section-number">1.17</span> 🎓 Training &amp; Learning
+Path</h2>
+<h3 data-number="1.17.1" id="สำหรบพนกงานใหม-week-1-2"><span
+class="header-section-number">1.17.1</span> สำหรับพนักงานใหม่ (Week
+1-2)</h3>
+<pre><code>Session 1: Introduction
+  • Dashboard overview
+  • Inbox basics
+  • ตอบลูกค้า 5 คน
+
+Session 2: Tagging &amp; Management
+  • Tags vs Segments
+  • การ Assign
+  • Status management
+
+Session 3: Templates &amp; Automation
+  • สร้าง Template
+  • ใช้ Template เร็ว
+  • Auto-Reply
+
+Session 4: Analytics &amp; Performance
+  • ดู Analytics
+  • KPI targets
+  • Optimization</code></pre>
+<h3 data-number="1.17.2" id="สำหรบ-sales-team-focus-broadcasts"><span
+class="header-section-number">1.17.2</span> สำหรับ Sales Team (Focus:
+Broadcasts)</h3>
+<pre><code>Session 1: Broadcast Fundamentals
+  • สร้าง Campaign
+  • Target Audience
+  • Message Types
+
+Session 2: Advanced Targeting
+  • Segments
+  • Conditional Sending
+  • Schedule
+
+Session 3: Analytics &amp; ROI
+  • Broadcast Performance
+  • Conversion Tracking
+  • Optimization</code></pre>
+<hr />
+<h2 data-number="1.18" id="support-help"><span
+class="header-section-number">1.18</span> 📞 Support &amp; Help</h2>
+<h3 data-number="1.18.1" id="หากมปญหา"><span
+class="header-section-number">1.18.1</span> หากมีปัญหา</h3>
+<pre><code>1️⃣ ตรวจสอบ FAQ ในเอกสารนี้
+2️⃣ ดูส่วน Troubleshooting
+3️⃣ ถามเพื่อน/Lead
+4️⃣ ติดต่อ Support: support@company.com
+5️⃣ Call Emergency: 02-xxx-xxxx</code></pre>
+<h3 data-number="1.18.2" id="ผทสามารถชวยเหลอ"><span
+class="header-section-number">1.18.2</span> ผู้ที่สามารถช่วยเหลือ</h3>
+<pre><code>🎯 Admin
+   └─ ตั้งค่า, ปัญหาเทคนิค, Permissions
+   
+🎯 Lead/Team Manager
+   └─ Workflow, Strategy, Performance
+   
+🎯 Support Team
+   └─ User questions, Documentation</code></pre>
+<hr />
+<h2 data-number="1.19" id="document-info"><span
+class="header-section-number">1.19</span> 📝 Document Info</h2>
+<p><strong>เอกสารนี้เขียนวันที่</strong>: 2026-04-09 <strong>เวอร์ชัน</strong>:
+1.0 - Complete <strong>สำหรับ</strong>: พนักงาน + ฝ่ายขาย
+<strong>จำนวนหน้า</strong>: ~30-35 หน้า</p>
+<h3 data-number="1.19.1" id="updates-maintenance"><span
+class="header-section-number">1.19.1</span> Updates &amp;
+Maintenance</h3>
+<pre><code>อัปเดตล่าสุด: 2026-04-09
+ผู้ดูแล: Admin/Training Team
+
+Feedback:
+  • พบปัญหา/ข้อเสนอ?
+  • ส่ง Message ไป Support
+  • เรา Update เอกสารตลอด</code></pre>
+<hr />
+<h2 data-number="1.20" id="สรป-7-สงทตองจำ"><span
+class="header-section-number">1.20</span> 🌟 สรุป: 7 สิ่งที่ต้องจำ</h2>
+<pre><code>1️⃣  Inbox = ศูนย์กลาง ตอบลูกค้าเร็ว + Tag
+2️⃣  Template = ตอบเร็ว ใช้ slash (/)
+3️⃣  Tags = จำแนกลูกค้า, Broadcast, Reports
+4️⃣  Segments = กลุ่มลูกค้าตามเงื่อนไข
+5️⃣  Broadcasts = ส่อง Batch เพื่อยอดขาย
+6️⃣  Analytics = ดูผลและปรับปรุง
+7️⃣  Auto-Reply = ตอบเมื่อหยุด (สำคัญ!)</code></pre>
+<hr />
+<h2 data-number="1.21" id="document-improvements-future"><span
+class="header-section-number">1.21</span> 📌 Document Improvements
+(Future)</h2>
+<p>เอกสารนี้ยังสามารถปรับปรุงได้เพิ่มเติม:</p>
+<pre><code>1. 🖼️ เพิ่มรูปจริง (Screenshots)
+   └─ Dashboard, Inbox, Broadcast creation, Analytics
+   
+2. 🎥 เพิ่มวิดีโอสั้น ๆ
+   └─ 30 sec video per workflow
+   
+3. 🗺️ สร้าง Flowchart
+   └─ &quot;Customer Message → Decision Tree → Action&quot;
+   
+4. ⌨️ Keyboard Shortcuts
+   └─ อยู่บน line แต่ต้องทำให้ visible มากขึ้น
+   
+5. 📊 Permission Matrix
+   └─ Who can do What (Admin vs Staff vs Sales)
+   
+6. 📖 Glossary
+   └─ Terms: Unread, Open, In Progress, Tag vs Segment</code></pre>
+<hr />
+<p><em>Last Updated: 2026-04-09 | Reader Tested &amp; Revised</em>
+<em>Status: ✅ Production Ready (with minor improvements planned)</em>
+<em>สำหรับคำถาม ติดต่อ Support: support@company.com</em> 💬</p>
+</body>
+</html>

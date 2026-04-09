@@ -31,16 +31,18 @@ function sanitizeFlexActionUris(obj: any): any {
     return obj.map(sanitizeFlexActionUris)
   }
 
-  if (obj.type === 'action' && obj.uri) {
-    if (typeof obj.uri === 'string' && obj.uri.trim()) {
-      const uri = obj.uri.trim()
-      if (!uri.startsWith('http://') && !uri.startsWith('https://')) {
-        return { ...obj, uri: null }
-      }
+  // Handle LINE action objects - type: 'uri' has a uri property
+  if (obj.type === 'uri' && obj.uri !== undefined) {
+    if (typeof obj.uri !== 'string' || !obj.uri.trim()) {
+      return { ...obj, uri: null }
+    }
+    const uri = obj.uri.trim()
+    if (!uri.startsWith('http://') && !uri.startsWith('https://')) {
+      return { ...obj, uri: null }
     }
   }
 
-  if (obj.action && obj.action.uri) {
+  if (obj.action && typeof obj.action === 'object') {
     const sanitized = sanitizeFlexActionUris(obj.action)
     return { ...obj, action: sanitized }
   }

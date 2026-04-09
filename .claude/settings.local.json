@@ -18,7 +18,16 @@
       "Bash(grep -A 50 \"CREATE TABLE.*odoo_invoices\" /c/Users/Administrator/odoo/database/*.sql)",
       "Bash(grep -n \"odoo_bdo_context\\\\|selected_invoices_json\" /c/Users/Administrator/odoo/database/*.sql)",
       "Bash(cp /tmp/FlexPreview_feature.tsx src/components/inbox/FlexPreview.tsx)",
-      "Bash(cp /tmp/Sidebar_feature.tsx src/components/layout/Sidebar.tsx)"
+      "Bash(cp /tmp/Sidebar_feature.tsx src/components/layout/Sidebar.tsx)",
+      "Bash(python -c \"import markdown; import pdfkit; print\\('markdown and pdfkit available'\\)\")",
+      "Bash(choco install:*)",
+      "Bash(pandoc --version)",
+      "Bash(pandoc:*)",
+      "Bash(python:*)",
+      "Bash(npm install:*)",
+      "Bash(html-pdf-chrome:*)",
+      "Bash(dir:*)",
+      "Bash(npm list:*)"
     ]
   }
 }
