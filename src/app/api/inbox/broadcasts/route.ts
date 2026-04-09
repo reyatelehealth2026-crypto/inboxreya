@@ -14,6 +14,7 @@ const createBroadcastSchema = z.object({
   templateSourceTable: z.enum(['templates', 'flex_templates', 'quick_reply_templates']).optional(),
   targetSegmentId: z.number().int().positive().optional(),
   targetCustomerIds: z.array(z.number().int().positive()).optional(),
+  targetTagIds: z.array(z.number().int().positive()).optional(),
   scheduledAt: z.string().datetime().optional(),
 })
 
@@ -111,6 +112,7 @@ export async function POST(req: NextRequest) {
       templateSourceTable: validated.templateSourceTable,
       targetSegmentId: validated.targetSegmentId,
       targetCustomerIds: validated.targetCustomerIds,
+      targetTagIds: validated.targetTagIds,
     })
 
     const resolvedContent = JSON.stringify(envelope)
@@ -118,7 +120,17 @@ export async function POST(req: NextRequest) {
     // Calculate total recipients
     let totalRecipients = 0
 
-    if (validated.targetSegmentId) {
+    if (validated.targetTagIds && validated.targetTagIds.length > 0) {
+      const tagRecipients = await prisma.userTagAssignment.findMany({
+        where: {
+          tagId: { in: validated.targetTagIds },
+          user: { lineAccountId: session.user.lineAccountId },
+        },
+        select: { userId: true },
+        distinct: ['userId'],
+      })
+      totalRecipients = tagRecipients.length
+    } else if (validated.targetSegmentId) {
       // Segment logic disabled per user request
       // const segment = await prisma.customer_segments.findUnique({
       //   where: { id: validated.targetSegmentId },

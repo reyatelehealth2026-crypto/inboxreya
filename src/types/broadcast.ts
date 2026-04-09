@@ -127,6 +127,7 @@ export interface CreateBroadcastInput {
   templateSourceTable?: 'quick_reply_templates' | 'flex_templates' | 'templates'
   targetSegmentId?: number
   targetCustomerIds?: number[]
+  targetTagIds?: number[]
   scheduledAt?: string
 }
 

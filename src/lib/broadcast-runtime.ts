@@ -121,9 +121,12 @@ export function buildBroadcastEnvelope(input: {
   templateSourceTable?: 'quick_reply_templates' | 'flex_templates' | 'templates'
   targetSegmentId?: number
   targetCustomerIds?: number[]
+  targetTagIds?: number[]
 }): BroadcastEnvelopeV2 {
   const built = buildBroadcastMessages(input)
-  const target: BroadcastTarget = input.targetSegmentId
+  const target: BroadcastTarget = input.targetTagIds && input.targetTagIds.length > 0
+    ? { mode: 'tags', tagIds: input.targetTagIds }
+    : input.targetSegmentId
     ? { mode: 'segment', segmentId: input.targetSegmentId }
     : input.targetCustomerIds && input.targetCustomerIds.length > 0
     ? { mode: 'manual', customerIds: input.targetCustomerIds }
