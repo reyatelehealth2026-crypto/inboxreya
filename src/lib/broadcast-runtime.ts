@@ -24,29 +24,33 @@ export interface BroadcastEnvelopeV2 {
   }
 }
 
-function sanitizeFlexActionUris(obj: any): any {
+function sanitizeFlexActionUris(obj: any, path = ''): any {
   if (!obj || typeof obj !== 'object') return obj
 
   // Handle arrays
   if (Array.isArray(obj)) {
-    return obj.map(sanitizeFlexActionUris)
+    return obj.map((item, index) => sanitizeFlexActionUris(item, `${path}[${index}]`))
   }
 
-  // Handle action objects
-  if (obj.type === 'action' && obj.uri) {
-    // Ensure URI starts with http:// or https://
-    if (typeof obj.uri === 'string' && obj.uri.trim()) {
-      const uri = obj.uri.trim()
-      if (!uri.startsWith('http://') && !uri.startsWith('https://')) {
-        // Invalid URI, set to null to prevent LINE API error
-        return { ...obj, uri: null }
-      }
+  // Handle LINE action objects - type: 'uri' has a uri property
+  if (obj.type === 'uri' && obj.uri !== undefined) {
+    if (typeof obj.uri !== 'string' || !obj.uri.trim()) {
+      // Invalid or empty URI, set to null
+      console.warn(`[sanitizeFlexActionUris] Empty or non-string URI at ${path}:`, obj.uri)
+      return { ...obj, uri: null }
     }
+    const uri = obj.uri.trim()
+    if (!uri.startsWith('http://') && !uri.startsWith('https://')) {
+      // Invalid URI, set to null to prevent LINE API error
+      console.warn(`[sanitizeFlexActionUris] Invalid URI at ${path}:`, uri)
+      return { ...obj, uri: null }
+    }
+    console.log(`[sanitizeFlexActionUris] Valid URI at ${path}:`, uri)
   }
 
   // Handle action objects with label and uri (message/uri actions)
-  if (obj.action && obj.action.uri) {
-    const sanitized = sanitizeFlexActionUris(obj.action)
+  if (obj.action && typeof obj.action === 'object') {
+    const sanitized = sanitizeFlexActionUris(obj.action, `${path}.action`)
     return { ...obj, action: sanitized }
   }
 
@@ -54,7 +58,7 @@ function sanitizeFlexActionUris(obj: any): any {
   const result: any = {}
   for (const key in obj) {
     if (obj.hasOwnProperty(key)) {
-      result[key] = sanitizeFlexActionUris(obj[key])
+      result[key] = sanitizeFlexActionUris(obj[key], `${path}.${key}`)
     }
   }
 
