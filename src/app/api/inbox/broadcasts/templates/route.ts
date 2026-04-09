@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-middleware'
+import type { BroadcastTemplate, FlexMessage } from '@/types/broadcast'
 
 const createBroadcastTemplateSchema = z.object({
   name: z.string().min(1, 'Template name is required').max(100),
@@ -19,12 +20,12 @@ function normalizeCategory(messageType?: string | null): 'text' | 'flex' | 'imag
   return 'text'
 }
 
-function normalizeFlexPayload(raw: string | null | undefined, altText: string) {
-  if (!raw) return null
+function normalizeFlexPayload(raw: string | null | undefined, altText: string): FlexMessage | undefined {
+  if (!raw) return undefined
 
   try {
     const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return null
+    if (!parsed || typeof parsed !== 'object') return undefined
 
     if (parsed.type === 'flex' && parsed.contents) {
       return parsed
@@ -46,10 +47,10 @@ function normalizeFlexPayload(raw: string | null | undefined, altText: string) {
       }
     }
   } catch {
-    return null
+    return undefined
   }
 
-  return null
+  return undefined
 }
 
 function serializeFlexPayload(input: unknown, altText: string) {
@@ -67,7 +68,7 @@ function normalizeQuickReplyTemplate(template: {
   category: string | null
   content: string
   created_at: Date | null
-}) {
+}): BroadcastTemplate {
   return {
     id: template.id,
     sourceId: template.id,
@@ -88,7 +89,7 @@ function normalizeFlexTemplateRecord(template: {
   category: string | null
   flex_json: string
   created_at: Date
-}) {
+}): BroadcastTemplate {
   return {
     id: 1_000_000 + template.id,
     sourceId: template.id,
@@ -109,7 +110,7 @@ function normalizeGenericTemplateRecord(template: {
   message_type: string | null
   content: string
   created_at: Date
-}) {
+}): BroadcastTemplate {
   const category = normalizeCategory(template.message_type)
   const content = category === 'text' ? template.content : undefined
   const mediaUrl = category === 'image' || category === 'video' ? template.content : undefined

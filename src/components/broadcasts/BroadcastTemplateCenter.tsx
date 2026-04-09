@@ -111,10 +111,20 @@ export function BroadcastTemplateCenter() {
   }, [filteredTemplates, selectedId])
 
   const selectedTemplate = filteredTemplates.find((template) => template.id === selectedId) || null
-  const canManageSelectedTemplate = selectedTemplate?.sourceTable === 'templates' || selectedTemplate?.sourceTable === 'flex_templates'
+
+  type CenterManagedBroadcastTemplate = BroadcastTemplate & {
+    sourceTable: 'templates' | 'flex_templates'
+    sourceId: number
+  }
+
+  function isCenterManagedTemplate(template: BroadcastTemplate | null | undefined): template is CenterManagedBroadcastTemplate {
+    return !!template && typeof template.sourceId === 'number' && (template.sourceTable === 'templates' || template.sourceTable === 'flex_templates')
+  }
+
+  const canManageSelectedTemplate = isCenterManagedTemplate(selectedTemplate)
 
   const handleDeleteTemplate = async () => {
-    if (!selectedTemplate?.sourceTable || !selectedTemplate.sourceId || !canManageSelectedTemplate) return
+    if (!isCenterManagedTemplate(selectedTemplate)) return
 
     try {
       await deleteTemplate.mutateAsync({

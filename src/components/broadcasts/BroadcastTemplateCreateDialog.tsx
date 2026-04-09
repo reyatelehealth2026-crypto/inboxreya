@@ -39,6 +39,15 @@ const typeOptions: Array<{ value: TemplateType; label: string; icon: typeof File
   { value: 'video', label: 'วิดีโอ', icon: Video },
 ]
 
+type CenterEditableBroadcastTemplate = BroadcastTemplate & {
+  sourceTable: 'templates' | 'flex_templates'
+  sourceId: number
+}
+
+function isCenterEditableTemplate(template: BroadcastTemplate | null | undefined): template is CenterEditableBroadcastTemplate {
+  return !!template && typeof template.sourceId === 'number' && (template.sourceTable === 'templates' || template.sourceTable === 'flex_templates')
+}
+
 function PreviewBlock({ type, content, mediaUrl, flexJson }: { type: TemplateType; content: string; mediaUrl: string; flexJson: string }) {
   if (type === 'text') {
     return (
@@ -98,7 +107,7 @@ export function BroadcastTemplateCreateDialog({ open, onOpenChange, template, fo
   const createTemplate = useCreateBroadcastTemplate()
   const updateTemplate = useUpdateBroadcastTemplate()
   const isEditMode = !!template && !forceCreate
-  const canEditInCenter = template?.sourceTable === 'templates' || template?.sourceTable === 'flex_templates'
+  const canEditInCenter = isCenterEditableTemplate(template)
   const isFlexEditMode = isEditMode && template?.sourceTable === 'flex_templates'
 
   useEffect(() => {
@@ -181,7 +190,7 @@ export function BroadcastTemplateCreateDialog({ open, onOpenChange, template, fo
       }
 
       let response
-      if (isEditMode && template?.sourceTable && template.sourceId) {
+      if (isEditMode && isCenterEditableTemplate(template)) {
         response = await updateTemplate.mutateAsync({
           sourceTable: template.sourceTable,
           sourceId: template.sourceId,
