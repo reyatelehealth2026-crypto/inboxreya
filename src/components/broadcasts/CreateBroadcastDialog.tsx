@@ -19,7 +19,12 @@ import {
   Users,
 } from 'lucide-react'
 import { BroadcastTemplate, CreateBroadcastInput, FlexMessage } from '@/types/broadcast'
-import { useBroadcastTemplates, useCreateBroadcast, useSendBroadcast } from '@/hooks/use-broadcasts'
+import {
+  useBroadcastRecipientEstimate,
+  useBroadcastTemplates,
+  useCreateBroadcast,
+  useSendBroadcast,
+} from '@/hooks/use-broadcasts'
 import { useTags } from '@/hooks/use-tags'
 import { useToast } from '@/hooks/use-toast'
 import { TemplateSelector } from './TemplateSelector'
@@ -113,6 +118,29 @@ export function CreateBroadcastDialog({
   const hasValidScheduledDateTime = !scheduledDateTime
     ? false
     : !Number.isNaN(scheduledDateTime.getTime()) && scheduledDateTime > new Date()
+  const shouldEstimateRecipients = open && step >= 2 && (targetMode === 'all' || selectedTagIds.length > 0)
+
+  const {
+    data: recipientEstimateData,
+    isLoading: isRecipientEstimateLoading,
+    error: recipientEstimateError,
+  } = useBroadcastRecipientEstimate(
+    {
+      targetTagIds: targetMode === 'tags' ? selectedTagIds : undefined,
+    },
+    { enabled: shouldEstimateRecipients }
+  )
+
+  const recipientEstimate = recipientEstimateData?.data?.totalRecipients ?? null
+  const hasRecipientEstimate = recipientEstimate !== null
+  const canSubmit = !isSubmitting
+    && isSubmissionSupported
+    && isTargetSelectionValid
+    && (sendNow || hasValidScheduledDateTime)
+    && !isRecipientEstimateLoading
+    && !recipientEstimateError
+    && hasRecipientEstimate
+    && recipientEstimate > 0
 
   const toggleTargetTag = (tagId: number) => {
     const nextTargetTagIds = selectedTagIds.includes(tagId)
@@ -141,6 +169,33 @@ export function CreateBroadcastDialog({
   const onSubmit = async () => {
     if (!isSubmissionSupported) {
       setCustomFlexError('กรุณาเลือก template หรือ custom flex ก่อนส่ง broadcast')
+      return
+    }
+
+    if (isRecipientEstimateLoading) {
+      toast({
+        title: 'กำลังคำนวณจำนวนผู้รับ',
+        description: 'กรุณารอสักครู่แล้วค่อยยืนยันอีกครั้ง',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (recipientEstimateError) {
+      toast({
+        title: 'ไม่สามารถตรวจสอบจำนวนผู้รับได้',
+        description: recipientEstimateError instanceof Error ? recipientEstimateError.message : 'กรุณาลองใหม่อีกครั้ง',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (!hasRecipientEstimate || recipientEstimate <= 0) {
+      toast({
+        title: 'ไม่พบผู้รับสำหรับ Broadcast นี้',
+        description: 'กรุณาตรวจสอบกลุ่มเป้าหมายก่อนยืนยันส่ง',
+        variant: 'destructive',
+      })
       return
     }
 
@@ -423,7 +478,7 @@ export function CreateBroadcastDialog({
                 <div className="space-y-6">
                   <h3 className="flex items-center gap-2 text-sm font-medium">
                     <Clock className="h-4 w-4" />
-                    ตั้งเวลาส่ง
+                    สรุปและยืนยันการส่ง
                   </h3>
 
                   <div className="space-y-4">
@@ -445,7 +500,7 @@ export function CreateBroadcastDialog({
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          สร้าง broadcast แล้วส่งไปยังกลุ่มเป้าหมายทันที
+                          จะสร้าง broadcast แล้วส่งทันทีหลังจากกดยืนยันปุ่มด้านล่าง
                         </p>
                       </button>
 
@@ -466,7 +521,7 @@ export function CreateBroadcastDialog({
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          บันทึกคิว broadcast และส่งอัตโนมัติตามวันเวลาที่กำหนด
+                          จะบันทึกคิว broadcast และรอส่งอัตโนมัติตามวันเวลาที่กำหนด
                         </p>
                       </button>
                     </div>
@@ -514,6 +569,42 @@ export function CreateBroadcastDialog({
                     )}
                   </div>
 
+                  <Card className="border-amber-200 bg-amber-50">
+                    <CardContent className="space-y-3 p-4">
+                      <div className="flex items-start gap-2 text-amber-800">
+                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">Broadcast จะยังไม่ถูกส่งจนกว่าจะกดปุ่มยืนยันด้านล่าง</p>
+                          <p className="text-xs text-amber-700">
+                            ระบบรีเช็คจำนวนผู้รับล่าสุดก่อนส่งจริง เพื่อให้คุณเห็นผลกระทบก่อนตัดสินใจ
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-amber-200 bg-white/70 p-3 text-sm">
+                        {isRecipientEstimateLoading ? (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            กำลังคำนวณจำนวนผู้รับ...
+                          </div>
+                        ) : recipientEstimateError ? (
+                          <div className="text-destructive">
+                            ไม่สามารถคำนวณจำนวนผู้รับได้ในตอนนี้
+                          </div>
+                        ) : hasRecipientEstimate ? (
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-muted-foreground">จำนวนผู้รับล่าสุด</span>
+                            <span className={cn('font-semibold', recipientEstimate > 0 ? 'text-foreground' : 'text-destructive')}>
+                              {recipientEstimate.toLocaleString()} คน
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="text-muted-foreground">รอเลือกกลุ่มเป้าหมายเพื่อคำนวณจำนวนผู้รับ</div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
                   <Card className="bg-muted">
                     <CardContent className="space-y-2 p-4">
                       <p className="font-medium">สรุป</p>
@@ -537,6 +628,14 @@ export function CreateBroadcastDialog({
                             : scheduledDateTime && !Number.isNaN(scheduledDateTime.getTime())
                             ? format(scheduledDateTime, 'PPP p', { locale: th })
                             : 'ยังไม่ได้เลือกวันเวลา'}
+                        </p>
+                        <p>
+                          <span className="text-muted-foreground">จำนวนผู้รับล่าสุด:</span>{' '}
+                          {isRecipientEstimateLoading
+                            ? 'กำลังคำนวณ...'
+                            : hasRecipientEstimate
+                            ? `${recipientEstimate.toLocaleString()} คน`
+                            : 'ยังไม่พร้อม'}
                         </p>
                       </div>
                     </CardContent>
@@ -567,21 +666,18 @@ export function CreateBroadcastDialog({
                   <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>
               ) : (
-                <Button
-                  type="submit"
-                  disabled={isSubmitting || !isSubmissionSupported || !isTargetSelectionValid || (!sendNow && !hasValidScheduledDateTime)}
-                >
+                <Button type="submit" disabled={!canSubmit}>
                   {isSubmitting ? (
                     <>กำลังดำเนินการ...</>
                   ) : sendNow ? (
                     <>
                       <Send className="mr-2 h-4 w-4" />
-                      ส่ง Broadcast
+                      {hasRecipientEstimate ? `ยืนยันส่ง Broadcast (${recipientEstimate.toLocaleString()} คน)` : 'ยืนยันส่ง Broadcast'}
                     </>
                   ) : (
                     <>
                       <Calendar className="mr-2 h-4 w-4" />
-                      ตั้งเวลา Broadcast
+                      {hasRecipientEstimate ? `ยืนยันตั้งเวลา Broadcast (${recipientEstimate.toLocaleString()} คน)` : 'ยืนยันตั้งเวลา Broadcast'}
                     </>
                   )}
                 </Button>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-middleware'
 import { buildBroadcastEnvelope, summarizeBroadcastForList } from '@/lib/broadcast-runtime'
+import { countBroadcastRecipients } from '@/lib/broadcast-recipient-estimate'
 import { z } from 'zod'
 import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
@@ -117,40 +118,12 @@ export async function POST(req: NextRequest) {
 
     const resolvedContent = JSON.stringify(envelope)
 
-    // Calculate total recipients
-    let totalRecipients = 0
-
-    if (validated.targetTagIds && validated.targetTagIds.length > 0) {
-      const tagRecipients = await prisma.userTagAssignment.findMany({
-        where: {
-          tagId: { in: validated.targetTagIds },
-          user: { lineAccountId: session.user.lineAccountId },
-        },
-        select: { userId: true },
-        distinct: ['userId'],
-      })
-      totalRecipients = tagRecipients.length
-    } else if (validated.targetSegmentId) {
-      // Segment logic disabled per user request
-      // const segment = await prisma.customer_segments.findUnique({
-      //   where: { id: validated.targetSegmentId },
-      // })
-
-      // if (segment) {
-      //   totalRecipients = segment.user_count || 0
-      // }
-      totalRecipients = 0;
-    } else if (validated.targetCustomerIds && validated.targetCustomerIds.length > 0) {
-      totalRecipients = validated.targetCustomerIds.length
-    } else {
-      // Count all customers for this LINE account
-      totalRecipients = await prisma.lineUser.count({
-        where: {
-          lineAccountId: session.user.lineAccountId,
-          // lineUserId: { not: null }, // Removed as lineUserId might be optional or handled differently in LineUser model
-        },
-      })
-    }
+    const totalRecipients = await countBroadcastRecipients({
+      lineAccountId: session.user.lineAccountId as number,
+      targetSegmentId: validated.targetSegmentId,
+      targetCustomerIds: validated.targetCustomerIds,
+      targetTagIds: validated.targetTagIds,
+    })
 
     const broadcast = await prisma.broadcastMessageV2.create({
       data: {

@@ -14,6 +14,12 @@ export interface BroadcastTemplateMutationInput {
 
 const API_BASE = '/api/inbox'
 
+interface BroadcastRecipientEstimateInput {
+  targetSegmentId?: number
+  targetCustomerIds?: number[]
+  targetTagIds?: number[]
+}
+
 // Fetch all broadcasts
 export function useBroadcasts(params?: { page?: number; limit?: number; status?: string }) {
   const { page = 1, limit = 20, status } = params || {}
@@ -45,6 +51,45 @@ export function useBroadcastTemplates(params?: { search?: string }) {
       const suffix = searchParams.toString() ? `?${searchParams}` : ''
       const res = await fetch(`${API_BASE}/broadcasts/templates${suffix}`)
       if (!res.ok) throw new Error('Failed to fetch templates')
+      return res.json()
+    },
+  })
+}
+
+export function useBroadcastRecipientEstimate(
+  input: BroadcastRecipientEstimateInput,
+  options?: { enabled?: boolean }
+) {
+  const enabled = options?.enabled ?? true
+  const targetCustomerIds = [...(input.targetCustomerIds || [])].sort((a, b) => a - b)
+  const targetTagIds = [...(input.targetTagIds || [])].sort((a, b) => a - b)
+
+  return useQuery({
+    queryKey: [
+      'broadcast-recipient-estimate',
+      {
+        targetSegmentId: input.targetSegmentId ?? null,
+        targetCustomerIds,
+        targetTagIds,
+      },
+    ],
+    enabled,
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/broadcasts/estimate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetSegmentId: input.targetSegmentId,
+          targetCustomerIds,
+          targetTagIds,
+        }),
+      })
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}))
+        throw new Error(error.error || 'Failed to estimate broadcast recipients')
+      }
+
       return res.json()
     },
   })
