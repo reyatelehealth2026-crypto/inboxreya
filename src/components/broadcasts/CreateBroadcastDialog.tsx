@@ -67,6 +67,7 @@ export function CreateBroadcastDialog({
   const [customFlexError, setCustomFlexError] = useState<string | null>(null)
   const [sendNow, setSendNow] = useState(true)
   const [targetMode, setTargetMode] = useState<'all' | 'tags'>('all')
+  const [tagSearch, setTagSearch] = useState('')
 
   const { data: templatesData } = useBroadcastTemplates()
   const { data: tags = [], isLoading: isTagsLoading } = useTags()
@@ -88,6 +89,15 @@ export function CreateBroadcastDialog({
   const isSubmissionSupported = !!selectedTemplate
   const selectedTagIds = form.watch('targetTagIds') || []
   const selectedTags = tags.filter((tag) => selectedTagIds.includes(Number(tag.id)))
+  const filteredTags = tags.filter((tag) => {
+    const search = tagSearch.trim().toLowerCase()
+    if (!search) return true
+    const haystack = [tag.name, tag.description]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+    return haystack.includes(search)
+  })
   const isTargetSelectionValid = targetMode === 'all' || selectedTagIds.length > 0
 
   const toggleTargetTag = (tagId: number) => {
@@ -168,6 +178,7 @@ export function CreateBroadcastDialog({
     setCustomFlexError(null)
     setSendNow(true)
     setTargetMode('all')
+    setTagSearch('')
     form.reset()
   }
 
@@ -314,6 +325,12 @@ export function CreateBroadcastDialog({
                             เลือกอย่างน้อย 1 Tag เพื่อส่ง broadcast เฉพาะกลุ่ม
                           </div>
 
+                          <Input
+                            value={tagSearch}
+                            onChange={(e) => setTagSearch(e.target.value)}
+                            placeholder="ค้นหา Tag จากชื่อหรือคำอธิบาย"
+                          />
+
                           {isTagsLoading ? (
                             <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
                               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -323,10 +340,14 @@ export function CreateBroadcastDialog({
                             <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
                               ยังไม่มี Tag ให้เลือก
                             </div>
+                          ) : filteredTags.length === 0 ? (
+                            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                              ไม่พบ Tag ที่ตรงกับคำค้นหา
+                            </div>
                           ) : (
                             <ScrollArea className="h-[280px] pr-2">
                               <div className="space-y-2">
-                                {tags.map((tag) => {
+                                {filteredTags.map((tag) => {
                                   const numericTagId = Number(tag.id)
                                   const isSelected = selectedTagIds.includes(numericTagId)
 
