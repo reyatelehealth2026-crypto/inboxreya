@@ -166,7 +166,25 @@ export function CreateBroadcastDialog({
     form.reset()
   }
 
+  const moveToNextStep = () => {
+    if (step === 1) {
+      if (!isSubmissionSupported) return
+      setStep(2)
+      return
+    }
+
+    if (step === 2) {
+      if (!isTargetSelectionValid) return
+      setStep(3)
+    }
+  }
+
   const onSubmit = async () => {
+    if (step < totalSteps) {
+      moveToNextStep()
+      return
+    }
+
     if (!isSubmissionSupported) {
       setCustomFlexError('กรุณาเลือก template หรือ custom flex ก่อนส่ง broadcast')
       return
@@ -659,7 +677,7 @@ export function CreateBroadcastDialog({
               {step < totalSteps ? (
                 <Button
                   type="button"
-                  onClick={() => setStep(step + 1)}
+                  onClick={moveToNextStep}
                   disabled={(step === 1 && !isSubmissionSupported) || (step === 2 && !isTargetSelectionValid)}
                 >
                   ถัดไป
