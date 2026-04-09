@@ -115,7 +115,7 @@ export function BroadcastList() {
       
       {/* Main Content */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle>Broadcast Messages</CardTitle>
           </div>
@@ -127,7 +127,7 @@ export function BroadcastList() {
         
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="mb-4">
+            <TabsList className="mb-4 h-auto flex-wrap justify-start gap-2 bg-muted/50 p-1">
               <TabsTrigger value="all">ทั้งหมด</TabsTrigger>
               <TabsTrigger value="scheduled">รอส่ง</TabsTrigger>
               <TabsTrigger value="sent">ส่งแล้ว</TabsTrigger>

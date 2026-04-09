@@ -342,14 +342,14 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden p-0">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden p-0 flex flex-col gap-0">
         <DialogHeader className="border-b px-6 py-4">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <DialogTitle className="text-xl">สร้าง Broadcast ใหม่</DialogTitle>
               <DialogDescription>flow เดียวกับ Promotions: ตั้งค่า → Preview → Tags → กำหนดเวลา → ยืนยัน</DialogDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
               {STEPS.map((item, index) => {
                 const Icon = item.icon
                 const active = item.key === step
@@ -373,7 +373,7 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
           </div>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 px-6 py-4">
+        <ScrollArea className="min-h-0 flex-1 px-6 py-4">
           {step === 'settings' ? (
             <div className="space-y-4">
               <h3 className="flex items-center gap-2 text-sm font-medium"><Settings2 className="h-4 w-4" />ตั้งค่า Broadcast จาก Template</h3>
@@ -410,7 +410,7 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
             <div className="space-y-6">
               <h3 className="flex items-center gap-2 text-sm font-medium"><Users className="h-4 w-4" />เลือกกลุ่มเป้าหมาย</h3>
               <Tabs value={targetMode} onValueChange={(value) => { setTargetMode(value as 'all' | 'tags'); setResult(null) }}>
-                <TabsList className="grid w-full grid-cols-2">
+                <TabsList className="grid h-auto w-full grid-cols-2 gap-2 bg-muted/50 p-1">
                   <TabsTrigger value="all">ทั้งหมด</TabsTrigger>
                   <TabsTrigger value="tags">Tags</TabsTrigger>
                 </TabsList>

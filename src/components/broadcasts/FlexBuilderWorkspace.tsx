@@ -216,7 +216,7 @@ export function FlexBuilderWorkspace() {
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-      <Card>
+      <Card className="flex min-h-[760px] flex-col">
         <CardHeader>
           <div className="flex items-center gap-2">
             <Wand2 className="h-4 w-4 text-primary" />
@@ -226,7 +226,7 @@ export function FlexBuilderWorkspace() {
             visual builder ขั้นต้น: preset + form controls + raw JSON editor ในหน้าเดียว
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-5">
+        <CardContent className="min-h-0 flex-1 space-y-5 overflow-y-auto">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>ชื่อ template</Label>
@@ -329,7 +329,7 @@ export function FlexBuilderWorkspace() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="flex min-h-[760px] flex-col">
         <CardHeader>
           <div className="flex items-center gap-2">
             <LayoutTemplate className="h-4 w-4 text-primary" />
@@ -339,7 +339,7 @@ export function FlexBuilderWorkspace() {
             พรีวิวแบบใกล้เคียง LINE มากที่สุดในเฟสนี้ พร้อม badge สถานะของ builder
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto">
           <div className="flex flex-wrap gap-2">
             <Badge>preset: {preset}</Badge>
             <Badge variant="outline">mode: {rawMode ? 'raw-json' : 'visual'}</Badge>
