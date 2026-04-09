@@ -24,6 +24,37 @@ function normalizeCategory(messageType?: string | null): 'text' | 'flex' | 'imag
   return 'text'
 }
 
+function sanitizeFlexActionUris(obj: any): any {
+  if (!obj || typeof obj !== 'object') return obj
+
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeFlexActionUris)
+  }
+
+  if (obj.type === 'action' && obj.uri) {
+    if (typeof obj.uri === 'string' && obj.uri.trim()) {
+      const uri = obj.uri.trim()
+      if (!uri.startsWith('http://') && !uri.startsWith('https://')) {
+        return { ...obj, uri: null }
+      }
+    }
+  }
+
+  if (obj.action && obj.action.uri) {
+    const sanitized = sanitizeFlexActionUris(obj.action)
+    return { ...obj, action: sanitized }
+  }
+
+  const result: any = {}
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      result[key] = sanitizeFlexActionUris(obj[key])
+    }
+  }
+
+  return result
+}
+
 function normalizeFlexPayload(raw: string | null | undefined, altText: string) {
   if (!raw) return null
 
@@ -31,14 +62,17 @@ function normalizeFlexPayload(raw: string | null | undefined, altText: string) {
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object') return null
 
-    if (parsed.type === 'flex' && parsed.contents) return parsed
+    // Sanitize action URIs to prevent "Invalid action URI" errors
+    const sanitized = sanitizeFlexActionUris(parsed)
 
-    if (parsed.type === 'bubble' || parsed.type === 'carousel') {
-      return { type: 'flex', altText, contents: parsed }
+    if (sanitized.type === 'flex' && sanitized.contents) return sanitized
+
+    if (sanitized.type === 'bubble' || sanitized.type === 'carousel') {
+      return { type: 'flex', altText, contents: sanitized }
     }
 
-    if (parsed.contents && (parsed.contents.type === 'bubble' || parsed.contents.type === 'carousel')) {
-      return { type: 'flex', altText, contents: parsed.contents }
+    if (sanitized.contents && (sanitized.contents.type === 'bubble' || sanitized.contents.type === 'carousel')) {
+      return { type: 'flex', altText, contents: sanitized.contents }
     }
   } catch {
     return null

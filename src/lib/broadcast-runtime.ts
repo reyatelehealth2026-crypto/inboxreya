@@ -24,6 +24,43 @@ export interface BroadcastEnvelopeV2 {
   }
 }
 
+function sanitizeFlexActionUris(obj: any): any {
+  if (!obj || typeof obj !== 'object') return obj
+
+  // Handle arrays
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeFlexActionUris)
+  }
+
+  // Handle action objects
+  if (obj.type === 'action' && obj.uri) {
+    // Ensure URI starts with http:// or https://
+    if (typeof obj.uri === 'string' && obj.uri.trim()) {
+      const uri = obj.uri.trim()
+      if (!uri.startsWith('http://') && !uri.startsWith('https://')) {
+        // Invalid URI, set to null to prevent LINE API error
+        return { ...obj, uri: null }
+      }
+    }
+  }
+
+  // Handle action objects with label and uri (message/uri actions)
+  if (obj.action && obj.action.uri) {
+    const sanitized = sanitizeFlexActionUris(obj.action)
+    return { ...obj, action: sanitized }
+  }
+
+  // Recursively sanitize nested objects
+  const result: any = {}
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      result[key] = sanitizeFlexActionUris(obj[key])
+    }
+  }
+
+  return result
+}
+
 export function normalizeFlexMessagePayload(input: unknown, fallbackAltText = 'Flex Message') {
   if (!input) return null
 
@@ -31,27 +68,31 @@ export function normalizeFlexMessagePayload(input: unknown, fallbackAltText = 'F
   if (!parsed || typeof parsed !== 'object') return null
 
   const flex = parsed as Record<string, any>
-  if (flex.type === 'flex' && flex.contents) {
+
+  // Sanitize action URIs to prevent "Invalid action URI" errors
+  const sanitized = sanitizeFlexActionUris(flex)
+
+  if (sanitized.type === 'flex' && sanitized.contents) {
     return {
       type: 'flex',
-      altText: flex.altText || fallbackAltText,
-      contents: flex.contents,
+      altText: sanitized.altText || fallbackAltText,
+      contents: sanitized.contents,
     }
   }
 
-  if (flex.type === 'bubble' || flex.type === 'carousel') {
+  if (sanitized.type === 'bubble' || sanitized.type === 'carousel') {
     return {
       type: 'flex',
       altText: fallbackAltText,
-      contents: flex,
+      contents: sanitized,
     }
   }
 
-  if (flex.contents && (flex.contents.type === 'bubble' || flex.contents.type === 'carousel')) {
+  if (sanitized.contents && (sanitized.contents.type === 'bubble' || sanitized.contents.type === 'carousel')) {
     return {
       type: 'flex',
-      altText: flex.altText || fallbackAltText,
-      contents: flex.contents,
+      altText: sanitized.altText || fallbackAltText,
+      contents: sanitized.contents,
     }
   }
 
