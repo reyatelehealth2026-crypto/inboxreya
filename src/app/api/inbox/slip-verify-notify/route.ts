@@ -2,35 +2,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { sendFlexMessage } from '@/lib/line-api'
+import { broadcastRealtimeEvent } from '@/lib/realtime'
+import { broadcastNewMessage } from '@/lib/pusher'
+import { cacheInvalidate } from '@/lib/redis'
+import { toUtcIsoString } from '@/lib/datetime-api'
 
-/**
- * POST /api/inbox/slip-verify-notify
- *
- * Build a Flex message with slip verification result + points info
- * and send it to the customer's LINE.
- *
- * Body (JSON):
- *   userId       – DB user ID (internal)
- *   verifyData   – SlipMate verification result data
- *   points       – earned points (number)
- *   bdoName      – BDO reference name
- *   customerName – customer display name (optional)
- */
-
-// Bank code → Thai name + brand color
-const BANK_MAP: Record<string, { name: string; color: string }> = {
-  '014': { name: 'ธนาคารไทยพาณิชย์', color: '#4E2A82' },
-  '004': { name: 'ธนาคารกสิกรไทย', color: '#138F2D' },
-  '002': { name: 'ธนาคารกรุงเทพ', color: '#1E4598' },
-  '006': { name: 'ธนาคารกรุงไทย', color: '#1BA5E0' },
-  '025': { name: 'ธนาคารกรุงศรีอยุธยา', color: '#FEC43B' },
-  '011': { name: 'ธนาคารทหารไทยธนชาต', color: '#1279BE' },
-  '030': { name: 'ธนาคารออมสิน', color: '#EB198D' },
-  '034': { name: 'ธนาคารเพื่อการเกษตร', color: '#4B9B1D' },
+const BANK_MAP: Record<string, string> = {
+  '014': 'ธนาคารไทยพาณิชย์',
+  '004': 'ธนาคารกสิกรไทย',
+  '002': 'ธนาคารกรุงเทพ',
+  '006': 'ธนาคารกรุงไทย',
+  '025': 'ธนาคารกรุงศรีอยุธยา',
+  '011': 'ธนาคารทหารไทยธนชาต',
+  '030': 'ธนาคารออมสิน',
+  '034': 'ธนาคารเพื่อการเกษตร',
 }
 
 function getBankName(code: string | undefined, fallbackName: string | undefined): string {
-  if (code && BANK_MAP[code]) return BANK_MAP[code].name
+  if (code && BANK_MAP[code]) return BANK_MAP[code]
   return fallbackName || 'ธนาคาร'
 }
 
@@ -40,7 +29,7 @@ function buildSlipVerifyFlex(params: {
   bdoName: string
   customerName: string | null
 }) {
-  const { verifyData: d, points, bdoName, customerName } = params
+  const { verifyData: d, points, bdoName } = params
 
   const senderBankName = getBankName(d.sendingBank, d.sendingBankName)
   const receiverBankName = getBankName(d.receivingBank, d.receivingBankName)
@@ -48,28 +37,27 @@ function buildSlipVerifyFlex(params: {
   const senderAccount = d.sender?.account?.value || ''
   const receiverName = d.receiver?.displayName || d.receiver?.name || '-'
   const receiverAccount = d.receiver?.account?.value || ''
-  const amount = d.amount || 0
+  const amount = Number(d.amount || 0)
   const amountStr = `฿${amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`
 
-  // Format date
   let dateTimeStr = ''
   if (d.transDate) {
     try {
       const parsed = new Date(d.transDate)
-      if (!isNaN(parsed.getTime())) {
-        dateTimeStr = parsed.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' })
-      } else {
-        dateTimeStr = d.transDate
-      }
+      dateTimeStr = Number.isNaN(parsed.getTime())
+        ? d.transDate
+        : parsed.toLocaleDateString('th-TH', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+          })
     } catch {
       dateTimeStr = d.transDate
     }
     if (d.transTime) dateTimeStr += `, ${d.transTime}`
   }
 
-  // Build body contents
   const bodyContents: any[] = [
-    // Amount
     {
       type: 'text',
       text: amountStr,
@@ -78,18 +66,23 @@ function buildSlipVerifyFlex(params: {
       align: 'center',
       color: '#111827',
     },
-    // Date-time
     {
       type: 'box',
       layout: 'horizontal',
       margin: 'md',
       contents: [
         { type: 'text', text: 'วันที่-เวลา', size: 'xs', color: '#6B7280', flex: 0 },
-        { type: 'text', text: dateTimeStr || '-', size: 'xs', color: '#374151', align: 'end', weight: 'bold' },
+        {
+          type: 'text',
+          text: dateTimeStr || '-',
+          size: 'xs',
+          color: '#374151',
+          align: 'end',
+          weight: 'bold',
+        },
       ],
     },
     { type: 'separator', margin: 'lg', color: '#E5E7EB' },
-    // Sender info
     {
       type: 'text',
       text: 'ผู้โอน',
@@ -126,7 +119,6 @@ function buildSlipVerifyFlex(params: {
 
   bodyContents.push(
     { type: 'separator', margin: 'lg', color: '#E5E7EB' },
-    // Receiver info
     {
       type: 'text',
       text: 'ผู้รับ',
@@ -148,7 +140,7 @@ function buildSlipVerifyFlex(params: {
       size: 'xs',
       color: '#4B5563',
       margin: 'xs',
-    },
+    }
   )
 
   if (receiverAccount) {
@@ -161,7 +153,6 @@ function buildSlipVerifyFlex(params: {
     })
   }
 
-  // Points section (if earned)
   if (points > 0) {
     bodyContents.push(
       { type: 'separator', margin: 'lg', color: '#E5E7EB' },
@@ -175,7 +166,7 @@ function buildSlipVerifyFlex(params: {
         contents: [
           {
             type: 'text',
-            text: '🎉 ได้รับแต้มสะสม',
+            text: 'ได้รับแต้มสะสม',
             size: 'xs',
             color: '#059669',
             align: 'center',
@@ -191,7 +182,7 @@ function buildSlipVerifyFlex(params: {
           },
           {
             type: 'text',
-            text: `(อัตรา 1,000 ฿ = 1 point)`,
+            text: '(อัตรา 1,000 ฿ = 1 point)',
             size: 'xxs',
             color: '#6B7280',
             align: 'center',
@@ -202,7 +193,7 @@ function buildSlipVerifyFlex(params: {
     )
   }
 
-  const bubble = {
+  return {
     type: 'bubble',
     size: 'kilo',
     header: {
@@ -213,7 +204,7 @@ function buildSlipVerifyFlex(params: {
       contents: [
         {
           type: 'text',
-          text: '✅ สลิปถูกต้อง',
+          text: 'สลิปถูกต้อง',
           size: 'md',
           weight: 'bold',
           color: '#FFFFFF',
@@ -245,8 +236,6 @@ function buildSlipVerifyFlex(params: {
       footer: { backgroundColor: '#F9FAFB' },
     },
   }
-
-  return bubble
 }
 
 export async function POST(request: NextRequest) {
@@ -271,10 +260,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid userId' }, { status: 400 })
     }
 
-    // Look up user to get lineUserId
     const user = await prisma.lineUser.findUnique({
       where: { id: parsedUserId },
-      select: { lineUserId: true, lineAccountId: true },
+      select: { id: true, lineUserId: true, lineAccountId: true },
     })
 
     if (!user?.lineUserId) {
@@ -284,34 +272,110 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Build Flex message
     const flexContents = buildSlipVerifyFlex({
       verifyData,
-      points: points || 0,
+      points: Number(points || 0),
       bdoName: bdoName || 'Slip',
       customerName: customerName || null,
     })
 
-    const altText = `✅ สลิปถูกต้อง ฿${(verifyData.amount || 0).toLocaleString()}${points > 0 ? ` (+${points} แต้ม)` : ''}`
+    const safePoints = Number(points || 0)
+    const safeAmount = Number(verifyData.amount || 0)
+    const altText = `สลิปถูกต้อง ฿${safeAmount.toLocaleString()}${safePoints > 0 ? ` (+${safePoints} แต้ม)` : ''}`
 
-    // Send via LINE
-    const result = await sendFlexMessage(
+    const sendResult = await sendFlexMessage(
       user.lineUserId,
       altText,
       flexContents,
       user.lineAccountId
     )
 
-    if (!result.success) {
+    if (!sendResult.success) {
       return NextResponse.json(
-        { success: false, error: result.error || 'Failed to send LINE message' },
+        { success: false, error: sendResult.error || 'Failed to send LINE message' },
         { status: 502 }
       )
     }
 
+    const now = new Date()
+    const metadata = {
+      flexContent: {
+        type: 'flex',
+        altText,
+        contents: flexContents,
+      },
+      source: 'slip-verify-notify',
+      slipVerifyRef: verifyData.transRef || null,
+      slipVerifyAmount: safeAmount,
+      points: safePoints,
+      bdoName: bdoName || 'Slip',
+    }
+
+    const message = await prisma.message.create({
+      data: {
+        userId: parsedUserId,
+        lineAccountId: user.lineAccountId,
+        direction: 'outgoing',
+        messageType: 'flex',
+        content: altText,
+        metadata: JSON.stringify(metadata),
+        sentBy: session.user.id ?? null,
+        isRead: true,
+        platform: 'line',
+        createdAt: now,
+        updatedAt: now,
+      },
+    })
+
+    await prisma.lineUser.update({
+      where: { id: parsedUserId },
+      data: { lastInteraction: now },
+      select: { id: true },
+    })
+
+    const responseMessage = {
+      id: message.id.toString(),
+      userId: parsedUserId.toString(),
+      direction: 'outgoing' as const,
+      messageType: 'flex',
+      content: altText,
+      mediaUrl: null,
+      metadata,
+      replyToId: null,
+      replyTo: null,
+      createdAt: toUtcIsoString(message.createdAt) || now.toISOString(),
+      sentBy: message.sentBy,
+      platform: 'line' as const,
+    }
+
+    broadcastRealtimeEvent({
+      type: 'new_message',
+      data: {
+        conversationId: parsedUserId.toString(),
+        message: responseMessage,
+      },
+      timestamp: Date.now(),
+    })
+
+    await broadcastNewMessage({
+      conversationId: parsedUserId.toString(),
+      message: responseMessage,
+    })
+
+    if (user.lineAccountId) {
+      Promise.all([
+        cacheInvalidate(`conv:account:${user.lineAccountId}:*`),
+        cacheInvalidate(`msg:user:${parsedUserId}:*`),
+        cacheInvalidate(`conv:detail:${parsedUserId}`),
+      ]).catch(() => null)
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'ส่งแจ้งเตือนผลตรวจสลิปให้ลูกค้าแล้ว',
+      message: 'ส่งแจ้งผลตรวจสลิปให้ลูกค้าแล้ว',
+      data: {
+        inboxMessageId: message.id,
+      },
     })
   } catch (error) {
     console.error('[slip-verify-notify] Error:', error)
