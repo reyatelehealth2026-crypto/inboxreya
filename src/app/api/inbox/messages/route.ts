@@ -195,7 +195,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (typeof content === 'string' && content.length > 2000) {
+    // Flex messages can be long JSON — only apply length limit to plain text
+    if (messageType !== 'flex' && typeof content === 'string' && content.length > 2000) {
       return NextResponse.json(
         { error: 'Content is too long (max 2000 characters)' },
         { status: 400 }

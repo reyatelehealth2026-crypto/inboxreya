@@ -925,7 +925,7 @@ function MessageComposer({
   lineUserId,
   user,
 }: {
-  userId: string
+  userId: string | null
   latestImageUrl?: string | null
   lineUserId?: string | null
   user?: LineUser | null
@@ -1066,6 +1066,8 @@ function MessageComposer({
   }, [])
 
   const handleSend = useCallback(async () => {
+    if (!userId) return
+
     // Handle multiple file uploads
     if (selectedFiles.length > 0) {
       // If we don't have lineUserId, we'll try to let the backend find it using internal_user_id
@@ -1174,6 +1176,7 @@ function MessageComposer({
   )
 
   const handleAiReply = useCallback(async () => {
+    if (!userId) return
     try {
       const result = await aiReply.mutateAsync({ userId, tone: aiTone })
       setAiResult(result.text)
@@ -1184,6 +1187,7 @@ function MessageComposer({
   }, [aiReply, aiTone, toast, userId])
 
   const handleAiDraft = useCallback(async () => {
+    if (!userId) return
     try {
       const result = await aiDraft.mutateAsync({ userId, tone: aiTone })
       setAiResult(result.text)
@@ -1194,6 +1198,7 @@ function MessageComposer({
   }, [aiDraft, aiTone, toast, userId])
 
   const handleAiAnalyze = useCallback(async () => {
+    if (!userId) return
     if (!latestImageUrl) {
       toast({ title: 'ไม่มีรูปภาพล่าสุด', description: 'ไม่พบรูปภาพในบทสนทนานี้' })
       return
@@ -1211,6 +1216,10 @@ function MessageComposer({
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
 
   const handleFlexSelect = useCallback(async (flexContent: object, altText: string) => {
+    if (!userId) {
+      toast({ title: 'ยังไม่ได้เลือกการสนทนา', variant: 'destructive' })
+      return
+    }
     try {
       const flexPayload = JSON.stringify({ type: 'flex', altText, contents: flexContent })
       await sendMessage.mutateAsync({
@@ -1219,8 +1228,8 @@ function MessageComposer({
         messageType: 'flex',
         metadata: { flexContent: { type: 'flex', altText, contents: flexContent } },
       })
-    } catch {
-      toast({ title: 'ส่ง Flex Message ล้มเหลว', description: 'กรุณาลองใหม่อีกครั้ง', variant: 'destructive' })
+    } catch (err: any) {
+      toast({ title: 'ส่ง Flex Message ล้มเหลว', description: err?.message || 'กรุณาลองใหม่อีกครั้ง', variant: 'destructive' })
     }
   }, [sendMessage, userId, toast])
 
@@ -1478,7 +1487,7 @@ function MessageComposer({
 
         <Button
           onClick={handleSend}
-          disabled={(!message.trim() && selectedFiles.length === 0) || sendMessage.isPending}
+          disabled={(!message.trim() && selectedFiles.length === 0) || sendMessage.isPending || !userId}
           className="flex-shrink-0 h-12 w-12 bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-md hover:shadow-lg transition-all"
           aria-label="ส่งข้อความ"
         >

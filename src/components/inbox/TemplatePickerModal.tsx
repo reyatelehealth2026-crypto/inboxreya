@@ -224,7 +224,7 @@ export function TemplatePickerModal({
     return d.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short' })
   }
 
-  const flexTemplates = (flexData || []).filter((t) => t.category !== 'text')
+  const flexTemplates = Array.isArray(flexData) ? flexData.filter((t) => t.category !== 'text') : []
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
