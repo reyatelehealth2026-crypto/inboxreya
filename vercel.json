@@ -23,6 +23,21 @@
     },
     "src/app/api/cron/process-scheduled-broadcasts/route.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/inbox/broadcasts/[id]/send/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/inbox/analytics/overview/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/inbox/analytics/conversations/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/inbox/analytics/sla/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/inbox/analytics/admins/route.ts": {
+      "maxDuration": 60
     }
   },
   "rewrites": [

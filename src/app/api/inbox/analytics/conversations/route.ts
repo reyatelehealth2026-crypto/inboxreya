@@ -5,12 +5,12 @@ import { cacheQuery, CACHE_TTL } from '@/lib/redis';
 
 /**
  * GET /api/inbox/analytics/conversations
- * 
+ *
  * Returns conversation trends over time:
  * - Daily/weekly/monthly conversation counts
  * - Busiest hours heatmap
  * - Message volume trends
- * 
+ *
  * Query params:
  * - startDate: ISO date string (default: 30 days ago)
  * - endDate: ISO date string (default: now)
@@ -44,102 +44,78 @@ export async function GET(request: NextRequest) {
 
     const lineAccountIdNum = parseInt(lineAccountId);
 
-    const cacheKey = `analytics:conv:${lineAccountIdNum}:${groupBy}:${startDate.toISOString().slice(0,10)}:${endDate.toISOString().slice(0,10)}`;
+    const cacheKey = `analytics:conv:${lineAccountIdNum}:${groupBy}:${startDate.toISOString().slice(0, 10)}:${endDate.toISOString().slice(0, 10)}`;
     const data = await cacheQuery(cacheKey, async () => {
+      type TrendRow = { period: string; conversation_count: bigint; incoming: bigint; outgoing: bigint };
+      type HourlyRow = { hour: number; message_count: bigint };
 
-    // Get all messages in date range
-    const messages = await prisma.message.findMany({
-      where: {
-        lineAccountId: lineAccountIdNum,
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
-      select: {
-        id: true,
-        userId: true,
-        direction: true,
-        createdAt: true,
-      },
-      orderBy: {
-        createdAt: 'asc',
-      },
-    });
-
-    // Group messages by time period
-    const trendData: Record<string, {
-      conversations: Set<number>,
-      incoming: number,
-      outgoing: number
-    }> = {};
-
-    const hourlyData: Record<number, number> = {};
-    for (let i = 0; i < 24; i++) {
-      hourlyData[i] = 0;
-    }
-
-    messages.forEach(message => {
-      const date = new Date(message.createdAt);
-      let key: string;
-
-      // Group by specified period
-      if (groupBy === 'hour') {
-        key = date.toISOString().slice(0, 13); // YYYY-MM-DDTHH
-      } else if (groupBy === 'day') {
-        key = date.toISOString().slice(0, 10); // YYYY-MM-DD
-      } else if (groupBy === 'week') {
-        const weekStart = new Date(date);
-        weekStart.setDate(date.getDate() - date.getDay());
-        key = weekStart.toISOString().slice(0, 10);
-      } else if (groupBy === 'month') {
-        key = date.toISOString().slice(0, 7); // YYYY-MM
+      // Use SQL aggregation — avoid loading all messages into memory
+      let trendRows: TrendRow[];
+      if (groupBy === 'week') {
+        trendRows = await prisma.$queryRaw<TrendRow[]>`
+          SELECT
+            DATE_FORMAT(DATE_SUB(created_at, INTERVAL WEEKDAY(created_at) DAY), '%Y-%m-%d') AS period,
+            COUNT(DISTINCT user_id) AS conversation_count,
+            SUM(IF(direction = 'incoming', 1, 0)) AS incoming,
+            SUM(IF(direction = 'outgoing', 1, 0)) AS outgoing
+          FROM messages
+          WHERE line_account_id = ${lineAccountIdNum}
+            AND created_at >= ${startDate}
+            AND created_at <= ${endDate}
+          GROUP BY period
+          ORDER BY period
+        `;
       } else {
-        key = date.toISOString().slice(0, 10);
+        const fmt = groupBy === 'hour' ? '%Y-%m-%dT%H'
+          : groupBy === 'month' ? '%Y-%m'
+          : '%Y-%m-%d';
+        trendRows = await prisma.$queryRaw<TrendRow[]>`
+          SELECT
+            DATE_FORMAT(created_at, ${fmt}) AS period,
+            COUNT(DISTINCT user_id) AS conversation_count,
+            SUM(IF(direction = 'incoming', 1, 0)) AS incoming,
+            SUM(IF(direction = 'outgoing', 1, 0)) AS outgoing
+          FROM messages
+          WHERE line_account_id = ${lineAccountIdNum}
+            AND created_at >= ${startDate}
+            AND created_at <= ${endDate}
+          GROUP BY period
+          ORDER BY period
+        `;
       }
 
-      if (!trendData[key]) {
-        trendData[key] = {
-          conversations: new Set(),
-          incoming: 0,
-          outgoing: 0,
-        };
+      const hourlyRows = await prisma.$queryRaw<HourlyRow[]>`
+        SELECT
+          HOUR(created_at) AS hour,
+          COUNT(*) AS message_count
+        FROM messages
+        WHERE line_account_id = ${lineAccountIdNum}
+          AND created_at >= ${startDate}
+          AND created_at <= ${endDate}
+        GROUP BY HOUR(created_at)
+        ORDER BY hour
+      `;
+
+      const trends = trendRows.map(row => ({
+        period: row.period,
+        conversationCount: Number(row.conversation_count),
+        incomingMessages: Number(row.incoming),
+        outgoingMessages: Number(row.outgoing),
+        totalMessages: Number(row.incoming) + Number(row.outgoing),
+      }));
+
+      // Build full 0–23 hour distribution
+      const busiestHours = Array.from({ length: 24 }, (_, i) => ({ hour: i, messageCount: 0 }));
+      for (const row of hourlyRows) {
+        busiestHours[Number(row.hour)].messageCount = Number(row.message_count);
       }
 
-      if (message.userId) {
-        trendData[key].conversations.add(message.userId);
-      }
-      if (message.direction === 'incoming') {
-        trendData[key].incoming++;
-      } else if (message.direction === 'outgoing') {
-        trendData[key].outgoing++;
-      }
+      const peakHours = [...busiestHours]
+        .sort((a, b) => b.messageCount - a.messageCount)
+        .slice(0, 3)
+        .map(h => h.hour);
 
-      // Track hourly distribution
-      const hour = date.getHours();
-      hourlyData[hour]++;
-    });
-
-    // Convert to array format
-    const trends = Object.entries(trendData).map(([period, data]) => ({
-      period,
-      conversationCount: data.conversations.size,
-      incomingMessages: data.incoming,
-      outgoingMessages: data.outgoing,
-      totalMessages: data.incoming + data.outgoing,
-    }));
-
-    // Convert hourly data to array
-    const busiestHours = Object.entries(hourlyData).map(([hour, count]) => ({
-      hour: parseInt(hour),
-      messageCount: count,
-    }));
-
-    // Calculate peak hours
-    const sortedHours = [...busiestHours].sort((a, b) => b.messageCount - a.messageCount);
-    const peakHours = sortedHours.slice(0, 3).map(h => h.hour);
-
-    return {
+      return {
         trends,
         busiestHours,
         peakHours,
@@ -149,7 +125,7 @@ export async function GET(request: NextRequest) {
           endDate: endDate.toISOString(),
         },
       };
-    }, CACHE_TTL.HEALTH);  // 60s
+    }, CACHE_TTL.HEALTH);
 
     return NextResponse.json({ success: true, data });
   } catch (error) {

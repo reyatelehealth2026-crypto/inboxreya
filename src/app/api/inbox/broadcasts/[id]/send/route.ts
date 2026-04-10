@@ -37,37 +37,69 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Broadcast is cancelled' }, { status: 400 })
     }
 
-    const result = await sendBroadcastRecord({
-      id: broadcast.id,
-      lineAccountId: broadcast.lineAccountId,
-      content: broadcast.content,
-      mediaUrl: broadcast.mediaUrl,
-    })
+    // Stream progress via SSE
+    const encoder = new TextEncoder()
 
-    const finalStatus = result.finalStatus === 'sent' ? 'sent' : 'failed'
+    const stream = new ReadableStream({
+      async start(controller) {
+        const emit = (data: object) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        }
 
-    await prisma.broadcastMessageV2.update({
-      where: { id: broadcast.id },
-      data: {
-        status: finalStatus,
-        sentAt: finalStatus === 'sent' ? new Date() : null,
-        deliveredCount: result.successCount,
+        try {
+          emit({ type: 'start', total: broadcast.totalRecipients ?? 0 })
+
+          const result = await sendBroadcastRecord(
+            {
+              id: broadcast.id,
+              lineAccountId: broadcast.lineAccountId,
+              content: broadcast.content,
+              mediaUrl: broadcast.mediaUrl,
+            },
+            (sent, success, failed, total) => {
+              emit({ type: 'progress', sent, success, failed, total })
+            }
+          )
+
+          const finalStatus = result.finalStatus === 'sent' ? 'sent' : 'failed'
+
+          await prisma.broadcastMessageV2.update({
+            where: { id: broadcast.id },
+            data: {
+              status: finalStatus,
+              sentAt: finalStatus === 'sent' ? new Date() : null,
+              deliveredCount: result.successCount,
+            },
+          })
+
+          emit({
+            type: 'complete',
+            success: true,
+            status: finalStatus,
+            totalRecipients: result.totalRecipients,
+            successCount: result.successCount,
+            failedCount: result.failCount,
+            errors: result.errors,
+          })
+        } catch (error: any) {
+          console.error('[Broadcast Send] Error:', error)
+          emit({ type: 'error', error: error.message || 'Failed to send broadcast' })
+        } finally {
+          controller.close()
+        }
       },
     })
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        id: broadcast.id,
-        status: finalStatus,
-        totalRecipients: result.totalRecipients,
-        successCount: result.successCount,
-        failedCount: result.failCount,
-        errors: result.errors,
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
       },
     })
   } catch (error: any) {
-    console.error('[Broadcast Send] Error:', error)
+    console.error('[Broadcast Send] Unexpected error:', error)
     return NextResponse.json(
       { success: false, error: error.message || 'Failed to send broadcast' },
       { status: 500 }

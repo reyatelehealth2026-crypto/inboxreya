@@ -5,13 +5,13 @@ import { cacheQuery, CACHE_TTL } from '@/lib/redis';
 
 /**
  * GET /api/inbox/analytics/overview
- * 
+ *
  * Returns analytics dashboard overview metrics:
  * - Total conversations count
  * - Average response time
  * - SLA compliance rate
  * - Conversations by status breakdown
- * 
+ *
  * Query params:
  * - startDate: ISO date string (default: 30 days ago)
  * - endDate: ISO date string (default: now)
@@ -36,7 +36,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Default to last 30 days
     const endDate = endDateParam ? new Date(endDateParam) : new Date();
     const startDate = startDateParam
       ? new Date(startDateParam)
@@ -44,135 +43,95 @@ export async function GET(request: NextRequest) {
 
     const lineAccountIdNum = parseInt(lineAccountId);
 
-    const cacheKey = `analytics:overview:${lineAccountIdNum}:${startDate.toISOString().slice(0,10)}:${endDate.toISOString().slice(0,10)}`;
+    const cacheKey = `analytics:overview:${lineAccountIdNum}:${startDate.toISOString().slice(0, 10)}:${endDate.toISOString().slice(0, 10)}`;
     const data = await cacheQuery(cacheKey, async () => {
+      type StatusRow = { chat_status: string | null; cnt: bigint };
+      type MsgRow = { total: bigint; incoming: bigint; outgoing: bigint };
+      type SlaRow = { avg_response_minutes: number | null; within_sla: bigint; total_checked: bigint };
 
-    // Get all users (conversations) for this account in date range
-    const users = await prisma.lineUser.findMany({
-      where: {
-        lineAccountId: lineAccountIdNum,
-        lastInteraction: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
-      include: {
-        messages: {
-          where: {
-            createdAt: {
-              gte: startDate,
-              lte: endDate,
-            },
-          },
-          orderBy: {
-            createdAt: 'asc',
-          },
-        },
-        conversationAssignments: {
-          where: {
-            assignedAt: {
-              gte: startDate,
-              lte: endDate,
-            },
-          },
-        },
-      },
-    });
+      const [statusRows, msgRows, slaRows] = await Promise.all([
+        // Conversation counts grouped by status
+        prisma.$queryRaw<StatusRow[]>`
+          SELECT chat_status, COUNT(*) AS cnt
+          FROM users
+          WHERE line_account_id = ${lineAccountIdNum}
+            AND last_interaction >= ${startDate}
+            AND last_interaction <= ${endDate}
+          GROUP BY chat_status
+        `,
+        // Message volume totals
+        prisma.$queryRaw<MsgRow[]>`
+          SELECT
+            COUNT(*) AS total,
+            SUM(IF(direction = 'incoming', 1, 0)) AS incoming,
+            SUM(IF(direction = 'outgoing', 1, 0)) AS outgoing
+          FROM messages
+          WHERE line_account_id = ${lineAccountIdNum}
+            AND created_at >= ${startDate}
+            AND created_at <= ${endDate}
+        `,
+        // Response time & SLA — aggregate first-response-per-user in a subquery to avoid self-join
+        prisma.$queryRaw<SlaRow[]>`
+          SELECT
+            AVG(response_minutes) AS avg_response_minutes,
+            SUM(IF(response_minutes <= 30, 1, 0)) AS within_sla,
+            COUNT(*) AS total_checked
+          FROM (
+            SELECT
+              user_id,
+              TIMESTAMPDIFF(MINUTE,
+                MIN(CASE WHEN direction = 'incoming' THEN created_at END),
+                MIN(CASE WHEN direction = 'outgoing' THEN created_at END)
+              ) AS response_minutes
+            FROM messages
+            WHERE line_account_id = ${lineAccountIdNum}
+              AND created_at >= ${startDate}
+              AND created_at <= ${endDate}
+            GROUP BY user_id
+            HAVING
+              MIN(CASE WHEN direction = 'incoming' THEN created_at END) IS NOT NULL
+              AND MIN(CASE WHEN direction = 'outgoing' THEN created_at END) IS NOT NULL
+              AND MIN(CASE WHEN direction = 'outgoing' THEN created_at END) >
+                  MIN(CASE WHEN direction = 'incoming' THEN created_at END)
+          ) AS first_responses
+        `,
+      ]);
 
-    // Calculate total conversations
-    const totalConversations = users.length;
-
-    // Calculate conversations by status
-    const conversationsByStatus = {
-      new: 0,
-      in_progress: 0,
-      waiting: 0,
-      resolved: 0,
-    };
-
-    users.forEach(user => {
-      const status = user.chatStatus || 'new';
-      if (status in conversationsByStatus) {
-        conversationsByStatus[status as keyof typeof conversationsByStatus]++;
-      }
-    });
-
-    // Calculate average response time
-    let totalResponseTime = 0;
-    let responseCount = 0;
-
-    users.forEach(user => {
-      const messages = user.messages;
-      for (let i = 0; i < messages.length - 1; i++) {
-        const currentMsg = messages[i];
-        const nextMsg = messages[i + 1];
-
-        // If customer message followed by admin message
-        if (currentMsg.direction === 'incoming' && nextMsg.direction === 'outgoing') {
-          const responseTime = nextMsg.createdAt.getTime() - currentMsg.createdAt.getTime();
-          totalResponseTime += responseTime;
-          responseCount++;
+      // Build status breakdown
+      const conversationsByStatus = { new: 0, in_progress: 0, waiting: 0, resolved: 0 };
+      let totalConversations = 0;
+      for (const row of statusRows) {
+        const cnt = Number(row.cnt);
+        totalConversations += cnt;
+        const status = row.chat_status || 'new';
+        if (status in conversationsByStatus) {
+          conversationsByStatus[status as keyof typeof conversationsByStatus] += cnt;
         }
       }
-    });
 
-    const averageResponseTimeMs = responseCount > 0
-      ? totalResponseTime / responseCount
-      : 0;
-    const averageResponseTimeMinutes = Math.round(averageResponseTimeMs / 1000 / 60);
+      const msg = msgRows[0] ?? { total: BigInt(0), incoming: BigInt(0), outgoing: BigInt(0) };
+      const sla = slaRows[0] ?? { avg_response_minutes: null, within_sla: BigInt(0), total_checked: BigInt(0) };
+      const totalChecked = Number(sla.total_checked);
+      const slaComplianceRate = totalChecked > 0
+        ? Math.round((Number(sla.within_sla) / totalChecked) * 100)
+        : 100;
 
-    // Calculate SLA compliance (assuming 30 minute SLA threshold)
-    const slaThresholdMs = 30 * 60 * 1000; // 30 minutes
-    let withinSLA = 0;
-    let totalSLAChecks = 0;
-
-    users.forEach(user => {
-      const messages = user.messages;
-      for (let i = 0; i < messages.length - 1; i++) {
-        const currentMsg = messages[i];
-        const nextMsg = messages[i + 1];
-
-        if (currentMsg.direction === 'incoming' && nextMsg.direction === 'outgoing') {
-          const responseTime = nextMsg.createdAt.getTime() - currentMsg.createdAt.getTime();
-          totalSLAChecks++;
-          if (responseTime <= slaThresholdMs) {
-            withinSLA++;
-          }
-        }
-      }
-    });
-
-    const slaComplianceRate = totalSLAChecks > 0
-      ? Math.round((withinSLA / totalSLAChecks) * 100)
-      : 100;
-
-    // Get message volume
-    const totalMessages = users.reduce((sum, user) => sum + user.messages.length, 0);
-    const incomingMessages = users.reduce(
-      (sum, user) => sum + user.messages.filter(m => m.direction === 'incoming').length,
-      0
-    );
-    const outgoingMessages = users.reduce(
-      (sum, user) => sum + user.messages.filter(m => m.direction === 'outgoing').length,
-      0
-    );
-
-    return {
+      return {
         totalConversations,
-        averageResponseTimeMinutes,
+        averageResponseTimeMinutes: Math.round(Number(sla.avg_response_minutes ?? 0)),
         slaComplianceRate,
         conversationsByStatus,
         messageVolume: {
-          total: totalMessages,
-          incoming: incomingMessages,
-          outgoing: outgoingMessages,
+          total: Number(msg.total),
+          incoming: Number(msg.incoming),
+          outgoing: Number(msg.outgoing),
         },
         dateRange: {
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
         },
       };
-    }, CACHE_TTL.HEALTH);  // 60s
+    }, CACHE_TTL.HEALTH);
 
     return NextResponse.json({ success: true, data });
   } catch (error) {

@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Broadcast, BroadcastTemplate, CreateBroadcastInput, BroadcastStats, FlexMessage } from '@/types/broadcast'
 
@@ -249,20 +250,66 @@ export function useBroadcastStats() {
   })
 }
 
-// Send broadcast immediately
+export interface SendProgress {
+  sent: number
+  total: number
+  success: number
+  failed: number
+}
+
+// Send broadcast immediately — streams progress via SSE
 export function useSendBroadcast() {
   const queryClient = useQueryClient()
-  
-  return useMutation({
-    mutationFn: async (id: number) => {
-      const res = await fetch(`${API_BASE}/broadcasts/${id}/send`, {
-        method: 'POST',
-      })
-      if (!res.ok) throw new Error('Failed to send broadcast')
-      return res.json()
-    },
-    onSuccess: () => {
+  const [isPending, setIsPending] = useState(false)
+  const [progress, setProgress] = useState<SendProgress | null>(null)
+
+  const mutateAsync = async (id: number): Promise<any> => {
+    setIsPending(true)
+    setProgress(null)
+
+    try {
+      const res = await fetch(`${API_BASE}/broadcasts/${id}/send`, { method: 'POST' })
+
+      // Fallback for non-streaming response (error before stream starts)
+      if (!res.body || !res.headers.get('content-type')?.includes('text/event-stream')) {
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error || 'Failed to send broadcast')
+        return data
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let result: any = null
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const text = decoder.decode(value, { stream: true })
+        for (const line of text.split('\n')) {
+          if (!line.startsWith('data:')) continue
+          let event: any
+          try { event = JSON.parse(line.slice(5).trim()) } catch { continue }
+
+          if (event.type === 'start') {
+            setProgress({ sent: 0, total: event.total, success: 0, failed: 0 })
+          } else if (event.type === 'progress') {
+            setProgress({ sent: event.sent, total: event.total, success: event.success, failed: event.failed })
+          } else if (event.type === 'complete') {
+            result = event
+            setProgress({ sent: event.totalRecipients, total: event.totalRecipients, success: event.successCount, failed: event.failedCount })
+          } else if (event.type === 'error') {
+            throw new Error(event.error || 'Failed to send broadcast')
+          }
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey: ['broadcasts'] })
-    },
-  })
+      return result
+    } finally {
+      setIsPending(false)
+    }
+  }
+
+  return { mutateAsync, isPending, progress }
 }

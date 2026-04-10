@@ -512,6 +512,30 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
           {step === 'confirm' ? (
             <div className="space-y-4">
               <h3 className="flex items-center gap-2 text-sm font-medium"><Clock className="h-4 w-4" />ยืนยันก่อนส่ง</h3>
+
+              {/* Progress bar — shown while sending */}
+              {sendBroadcast.progress && isSubmitting ? (
+                <Card className="border-blue-200 bg-blue-50">
+                  <CardContent className="space-y-3 p-4">
+                    <div className="flex items-center gap-2 text-sm font-medium text-blue-700">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      กำลังส่ง {sendBroadcast.progress.sent.toLocaleString()} / {sendBroadcast.progress.total.toLocaleString()} คน
+                    </div>
+                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-blue-100">
+                      <div
+                        className="h-full rounded-full bg-blue-500 transition-all duration-300"
+                        style={{ width: `${sendBroadcast.progress.total > 0 ? Math.round((sendBroadcast.progress.sent / sendBroadcast.progress.total) * 100) : 0}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-xs text-blue-600">
+                      <span>สำเร็จ {sendBroadcast.progress.success.toLocaleString()} คน</span>
+                      {sendBroadcast.progress.failed > 0 ? <span className="text-red-500">ผิดพลาด {sendBroadcast.progress.failed.toLocaleString()} คน</span> : null}
+                      <span>{sendBroadcast.progress.total > 0 ? Math.round((sendBroadcast.progress.sent / sendBroadcast.progress.total) * 100) : 0}%</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null}
+
               {result ? (
                 <Card className={cn(result.success ? 'border-emerald-200 bg-emerald-50' : 'border-destructive/30 bg-destructive/5')}>
                   <CardContent className="space-y-3 p-4">
@@ -566,7 +590,13 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
                 <Button type="button" onClick={goNext} disabled={!canGoNext}>ถัดไป<ChevronRight className="ml-2 h-4 w-4" /></Button>
               ) : (
                 <Button type="button" onClick={handleConfirm} disabled={!canConfirm}>
-                  {isSubmitting ? 'กำลังดำเนินการ...' : sendNow ? (
+                  {isSubmitting ? (
+                    sendBroadcast.progress ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />ส่งแล้ว {sendBroadcast.progress.sent.toLocaleString()} / {sendBroadcast.progress.total.toLocaleString()} คน</>
+                    ) : (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />กำลังเตรียมส่ง...</>
+                    )
+                  ) : sendNow ? (
                     <><Send className="mr-2 h-4 w-4" />{hasRecipientEstimate ? `ยืนยันส่ง Broadcast (${recipientEstimate.toLocaleString()} คน)` : 'ยืนยันส่ง Broadcast'}</>
                   ) : (
                     <><Calendar className="mr-2 h-4 w-4" />{hasRecipientEstimate ? `ยืนยันตั้งเวลา Broadcast (${recipientEstimate.toLocaleString()} คน)` : 'ยืนยันตั้งเวลา Broadcast'}</>

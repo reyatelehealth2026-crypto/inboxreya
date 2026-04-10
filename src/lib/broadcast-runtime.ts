@@ -330,7 +330,7 @@ export async function sendBroadcastRecord(broadcast: {
   lineAccountId: number | null
   content: string
   mediaUrl?: string | null
-}) {
+}, onProgress?: (sent: number, success: number, failed: number, total: number) => void) {
   if (!broadcast.lineAccountId) {
     throw new Error('Broadcast is missing lineAccountId')
   }
@@ -354,19 +354,28 @@ export async function sendBroadcastRecord(broadcast: {
   let failCount = 0
   const uniqueErrors = new Set<string>()
 
-  for (const targetUser of targetUsers) {
-    const result = await pushLineMessage(
-      targetUser.lineUserId,
-      parsed.messages as Parameters<typeof pushLineMessage>[1],
-      targetUser.lineAccountId ?? broadcast.lineAccountId
+  // Send in parallel batches to avoid sequential bottleneck with large tag groups
+  const BATCH_SIZE = 20
+  for (let i = 0; i < targetUsers.length; i += BATCH_SIZE) {
+    const batch = targetUsers.slice(i, i + BATCH_SIZE)
+    const results = await Promise.all(
+      batch.map((targetUser) =>
+        pushLineMessage(
+          targetUser.lineUserId,
+          parsed.messages as Parameters<typeof pushLineMessage>[1],
+          targetUser.lineAccountId ?? broadcast.lineAccountId
+        )
+      )
     )
-
-    if (result.success) {
-      successCount += 1
-    } else {
-      failCount += 1
-      if (result.error) uniqueErrors.add(result.error)
+    for (const result of results) {
+      if (result.success) {
+        successCount += 1
+      } else {
+        failCount += 1
+        if (result.error) uniqueErrors.add(result.error)
+      }
     }
+    onProgress?.(successCount + failCount, successCount, failCount, targetUsers.length)
   }
 
   return {
