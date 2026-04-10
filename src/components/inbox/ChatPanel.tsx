@@ -1115,10 +1115,7 @@ function MessageComposer({
     // Handle text message
     if (!message.trim()) return
     if (message.trim().startsWith('/')) {
-      toast({
-        title: 'ใช้คำสั่ง / สำหรับเทมเพลต',
-        description: 'เลือกเทมเพลตจากรายการแล้วแก้ข้อความได้ทันที',
-      })
+      // Still in slash-picker mode — ignore send until template is selected
       return
     }
 
@@ -1139,6 +1136,14 @@ function MessageComposer({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // Dismiss slash template picker on Escape
+      if (e.key === 'Escape' && slashTemplateQuery) {
+        e.preventDefault()
+        setMessage('')
+        setSlashTemplateQuery('')
+        return
+      }
+
       // Check if keys match send message shortcut
       const keyMatch = e.key.toLowerCase() === sendMessageShortcut.key.toLowerCase()
       const ctrlMatch = sendMessageShortcut.ctrl ? e.ctrlKey || e.metaKey : !e.ctrlKey && !e.metaKey
@@ -1150,7 +1155,7 @@ function MessageComposer({
         handleSend()
       }
     },
-    [handleSend, sendMessageShortcut]
+    [handleSend, sendMessageShortcut, slashTemplateQuery]
   )
 
   const handleChange = useCallback(
@@ -1204,6 +1209,20 @@ function MessageComposer({
 
   const isAiBusy = aiReply.isPending || aiDraft.isPending || aiAnalyze.isPending
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
+
+  const handleFlexSelect = useCallback(async (flexContent: object, altText: string) => {
+    try {
+      const flexPayload = JSON.stringify({ type: 'flex', altText, contents: flexContent })
+      await sendMessage.mutateAsync({
+        userId,
+        content: flexPayload,
+        messageType: 'flex',
+        metadata: { flexContent: { type: 'flex', altText, contents: flexContent } },
+      })
+    } catch {
+      toast({ title: 'ส่ง Flex Message ล้มเหลว', description: 'กรุณาลองใหม่อีกครั้ง', variant: 'destructive' })
+    }
+  }, [sendMessage, userId, toast])
 
   return (
     <div className="p-4 border-t bg-card">
@@ -1279,6 +1298,11 @@ function MessageComposer({
           setMessage(content)
           setIsTemplateModalOpen(false)
           setActiveToolTab('ai')
+        }}
+        onSelectFlex={(flexContent, altText) => {
+          setIsTemplateModalOpen(false)
+          setActiveToolTab('ai')
+          handleFlexSelect(flexContent, altText)
         }}
       />
 
@@ -1375,6 +1399,26 @@ function MessageComposer({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Inline slash quick-reply picker */}
+      {message.startsWith('/') && (
+        <div className="mb-2">
+          <TemplateSelector
+            user={user}
+            mode="inline"
+            searchQuery={slashTemplateQuery}
+            onSearchChange={(q) => {
+              setSlashTemplateQuery(q)
+              setMessage('/' + q)
+            }}
+            onSelect={(content) => {
+              setMessage(content)
+              setSlashTemplateQuery('')
+              setTimeout(() => textareaRef.current?.focus(), 0)
+            }}
+          />
         </div>
       )}
 
