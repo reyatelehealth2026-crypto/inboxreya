@@ -18,6 +18,44 @@ interface SendMessageResult {
 }
 
 /**
+ * LINE Flex carousel allows max 12 bubbles per carousel.
+ * Defensively cap any carousel contents so user-built or DB-stored flex
+ * payloads (templates, broadcasts) never breach the LINE API limit.
+ * Returns a new object; does not mutate input.
+ */
+const LINE_CAROUSEL_BUBBLE_LIMIT = 12
+
+function capFlexCarouselBubbles<T>(node: T): T {
+  if (!node || typeof node !== 'object') return node
+  if (Array.isArray(node)) {
+    return node.map((item) => capFlexCarouselBubbles(item)) as unknown as T
+  }
+  const obj = node as Record<string, any>
+  if (
+    obj.type === 'carousel' &&
+    Array.isArray(obj.contents) &&
+    obj.contents.length > LINE_CAROUSEL_BUBBLE_LIMIT
+  ) {
+    console.warn(
+      `[LINE] Flex carousel had ${obj.contents.length} bubbles; truncating to ${LINE_CAROUSEL_BUBBLE_LIMIT}`
+    )
+    return {
+      ...obj,
+      contents: obj.contents
+        .slice(0, LINE_CAROUSEL_BUBBLE_LIMIT)
+        .map((c: any) => capFlexCarouselBubbles(c)),
+    } as unknown as T
+  }
+  const result: Record<string, any> = {}
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      result[key] = capFlexCarouselBubbles(obj[key])
+    }
+  }
+  return result as unknown as T
+}
+
+/**
  * ดึง LINE Channel Access Token จากฐานข้อมูล
  */
 async function getChannelAccessToken(lineAccountId?: number | null): Promise<string | null> {
@@ -71,9 +109,12 @@ export async function pushLineMessage(
     }
 
     // Prepare request body
+    // - LINE allows max 5 message objects per request
+    // - Each Flex carousel allows max 12 bubbles — defensively cap to avoid
+    //   "must not be more than 12 items" errors on user/DB-built flex payloads
     const requestBody: any = {
       to: lineUserId,
-      messages: messages.slice(0, 5), // LINE allows max 5 messages per request
+      messages: messages.slice(0, 5).map((m) => capFlexCarouselBubbles(m)),
     }
 
     // Add quoteToken for quote reply if provided
