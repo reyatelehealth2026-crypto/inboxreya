@@ -74,17 +74,70 @@ export async function triggerPusherEvent<T>(
 }
 
 /**
- * Broadcast new message to inbox channel
+ * Pusher limits each event payload to 10 KB. Flex messages and very long
+ * conversations can easily exceed this. Strip/truncate heavy fields so the
+ * realtime "ping" still arrives; the client can refetch the full message
+ * from `/api/inbox/messages` if it needs the full content.
  */
-export async function broadcastNewMessage(data: NewMessageEvent) {
-  return triggerPusherEvent(CHANNELS.INBOX, EVENTS.NEW_MESSAGE, data)
+const PUSHER_SAFE_CONTENT_LIMIT = 4000
+
+function sanitizeMessageForPusher(
+  msg: NewMessageEvent['message']
+): NewMessageEvent['message'] {
+  const isHeavyType = msg.messageType === 'flex' || msg.messageType === 'imagemap'
+  const content = msg.content
+  let safeContent = content
+  if (isHeavyType) {
+    safeContent = null
+  } else if (typeof content === 'string' && content.length > PUSHER_SAFE_CONTENT_LIMIT) {
+    safeContent = content.slice(0, PUSHER_SAFE_CONTENT_LIMIT)
+  }
+  const replyTo = msg.replyTo
+    ? {
+        ...msg.replyTo,
+        content:
+          typeof msg.replyTo.content === 'string' &&
+          msg.replyTo.content.length > PUSHER_SAFE_CONTENT_LIMIT
+            ? msg.replyTo.content.slice(0, PUSHER_SAFE_CONTENT_LIMIT)
+            : msg.replyTo.content,
+      }
+    : msg.replyTo
+  return { ...msg, content: safeContent, replyTo }
 }
 
 /**
- * Broadcast conversation update
+ * Broadcast new message to inbox channel
+ */
+export async function broadcastNewMessage(data: NewMessageEvent) {
+  const safeData: NewMessageEvent = {
+    ...data,
+    message: sanitizeMessageForPusher(data.message),
+  }
+  return triggerPusherEvent(CHANNELS.INBOX, EVENTS.NEW_MESSAGE, safeData)
+}
+
+/**
+ * Broadcast conversation update.
+ * If `updates.lastMessage` looks like a message object with heavy `content`
+ * (e.g. flex), strip/truncate it to stay under the 10 KB Pusher event limit.
  */
 export async function broadcastConversationUpdate(data: ConversationUpdatedEvent) {
-  return triggerPusherEvent(CHANNELS.INBOX, EVENTS.CONVERSATION_UPDATED, data)
+  const lastMessage = data.updates?.lastMessage
+  let safeLastMessage = lastMessage
+  if (lastMessage && typeof lastMessage === 'object') {
+    const mt = lastMessage.messageType
+    const content = lastMessage.content
+    if (mt === 'flex' || mt === 'imagemap') {
+      safeLastMessage = { ...lastMessage, content: null }
+    } else if (typeof content === 'string' && content.length > PUSHER_SAFE_CONTENT_LIMIT) {
+      safeLastMessage = { ...lastMessage, content: content.slice(0, PUSHER_SAFE_CONTENT_LIMIT) }
+    }
+  }
+  const safeData: ConversationUpdatedEvent = {
+    ...data,
+    updates: { ...data.updates, lastMessage: safeLastMessage },
+  }
+  return triggerPusherEvent(CHANNELS.INBOX, EVENTS.CONVERSATION_UPDATED, safeData)
 }
 
 /**
