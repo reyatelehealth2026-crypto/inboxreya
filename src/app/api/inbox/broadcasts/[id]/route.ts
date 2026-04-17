@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth-middleware';
+import { cacheInvalidate } from '@/lib/redis';
+
+const LEGACY_BROADCAST_STATUS_ERROR = /data truncated for column 'status'/i;
+
+const isLegacyBroadcastStatusError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return LEGACY_BROADCAST_STATUS_ERROR.test(error.message);
+};
 
 export async function DELETE(
   request: NextRequest,
@@ -31,10 +42,30 @@ export async function DELETE(
       );
     }
 
-    await prisma.broadcastMessageV2.update({
-      where: { id },
-      data: { status: 'cancelled' },
-    });
+    try {
+      await prisma.broadcastMessageV2.update({
+        where: { id },
+        data: { status: 'cancelled' },
+      });
+    } catch (error) {
+      // Older databases still use the pre-cancel enum. Fall back to deleting
+      // unsent broadcasts so the user can still cancel until the migration lands.
+      const canDeleteLegacyRecord =
+        broadcast.status === 'draft' || broadcast.status === 'scheduled';
+
+      if (
+        !canDeleteLegacyRecord ||
+        !isLegacyBroadcastStatusError(error)
+      ) {
+        throw error;
+      }
+
+      await prisma.broadcastMessageV2.delete({
+        where: { id },
+      });
+    }
+
+    await cacheInvalidate('broadcasts:*');
 
     return NextResponse.json({ success: true });
   } catch (error) {

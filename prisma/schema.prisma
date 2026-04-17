@@ -5016,6 +5016,7 @@ enum broadcast_messages_status {
   sending
   sent
   failed
+  cancelled
 }
 
 enum ai_triage_assessments_recommended_action {
@@ -5162,7 +5163,7 @@ model BroadcastMessageV2 {
   totalRecipients Int       @default(0) @map("total_recipients")
   deliveredCount  Int       @default(0) @map("delivered_count")
   readCount       Int       @default(0) @map("read_count")
-  status          String    @default("draft") @db.VarChar(50)
+  status          broadcast_messages_status @default(draft)
   createdBy       Int       @map("created_by")
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp(0)
 

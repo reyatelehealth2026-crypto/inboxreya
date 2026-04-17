@@ -378,6 +378,9 @@ export async function sendBroadcastRecord(broadcast: {
     onProgress?.(successCount + failCount, successCount, failCount, targetUsers.length)
   }
 
+  const finalStatus: 'failed' | 'sent' =
+    failCount === targetUsers.length ? 'failed' : 'sent'
+
   return {
     summaryText: parsed.summaryText,
     messageType: parsed.messageType,
@@ -385,7 +388,7 @@ export async function sendBroadcastRecord(broadcast: {
     successCount,
     failCount,
     errors: Array.from(uniqueErrors),
-    finalStatus: failCount === targetUsers.length ? 'failed' : 'sent',
+    finalStatus,
   }
 }
 
