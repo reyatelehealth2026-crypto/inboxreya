@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, Zap } from 'lucide-react'
+import { ArrowLeft, Search, Zap } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,7 @@ import {
   type TemplateVariable,
 } from '@/lib/template-utils'
 import type { BroadcastTemplate } from '@/types/broadcast'
+import { FlexPreview } from '@/components/inbox/FlexPreview'
 
 interface Template {
   id: number
@@ -54,6 +55,7 @@ export function TemplatePickerModal({
   const [flexSearch, setFlexSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
+  const [previewFlex, setPreviewFlex] = useState<BroadcastTemplate | null>(null)
   const [variableValues, setVariableValues] = useState<Record<string, string>>({})
   
   const { toast } = useToast()
@@ -135,6 +137,7 @@ export function TemplatePickerModal({
       setFlexSearch('')
       setSelectedCategory('all')
       setSelectedTemplate(null)
+      setPreviewFlex(null)
       setVariableValues({})
       setActiveTab('text')
     }
@@ -228,19 +231,42 @@ export function TemplatePickerModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh]">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>
-            {selectedTemplate ? 'กรอกข้อมูลตัวแปร' : 'เลือกเทมเพลต'}
+            {previewFlex
+              ? 'ตัวอย่างก่อนส่ง'
+              : selectedTemplate
+              ? 'กรอกข้อมูลตัวแปร'
+              : 'เลือกเทมเพลต'}
           </DialogTitle>
-          <DialogDescription>
-            {selectedTemplate
+          <DialogDescription className="break-words">
+            {previewFlex
+              ? previewFlex.name
+              : selectedTemplate
               ? 'กรอกข้อมูลเพื่อแทนที่ตัวแปรในเทมเพลต'
               : 'เลือกเทมเพลตที่ต้องการใช้'}
           </DialogDescription>
         </DialogHeader>
 
-        {!selectedTemplate ? (
+        {previewFlex ? (
+          <FlexPreviewPanel
+            template={previewFlex}
+            onBack={() => setPreviewFlex(null)}
+            onConfirm={() => {
+              if (!previewFlex) return
+              if (previewFlex.category === 'flex' && previewFlex.flexContent?.contents && onSelectFlex) {
+                onSelectFlex(previewFlex.flexContent.contents, previewFlex.name)
+              } else if (previewFlex.category === 'image' && previewFlex.mediaUrl) {
+                onSelect(previewFlex.mediaUrl)
+              } else if (previewFlex.content) {
+                onSelect(previewFlex.content)
+              }
+              setPreviewFlex(null)
+              onOpenChange(false)
+            }}
+          />
+        ) : !selectedTemplate ? (
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'text' | 'flex')}>
             <TabsList className="mb-3">
               <TabsTrigger value="text">ข้อความ</TabsTrigger>
@@ -314,7 +340,7 @@ export function TemplatePickerModal({
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
-                                  <div className="font-medium truncate">{template.name}</div>
+                                  <div className="font-medium break-words whitespace-normal leading-snug">{template.name}</div>
                                   <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{template.content}</p>
                                   <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
                                     <span>ใช้ {template.usage_count || 0} ครั้ง</span>
@@ -359,7 +385,7 @@ export function TemplatePickerModal({
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex-1 min-w-0">
-                                    <div className="font-medium truncate">{template.name}</div>
+                                    <div className="font-medium break-words whitespace-normal leading-snug">{template.name}</div>
                                     <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{template.content}</p>
                                     {(template.usage_count || 0) > 0 && (
                                       <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
@@ -414,23 +440,18 @@ export function TemplatePickerModal({
                       {flexTemplates.map((template) => (
                         <button
                           key={template.id}
-                          onClick={() => {
-                            if (template.category === 'flex' && template.flexContent?.contents) {
-                              onSelectFlex(template.flexContent.contents, template.name)
-                            } else if (template.category === 'image' && template.mediaUrl) {
-                              onSelect(template.mediaUrl)
-                            } else if (template.content) {
-                              onSelect(template.content)
-                            }
-                            onOpenChange(false)
-                          }}
+                          onClick={() => setPreviewFlex(template)}
                           className="w-full text-left rounded-lg border p-3 hover:bg-muted/50 transition"
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
-                              <div className="font-medium truncate">{template.name}</div>
+                              <div className="font-medium break-words whitespace-normal leading-snug">
+                                {template.name}
+                              </div>
                               {template.description && (
-                                <p className="text-xs text-muted-foreground mt-0.5 truncate">{template.description}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5 break-words whitespace-normal line-clamp-2">
+                                  {template.description}
+                                </p>
                               )}
                             </div>
                             <Badge variant="outline" className="text-xs shrink-0 capitalize">
@@ -509,5 +530,80 @@ export function TemplatePickerModal({
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Flex / Image preview panel shown before sending
+// ────────────────────────────────────────────────────────────────────────────
+function FlexPreviewPanel({
+  template,
+  onBack,
+  onConfirm,
+}: {
+  template: BroadcastTemplate
+  onBack: () => void
+  onConfirm: () => void
+}) {
+  const isFlex = template.category === 'flex' && template.flexContent?.contents
+  const isImage = template.category === 'image' && template.mediaUrl
+
+  return (
+    <div className="flex flex-col gap-3 min-h-0">
+      <div className="rounded-lg border p-3 bg-muted/30">
+        <div className="flex items-start gap-2">
+          <Badge variant="outline" className="text-xs shrink-0 capitalize mt-0.5">
+            {template.category === 'flex'
+              ? 'Flex'
+              : template.category === 'image'
+              ? 'รูป'
+              : template.category}
+          </Badge>
+          <div className="flex-1 min-w-0">
+            <div className="font-medium break-words whitespace-normal leading-snug">
+              {template.name}
+            </div>
+            {template.description && (
+              <p className="text-xs text-muted-foreground mt-0.5 break-words whitespace-normal">
+                {template.description}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <ScrollArea className="flex-1 max-h-[55vh] pr-2">
+        <div className="flex justify-center py-2">
+          {isFlex ? (
+            <FlexPreview flex={template.flexContent as any} />
+          ) : isImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={template.mediaUrl}
+              alt={template.name}
+              className="max-w-full max-h-[50vh] rounded-lg border"
+            />
+          ) : template.content ? (
+            <div className="w-full rounded-lg border p-3 bg-background">
+              <p className="text-sm whitespace-pre-wrap break-words">
+                {template.content}
+              </p>
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">ไม่มีตัวอย่างที่แสดงได้</div>
+          )}
+        </div>
+      </ScrollArea>
+
+      <div className="flex gap-2 pt-1 border-t">
+        <Button variant="outline" onClick={onBack} className="flex-1">
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          ย้อนกลับ
+        </Button>
+        <Button onClick={onConfirm} className="flex-1">
+          ส่งเทมเพลตนี้
+        </Button>
+      </div>
+    </div>
   )
 }
