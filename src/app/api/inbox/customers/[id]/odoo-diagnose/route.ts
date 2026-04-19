@@ -194,17 +194,37 @@ export async function GET(
     )
 
     // --- 4) Build link status -------------------------------------------------
+    // `MEMxxxxxx` is a legacy placeholder code — not a real Odoo partner_code.
+    // Real Odoo partner codes use `PCxxxxx`. Treat MEM as "has-but-not-real".
+    const isPlaceholderMemberCode = (code: string | null | undefined): boolean =>
+      !!code && /^MEM\d+$/i.test(code.trim())
+
     const userMemberId = user.memberId && user.memberId.trim() ? user.memberId.trim() : null
-    // Effective code: users.member_id OR odoo_line_users.odoo_customer_code
-    const effectiveMemberCode = userMemberId || linkRow?.odoo_customer_code || null
+    const linkCustomerCode = linkRow?.odoo_customer_code?.trim() || null
+    const userMemberIdIsPlaceholder = isPlaceholderMemberCode(userMemberId)
+    const linkCodeIsReal = !!linkCustomerCode && !isPlaceholderMemberCode(linkCustomerCode)
+    const userMemberIdIsReal = !!userMemberId && !userMemberIdIsPlaceholder
+
+    // Prefer real Odoo code (PC*) over placeholder (MEM*). Fall back to anything available.
+    const effectiveMemberCode =
+      (linkCodeIsReal ? linkCustomerCode : null) ||
+      (userMemberIdIsReal ? userMemberId : null) ||
+      linkCustomerCode ||
+      userMemberId ||
+      null
 
     const hasLineUserId = Boolean(user.lineUserId)
     const hasMemberId = Boolean(effectiveMemberCode)
     const hasPhone = Boolean(user.phone && user.phone.trim())
     const hasOdooLink = Boolean(linkRow)
     const hasOdooPartner = Boolean(partnerId && partnerId > 0)
-    // users.member_id field is empty but link already has customer_code — data inconsistency
-    const memberIdOutOfSync = !userMemberId && Boolean(linkRow?.odoo_customer_code)
+
+    // users.member_id is out of sync with Odoo when:
+    //  a) link has a real code but users.member_id is empty, OR
+    //  b) users.member_id is a MEM placeholder but link has a real PC code
+    const memberIdOutOfSync =
+      linkCodeIsReal &&
+      (!userMemberId || userMemberIdIsPlaceholder || userMemberId !== linkCustomerCode)
 
     const overall: LinkStatus['overall'] = hasOdooPartner
       ? 'linked'
@@ -263,19 +283,34 @@ export async function GET(
           'กรุณาขอเลขสมาชิกจากลูกค้าหรือระบบหลังบ้าน แล้วกรอกในช่อง “เลขสมาชิก” ของโปรไฟล์',
       })
     } else if (memberIdOutOfSync) {
-      // customer_code ในแถวเชื่อมมีแล้ว แต่ช่อง users.member_id ว่าง — ข้อมูลไม่ sync กัน
-      findings.push({
-        level: 'warning',
-        code: 'member_id_not_synced',
-        title: 'เลขสมาชิกยังไม่ sync มาที่โปรไฟล์ LINE',
-        detail: `ตาราง odoo_line_users มี customer_code "${linkRow!.odoo_customer_code}" แต่ช่อง “เลขสมาชิก” ของโปรไฟล์ว่าง — workflow ที่อ่านจาก users.member_id โดยตรงอาจหาไม่เจอ`,
-      })
-      actions.push({
-        label: `sync ${linkRow!.odoo_customer_code} ลงช่องเลขสมาชิก`,
-        description:
-          'ระบบจะเขียน customer_code จาก odoo_line_users ลงใน users.member_id ให้อัตโนมัติ',
-        fixCode: 'sync_member_id_from_link',
-      })
+      const code = linkCustomerCode!
+      if (userMemberIdIsPlaceholder) {
+        // MEM-prefixed placeholder while Odoo already has a real PC code
+        findings.push({
+          level: 'warning',
+          code: 'member_id_is_placeholder',
+          title: `โปรไฟล์ยังใช้เลขชั่วคราว ${userMemberId}`,
+          detail: `"${userMemberId}" เป็น placeholder เก่าจากระบบเดิม — Odoo จริง ๆ ใช้ ${code} ควรเขียนทับให้ตรงกัน`,
+        })
+        actions.push({
+          label: `แทน ${userMemberId} ด้วย ${code}`,
+          description: `เขียนทับ users.member_id จาก "${userMemberId}" (placeholder) เป็น "${code}" จาก Odoo`,
+          fixCode: 'sync_member_id_from_link',
+        })
+      } else {
+        // users.member_id empty but link row already has a real code
+        findings.push({
+          level: 'warning',
+          code: 'member_id_not_synced',
+          title: 'เลขสมาชิกยังไม่ sync มาที่โปรไฟล์ LINE',
+          detail: `ตาราง odoo_line_users มี customer_code "${code}" แต่ช่อง “เลขสมาชิก” ของโปรไฟล์ว่าง — workflow ที่อ่านจาก users.member_id โดยตรงอาจหาไม่เจอ`,
+        })
+        actions.push({
+          label: `sync ${code} ลงช่องเลขสมาชิก`,
+          description: 'เขียน customer_code จาก odoo_line_users ลงใน users.member_id ให้อัตโนมัติ',
+          fixCode: 'sync_member_id_from_link',
+        })
+      }
     } else {
       findings.push({
         level: 'ok',
@@ -393,7 +428,18 @@ export async function GET(
     let aiDiagnosis: string | null = null
     let aiError: string | null = null
 
-    if (includeAi) {
+    // Skip AI call entirely when everything is green — no point burning tokens
+    // for "ไม่มีปัญหาหลัก ไม่จำเป็นต้องแก้"
+    const hasRealIssue = findings.some(
+      (f) => f.level === 'error' || f.level === 'warning'
+    )
+
+    if (includeAi && !hasRealIssue) {
+      aiDiagnosis = null
+      aiError = 'no_issues'
+    }
+
+    if (includeAi && hasRealIssue) {
       try {
         const customerLabel =
           user.custom_display_name ||

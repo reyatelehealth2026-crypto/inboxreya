@@ -262,14 +262,20 @@ export function OdooLinkBadge({
   const label = overallLabel(data.linkStatus.overall)
   const Icon =
     data.linkStatus.overall === 'linked' ? Link2 : Link2Off
+  // Show partner code inline when linked — makes the badge instantly informative
+  const partnerCode = data.linkStatus.partnerCode
+  const hasRealIssue = data.findings.some(
+    (f) => f.level === 'error' || f.level === 'warning'
+  )
 
+  // Only fetch AI when there's actually a real issue to diagnose
   const handleClick = () => {
     if (onClick) {
       onClick()
       return
     }
     setIsDialogOpen(true)
-    if (!aiMutation.data && !aiMutation.isPending) {
+    if (hasRealIssue && !aiMutation.data && !aiMutation.isPending) {
       aiMutation.mutate()
     }
   }
@@ -280,18 +286,27 @@ export function OdooLinkBadge({
         type="button"
         onClick={handleClick}
         className={cn(
-          'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold cursor-pointer transition-transform hover:scale-[1.03]',
+          'inline-flex items-center gap-1 rounded-full text-[11px] font-bold cursor-pointer',
+          'px-2.5 py-1 leading-none shadow-sm',
+          'transition-all hover:scale-[1.04] hover:shadow',
           data.linkStatus.overall === 'linked'
-            ? 'bg-emerald-400/90 text-white ring-1 ring-emerald-200/60'
+            ? 'bg-emerald-500 text-white ring-1 ring-emerald-300'
             : data.linkStatus.overall === 'partial'
-              ? 'bg-amber-400/90 text-white ring-1 ring-amber-200/60'
-              : 'bg-red-500/90 text-white ring-1 ring-red-200/60 animate-pulse',
+              ? 'bg-amber-500 text-white ring-1 ring-amber-300'
+              : 'bg-red-500 text-white ring-2 ring-red-200 animate-pulse',
           className
         )}
-        title={label.text}
+        title={
+          data.linkStatus.overall === 'linked' && partnerCode
+            ? `${label.text} · ${partnerCode}`
+            : label.text
+        }
       >
-        <Icon className="h-2.5 w-2.5" />
-        {label.short}
+        <Icon className="h-3 w-3" />
+        <span>{label.short}</span>
+        {data.linkStatus.overall === 'linked' && partnerCode && (
+          <span className="opacity-80 font-semibold">· {partnerCode}</span>
+        )}
       </button>
 
       {/* Internal diagnose dialog (only used when no onClick override) */}
@@ -328,9 +343,9 @@ export function OdooLinkStatusCard({ userId }: { userId: string }) {
     mutationFn: () => fetchDiagnose(userId, true),
   })
 
-  const handleOpenDiagnose = () => {
+  const handleOpenDiagnose = (fetchAi: boolean) => {
     setIsDialogOpen(true)
-    if (!aiMutation.data && !aiMutation.isPending) {
+    if (fetchAi && !aiMutation.data && !aiMutation.isPending) {
       aiMutation.mutate()
     }
   }
@@ -348,6 +363,10 @@ export function OdooLinkStatusCard({ userId }: { userId: string }) {
   const label = overallLabel(data.linkStatus.overall)
   const { linkStatus, findings } = data
   const errorsExist = hasErrors(findings)
+  // Any warning or error counts as an "issue" — ok/info findings do not
+  const hasAnyIssue = findings.some(
+    (f) => f.level === 'error' || f.level === 'warning'
+  )
 
   return (
     <>
@@ -407,20 +426,36 @@ export function OdooLinkStatusCard({ userId }: { userId: string }) {
           />
         </div>
 
-        {/* AI diagnose button */}
-        <Button
-          size="sm"
-          onClick={handleOpenDiagnose}
-          className={cn(
-            'w-full h-8 text-xs font-semibold gap-1.5 cursor-pointer',
-            errorsExist
-              ? 'bg-red-600 hover:bg-red-700 text-white'
-              : 'bg-[#0C665D] hover:bg-[#0a5048] text-white'
-          )}
-        >
-          <Sparkles className="h-3.5 w-3.5" />
-          {errorsExist ? 'AI วิเคราะห์ปัญหา' : 'AI ตรวจเช็กเชิงลึก'}
-        </Button>
+        {/* Diagnose button — only show AI button when there's something to diagnose */}
+        {hasAnyIssue ? (
+          <Button
+            size="sm"
+            onClick={() => handleOpenDiagnose(true)}
+            className={cn(
+              'w-full h-8 text-xs font-semibold gap-1.5 cursor-pointer',
+              errorsExist
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-amber-600 hover:bg-amber-700 text-white'
+            )}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {errorsExist ? 'AI วิเคราะห์ปัญหา' : 'AI ตรวจเช็กและแก้อัตโนมัติ'}
+          </Button>
+        ) : (
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              ทุกอย่างเรียบร้อย ไม่ต้องแก้
+            </div>
+            <button
+              type="button"
+              onClick={() => handleOpenDiagnose(false)}
+              className="text-[11px] text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline cursor-pointer"
+            >
+              ดูรายละเอียด
+            </button>
+          </div>
+        )}
       </div>
 
       <DiagnoseDialog
@@ -457,6 +492,9 @@ function DiagnoseDialog({
 }) {
   const label = overallLabel(data.linkStatus.overall)
   const { findings } = data
+  const hasRealIssue = findings.some(
+    (f) => f.level === 'error' || f.level === 'warning'
+  )
   const { toast } = useToast()
   const qc = useQueryClient()
   const [pendingFixCode, setPendingFixCode] = useState<AutoFixCode | null>(null)
@@ -578,35 +616,45 @@ function DiagnoseDialog({
               </div>
             </div>
 
-            {/* AI diagnosis */}
-            <div>
-              <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
-                <Sparkles className="h-3 w-3" />
-                ข้อเสนอแนะจาก AI
+            {/* AI diagnosis — only show when there are real issues to diagnose */}
+            {hasRealIssue ? (
+              <div>
+                <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+                  <Sparkles className="h-3 w-3" />
+                  ข้อเสนอแนะจาก AI
+                </div>
+                <div className="rounded-lg border border-[#0C665D]/20 bg-[#F0F9F8] p-2.5">
+                  {aiMutation.isPending ? (
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      กำลังวิเคราะห์ด้วย AI…
+                    </div>
+                  ) : aiMutation.isError ? (
+                    <div className="text-sm text-red-600">
+                      AI ไม่พร้อมใช้งาน — กรุณาลองใหม่อีกครั้ง
+                    </div>
+                  ) : aiMutation.data?.aiDiagnosis ? (
+                    <AiMarkdown text={aiMutation.data.aiDiagnosis} />
+                  ) : aiMutation.data?.aiError &&
+                    aiMutation.data.aiError !== 'no_issues' ? (
+                    <div className="text-sm text-red-600">
+                      {aiMutation.data.aiError}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-600">
+                      กดปุ่ม “วิเคราะห์” เพื่อเริ่มวินิจฉัยด้วย AI
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="rounded-lg border border-[#0C665D]/20 bg-[#F0F9F8] p-2.5">
-                {aiMutation.isPending ? (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    กำลังวิเคราะห์ด้วย AI…
-                  </div>
-                ) : aiMutation.isError ? (
-                  <div className="text-sm text-red-600">
-                    AI ไม่พร้อมใช้งาน — กรุณาลองใหม่อีกครั้ง
-                  </div>
-                ) : aiMutation.data?.aiDiagnosis ? (
-                  <AiMarkdown text={aiMutation.data.aiDiagnosis} />
-                ) : aiMutation.data?.aiError ? (
-                  <div className="text-sm text-red-600">
-                    {aiMutation.data.aiError}
-                  </div>
-                ) : (
-                  <div className="text-sm text-gray-600">
-                    กดปุ่ม “วิเคราะห์” เพื่อเริ่มวินิจฉัยด้วย AI
-                  </div>
-                )}
+            ) : (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 flex items-center gap-2 text-sm text-emerald-800">
+                <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                <span>
+                  ไม่พบปัญหาในการเชื่อมกับ Odoo — ไม่จำเป็นต้องใช้ AI วิเคราะห์
+                </span>
               </div>
-            </div>
+            )}
 
             {/* Suggested actions */}
             {data.suggestedActions.length > 0 && (
@@ -674,25 +722,27 @@ function DiagnoseDialog({
         </ScrollArea>
 
         <DialogFooter className="gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => aiMutation.mutate()}
-            disabled={aiMutation.isPending}
-            className="cursor-pointer"
-          >
-            {aiMutation.isPending ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                กำลังวิเคราะห์
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-3.5 w-3.5 mr-1" />
-                วิเคราะห์ใหม่
-              </>
-            )}
-          </Button>
+          {hasRealIssue && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => aiMutation.mutate()}
+              disabled={aiMutation.isPending}
+              className="cursor-pointer"
+            >
+              {aiMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                  กำลังวิเคราะห์
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-3.5 w-3.5 mr-1" />
+                  วิเคราะห์ใหม่
+                </>
+              )}
+            </Button>
+          )}
           <Button
             size="sm"
             onClick={() => onOpenChange(false)}
