@@ -48,6 +48,7 @@ import type { LineUser, UserTag, CustomerNote, AdminUser } from '@/types'
 
 import { LineInfoSection } from './LineInfoSection'
 import { OdooDashboardPanel } from './OdooDashboardPanel'
+import { OdooLinkBadge, OdooLinkStatusCard } from './OdooLinkStatusCard'
 
 function InfoRow({ icon: Icon, label, value }: { icon: any; label: string; value?: string | null }) {
   if (!value) return null
@@ -661,6 +662,7 @@ export function CustomerProfile() {
   const updateProfile = useUpdateCustomerProfile()
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const [activeTab, setActiveTab] = useState<'crm' | 'odoo'>('crm')
   const [isEditingContact, setIsEditingContact] = useState(false)
   const [isAddPointsOpen, setIsAddPointsOpen] = useState(false)
   const [orderAmount, setOrderAmount] = useState('')
@@ -829,6 +831,11 @@ export function CustomerProfile() {
                 <Award className="h-2 w-2 mr-0.5" />
                 {tierLabel}
               </Badge>
+              {/* Prominent Odoo link status — opens Odoo tab on click */}
+              <OdooLinkBadge
+                userId={user.id}
+                onClick={() => setActiveTab('odoo')}
+              />
               {/* Order Days inline badges */}
               {(user.orderDays || []).length > 0 && (
                 <div className="flex gap-0.5">
@@ -870,7 +877,11 @@ export function CustomerProfile() {
       </div>
 
       {/* Main 2-Tab Navigation */}
-      <Tabs defaultValue="crm" className="flex-1 flex flex-col min-h-0">
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as 'crm' | 'odoo')}
+        className="flex-1 flex flex-col min-h-0"
+      >
         <TabsList className="flex-shrink-0 w-full rounded-none border-b bg-white h-12 p-1 gap-1">
           <TabsTrigger
             value="crm"
@@ -1237,12 +1248,20 @@ export function CustomerProfile() {
 
         {/* Tab 2: Odoo Orders & Slips */}
         <TabsContent value="odoo" className="flex-1 m-0 overflow-hidden">
-          <OdooDashboardPanel
-            partnerId={odooPartnerData?.partnerId}
-            customerRef={user.memberId || undefined}
-            lineUserId={user.lineUserId || undefined}
-            userId={user.id}
-          />
+          <div className="flex flex-col h-full">
+            {/* Prominent link-status card with AI diagnose */}
+            <div className="flex-shrink-0 p-2 bg-gray-50/60 border-b border-gray-100">
+              <OdooLinkStatusCard userId={user.id} />
+            </div>
+            <div className="flex-1 min-h-0">
+              <OdooDashboardPanel
+                partnerId={odooPartnerData?.partnerId}
+                customerRef={user.memberId || undefined}
+                lineUserId={user.lineUserId || undefined}
+                userId={user.id}
+              />
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 

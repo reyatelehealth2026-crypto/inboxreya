@@ -126,21 +126,43 @@ export async function pushLineMessage(
       }
     }
 
-    const response = await fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify(requestBody),
-    })
+    const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push'
+    const LINE_TIMEOUT_MS = 30000
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      console.error('LINE Push Message error:', response.status, errorData)
+    let response: Response | null = null
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        response = await fetch(LINE_PUSH_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify(requestBody),
+          signal: AbortSignal.timeout(LINE_TIMEOUT_MS),
+        })
+        break
+      } catch (fetchErr: any) {
+        const isTimeout =
+          fetchErr?.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' ||
+          fetchErr?.name === 'TimeoutError' ||
+          String(fetchErr?.message).includes('timeout')
+        if (isTimeout && attempt < 2) {
+          console.warn(`[LINE] Push timeout on attempt ${attempt}, retrying…`)
+          continue
+        }
+        throw fetchErr
+      }
+    }
+
+    if (!response || !response.ok) {
+      const errorData = response ? await response.json().catch(() => ({})) : {}
+      console.error('LINE Push Message error:', response?.status, errorData)
       return {
         success: false,
-        error: `LINE API error: ${response.status} - ${errorData.message || response.statusText}`,
+        error: response
+          ? `LINE API error: ${response.status} - ${(errorData as any).message || response.statusText}`
+          : 'LINE API: no response received',
       }
     }
 

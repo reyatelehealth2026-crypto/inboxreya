@@ -69,13 +69,12 @@ export async function GET(request: NextRequest) {
         const CUTOFF_STR = '2025-03-24'
         if (bdo) {
           const rawDate = bdo.doc_date ?? bdo.bdo_date ?? null
-          if (!rawDate) {
-            throw new Error('BDO_FILTERED: BDO ไม่มีวันที่ ไม่แสดงในระบบ')
-          }
-          // Normalize to YYYY-MM-DD for safe timezone-agnostic comparison
-          const dateStr = String(rawDate).slice(0, 10)
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || dateStr < CUTOFF_STR) {
-            throw new Error('BDO_FILTERED: ข้อมูลก่อน 24 มีนาคม 2568 ถูกปิดแล้ว')
+          if (rawDate) {
+            // Normalize to YYYY-MM-DD for safe timezone-agnostic comparison
+            const dateStr = String(rawDate).slice(0, 10)
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr) && dateStr < CUTOFF_STR) {
+              throw new Error('BDO_FILTERED: ข้อมูลก่อน 24 มีนาคม 2568 ถูกปิดแล้ว')
+            }
           }
           const state = String(bdo.state ?? bdo.payment_state ?? '').toLowerCase()
           if (state === 'paid' || state === 'in_payment' || state === 'reversed' || state === 'cancelled') {

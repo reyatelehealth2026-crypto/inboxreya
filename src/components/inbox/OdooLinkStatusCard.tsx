@@ -1,0 +1,619 @@
+"use client"
+
+import { useState } from 'react'
+import { useQuery, useMutation } from '@tanstack/react-query'
+import {
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Link2,
+  Link2Off,
+  Sparkles,
+  Loader2,
+  ShieldAlert,
+  ShieldCheck,
+  Hash,
+  Phone,
+} from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
+
+type FindingLevel = 'ok' | 'warning' | 'error'
+
+interface Finding {
+  level: FindingLevel
+  code: string
+  title: string
+  detail?: string
+}
+
+interface SuggestedAction {
+  label: string
+  description: string
+}
+
+interface LinkStatus {
+  overall: 'linked' | 'partial' | 'unlinked'
+  hasLineUserId: boolean
+  hasMemberId: boolean
+  hasPhone: boolean
+  hasOdooLink: boolean
+  hasOdooPartner: boolean
+  partnerId: number | null
+  partnerName: string | null
+  partnerCode: string | null
+  linkedVia: string | null
+  linkedAt: string | null
+}
+
+interface WebhookSummary {
+  total: number
+  success: number
+  failed: number
+  retry: number
+  dead_letter: number
+  last_event_at: string | null
+}
+
+interface DiagnoseResponse {
+  success: boolean
+  data: {
+    userId: number
+    customer: {
+      displayName: string | null
+      lineUserId: string
+      memberId: string | null
+      phone: string | null
+    }
+    linkStatus: LinkStatus
+    webhookSummary: WebhookSummary | null
+    findings: Finding[]
+    suggestedActions: SuggestedAction[]
+    aiDiagnosis: string | null
+    aiError: string | null
+    generatedAt: string
+  }
+}
+
+async function fetchDiagnose(
+  userId: string,
+  withAi: boolean
+): Promise<DiagnoseResponse['data']> {
+  const res = await fetch(
+    `/api/inbox/customers/${userId}/odoo-diagnose?ai=${withAi ? '1' : '0'}`,
+    { cache: 'no-store' }
+  )
+  if (!res.ok) throw new Error('Failed to load diagnose')
+  const json = (await res.json()) as DiagnoseResponse
+  if (!json.success) throw new Error('Diagnose returned error')
+  return json.data
+}
+
+// ----------------------------- helpers ---------------------------------------
+
+function overallLabel(s: LinkStatus['overall']) {
+  switch (s) {
+    case 'linked':
+      return {
+        text: 'เชื่อม Odoo แล้ว',
+        short: 'เชื่อมแล้ว',
+        color: 'bg-emerald-500',
+        ring: 'ring-emerald-200',
+        bg: 'bg-emerald-50',
+        border: 'border-emerald-200',
+        textColor: 'text-emerald-700',
+        Icon: ShieldCheck,
+      }
+    case 'partial':
+      return {
+        text: 'เชื่อมไม่สมบูรณ์',
+        short: 'บางส่วน',
+        color: 'bg-amber-500',
+        ring: 'ring-amber-200',
+        bg: 'bg-amber-50',
+        border: 'border-amber-200',
+        textColor: 'text-amber-700',
+        Icon: AlertTriangle,
+      }
+    default:
+      return {
+        text: 'ยังไม่เชื่อมกับ Odoo',
+        short: 'ยังไม่เชื่อม',
+        color: 'bg-red-500',
+        ring: 'ring-red-200',
+        bg: 'bg-red-50',
+        border: 'border-red-200',
+        textColor: 'text-red-700',
+        Icon: ShieldAlert,
+      }
+  }
+}
+
+function findingIcon(level: FindingLevel) {
+  if (level === 'ok') return <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+  if (level === 'warning')
+    return <AlertTriangle className="h-4 w-4 text-amber-600" />
+  return <XCircle className="h-4 w-4 text-red-600" />
+}
+
+function hasErrors(findings: Finding[]): boolean {
+  return findings.some((f) => f.level === 'error' || f.level === 'warning')
+}
+
+// Small markdown-ish renderer for AI bullet output (no external lib needed)
+function AiMarkdown({ text }: { text: string }) {
+  const lines = text.split('\n').filter((l) => l.trim().length > 0)
+  return (
+    <div className="space-y-1.5 text-sm text-gray-700 leading-relaxed">
+      {lines.map((raw, idx) => {
+        const line = raw.trim()
+        const isBullet = /^[-*]\s+/.test(line)
+        const body = isBullet ? line.replace(/^[-*]\s+/, '') : line
+        // bold: **text**
+        const parts = body.split(/(\*\*[^*]+\*\*)/g)
+        return (
+          <div key={idx} className={cn(isBullet && 'pl-4 relative')}>
+            {isBullet && (
+              <span className="absolute left-0 top-[9px] h-1.5 w-1.5 rounded-full bg-[#0C665D]" />
+            )}
+            {parts.map((p, i) =>
+              p.startsWith('**') && p.endsWith('**') ? (
+                <strong key={i} className="font-semibold text-gray-900">
+                  {p.slice(2, -2)}
+                </strong>
+              ) : (
+                <span key={i}>{p}</span>
+              )
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ----------------------------- Compact badge ---------------------------------
+
+/**
+ * Small inline badge showing Odoo-link status.
+ * If `onClick` is provided, it is invoked (e.g. to switch to the Odoo tab).
+ * Otherwise clicking the badge opens an internal diagnose dialog directly.
+ */
+export function OdooLinkBadge({
+  userId,
+  className,
+  onClick,
+}: {
+  userId: string
+  className?: string
+  onClick?: () => void
+}) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['odoo-link-status', userId],
+    queryFn: () => fetchDiagnose(userId, false),
+    enabled: !!userId,
+    staleTime: 60 * 1000,
+  })
+
+  const aiMutation = useMutation({
+    mutationFn: () => fetchDiagnose(userId, true),
+  })
+
+  if (isLoading || !data) {
+    return (
+      <Badge
+        className={cn(
+          'text-[10px] font-semibold px-2 py-0.5 h-auto gap-1',
+          'bg-white/20 text-white border border-white/30',
+          className
+        )}
+      >
+        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+        กำลังตรวจ Odoo…
+      </Badge>
+    )
+  }
+
+  const label = overallLabel(data.linkStatus.overall)
+  const Icon =
+    data.linkStatus.overall === 'linked' ? Link2 : Link2Off
+
+  const handleClick = () => {
+    if (onClick) {
+      onClick()
+      return
+    }
+    setIsDialogOpen(true)
+    if (!aiMutation.data && !aiMutation.isPending) {
+      aiMutation.mutate()
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={handleClick}
+        className={cn(
+          'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold cursor-pointer transition-transform hover:scale-[1.03]',
+          data.linkStatus.overall === 'linked'
+            ? 'bg-emerald-400/90 text-white ring-1 ring-emerald-200/60'
+            : data.linkStatus.overall === 'partial'
+              ? 'bg-amber-400/90 text-white ring-1 ring-amber-200/60'
+              : 'bg-red-500/90 text-white ring-1 ring-red-200/60 animate-pulse',
+          className
+        )}
+        title={label.text}
+      >
+        <Icon className="h-2.5 w-2.5" />
+        {label.short}
+      </button>
+
+      {/* Internal diagnose dialog (only used when no onClick override) */}
+      {!onClick && (
+        <DiagnoseDialog
+          open={isDialogOpen}
+          onOpenChange={setIsDialogOpen}
+          data={data}
+          aiMutation={aiMutation}
+        />
+      )}
+    </>
+  )
+}
+
+// ----------------------------- Full card -------------------------------------
+
+/**
+ * Full link-status card. Shown at top of the Odoo tab.
+ * Includes quick checklist and "AI วิเคราะห์ปัญหา" button.
+ */
+export function OdooLinkStatusCard({ userId }: { userId: string }) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['odoo-link-status', userId],
+    queryFn: () => fetchDiagnose(userId, false),
+    enabled: !!userId,
+    staleTime: 60 * 1000,
+  })
+
+  const aiMutation = useMutation({
+    mutationFn: () => fetchDiagnose(userId, true),
+  })
+
+  const handleOpenDiagnose = () => {
+    setIsDialogOpen(true)
+    if (!aiMutation.data && !aiMutation.isPending) {
+      aiMutation.mutate()
+    }
+  }
+
+  if (isLoading || !data) {
+    return (
+      <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+        <Skeleton className="h-6 w-40 mb-2" />
+        <Skeleton className="h-4 w-full mb-1" />
+        <Skeleton className="h-4 w-4/5" />
+      </div>
+    )
+  }
+
+  const label = overallLabel(data.linkStatus.overall)
+  const { linkStatus, findings } = data
+  const errorsExist = hasErrors(findings)
+
+  return (
+    <>
+      <div
+        className={cn(
+          'rounded-xl border-2 p-3 shadow-sm',
+          label.bg,
+          label.border
+        )}
+      >
+        {/* Header: big status */}
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div
+              className={cn(
+                'h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0 text-white shadow-sm',
+                label.color
+              )}
+            >
+              <label.Icon className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <div
+                className={cn(
+                  'text-sm font-extrabold leading-tight',
+                  label.textColor
+                )}
+              >
+                {label.text}
+              </div>
+              <div className="text-[10px] text-gray-500">
+                {linkStatus.hasOdooPartner
+                  ? `Partner #${linkStatus.partnerId}${linkStatus.partnerCode ? ` · ${linkStatus.partnerCode}` : ''}`
+                  : 'ส่งแจ้งเตือน BDO / ส่งยอดไม่ได้จนกว่าจะเชื่อม'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick check chips */}
+        <div className="flex flex-wrap gap-1 mb-2">
+          <CheckChip
+            ok={linkStatus.hasLineUserId}
+            label="LINE"
+            Icon={Hash}
+          />
+          <CheckChip
+            ok={linkStatus.hasMemberId}
+            label="Member ID"
+            Icon={Hash}
+          />
+          <CheckChip ok={linkStatus.hasPhone} label="เบอร์" Icon={Phone} />
+          <CheckChip
+            ok={linkStatus.hasOdooPartner}
+            label="Partner"
+            Icon={Link2}
+          />
+        </div>
+
+        {/* AI diagnose button */}
+        <Button
+          size="sm"
+          onClick={handleOpenDiagnose}
+          className={cn(
+            'w-full h-8 text-xs font-semibold gap-1.5 cursor-pointer',
+            errorsExist
+              ? 'bg-red-600 hover:bg-red-700 text-white'
+              : 'bg-[#0C665D] hover:bg-[#0a5048] text-white'
+          )}
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          {errorsExist ? 'AI วิเคราะห์ปัญหา' : 'AI ตรวจเช็กเชิงลึก'}
+        </Button>
+      </div>
+
+      <DiagnoseDialog
+        open={isDialogOpen}
+        onOpenChange={(v) => {
+          setIsDialogOpen(v)
+          if (!v) refetch()
+        }}
+        data={data}
+        aiMutation={aiMutation}
+      />
+    </>
+  )
+}
+
+// ----------------------------- Shared Dialog ---------------------------------
+
+type DiagnoseData = DiagnoseResponse['data']
+type AiMutation = ReturnType<typeof useMutation<DiagnoseData, Error, void>>
+
+function DiagnoseDialog({
+  open,
+  onOpenChange,
+  data,
+  aiMutation,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  data: DiagnoseData
+  aiMutation: AiMutation
+}) {
+  const label = overallLabel(data.linkStatus.overall)
+  const { findings } = data
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-[#0C665D]" />
+            AI วินิจฉัยปัญหา Odoo Linkage
+          </DialogTitle>
+        </DialogHeader>
+
+        <ScrollArea className="max-h-[60vh] pr-2">
+          <div className="space-y-3">
+            {/* Summary banner */}
+            <div
+              className={cn(
+                'rounded-lg border p-2.5 flex items-start gap-2',
+                label.bg,
+                label.border
+              )}
+            >
+              <label.Icon
+                className={cn('h-4 w-4 flex-shrink-0 mt-0.5', label.textColor)}
+              />
+              <div className="text-sm">
+                <div className={cn('font-bold', label.textColor)}>
+                  {label.text}
+                </div>
+                <div className="text-xs text-gray-600">
+                  {data.customer.displayName || data.customer.lineUserId}
+                  {data.customer.memberId ? ` · ${data.customer.memberId}` : ''}
+                </div>
+              </div>
+            </div>
+
+            {/* Findings list */}
+            <div>
+              <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                รายการตรวจ ({findings.length})
+              </div>
+              <div className="space-y-1">
+                {findings.map((f, idx) => (
+                  <div
+                    key={`${f.code}-${idx}`}
+                    className="flex items-start gap-2 text-xs bg-white border border-gray-100 rounded-md px-2 py-1.5"
+                  >
+                    <div className="flex-shrink-0 mt-0.5">
+                      {findingIcon(f.level)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className={cn(
+                          'font-semibold',
+                          f.level === 'error'
+                            ? 'text-red-700'
+                            : f.level === 'warning'
+                              ? 'text-amber-700'
+                              : 'text-emerald-700'
+                        )}
+                      >
+                        {f.title}
+                      </div>
+                      {f.detail && (
+                        <div className="text-gray-600 break-words">
+                          {f.detail}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* AI diagnosis */}
+            <div>
+              <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+                <Sparkles className="h-3 w-3" />
+                ข้อเสนอแนะจาก AI
+              </div>
+              <div className="rounded-lg border border-[#0C665D]/20 bg-[#F0F9F8] p-2.5">
+                {aiMutation.isPending ? (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    กำลังวิเคราะห์ด้วย AI…
+                  </div>
+                ) : aiMutation.isError ? (
+                  <div className="text-sm text-red-600">
+                    AI ไม่พร้อมใช้งาน — กรุณาลองใหม่อีกครั้ง
+                  </div>
+                ) : aiMutation.data?.aiDiagnosis ? (
+                  <AiMarkdown text={aiMutation.data.aiDiagnosis} />
+                ) : aiMutation.data?.aiError ? (
+                  <div className="text-sm text-red-600">
+                    {aiMutation.data.aiError}
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-600">
+                    กดปุ่ม “วิเคราะห์” เพื่อเริ่มวินิจฉัยด้วย AI
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Suggested actions */}
+            {data.suggestedActions.length > 0 && (
+              <div>
+                <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  ขั้นตอนแนะนำ
+                </div>
+                <div className="space-y-1">
+                  {data.suggestedActions.map((a, idx) => (
+                    <div
+                      key={idx}
+                      className="text-xs bg-white border border-gray-100 rounded-md px-2 py-1.5"
+                    >
+                      <div className="font-semibold text-gray-900">
+                        {a.label}
+                      </div>
+                      <div className="text-gray-600">{a.description}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Footer meta */}
+            <div className="text-[10px] text-gray-400 pt-1">
+              อัปเดตเมื่อ{' '}
+              {new Date(
+                aiMutation.data?.generatedAt || data.generatedAt
+              ).toLocaleString('th-TH')}
+            </div>
+          </div>
+        </ScrollArea>
+
+        <DialogFooter className="gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => aiMutation.mutate()}
+            disabled={aiMutation.isPending}
+            className="cursor-pointer"
+          >
+            {aiMutation.isPending ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                กำลังวิเคราะห์
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-3.5 w-3.5 mr-1" />
+                วิเคราะห์ใหม่
+              </>
+            )}
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            className="cursor-pointer"
+            style={{ background: '#0C665D' }}
+          >
+            ปิด
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function CheckChip({
+  ok,
+  label,
+  Icon,
+}: {
+  ok: boolean
+  label: string
+  Icon: React.ComponentType<{ className?: string }>
+}) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border',
+        ok
+          ? 'bg-white text-emerald-700 border-emerald-200'
+          : 'bg-white text-red-700 border-red-200'
+      )}
+    >
+      <Icon className="h-2.5 w-2.5" />
+      {label}
+      {ok ? (
+        <CheckCircle2 className="h-2.5 w-2.5" />
+      ) : (
+        <XCircle className="h-2.5 w-2.5" />
+      )}
+    </span>
+  )
+}

@@ -1,15 +1,16 @@
 "use client"
 
 import { useState } from 'react'
-import { Copy, Check, MessageCircle, Calendar, User } from 'lucide-react'
-import { Card } from '@/components/ui/card'
+import { Copy, Check, MessageCircle, Calendar } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useToast } from '@/hooks/use-toast'
 import { formatDate, getInitials } from '@/lib/utils'
+import { OdooLinkBadge } from './OdooLinkStatusCard'
 
 interface LineInfoSectionProps {
   user: {
+    id: string
     lineUserId: string
     displayName: string | null
     statusMessage?: string | null
@@ -65,10 +66,14 @@ export function LineInfoSection({ user }: LineInfoSectionProps) {
 
       {/* LINE User ID */}
       <div className="p-3 bg-gray-50 rounded-lg">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
-            LINE User ID
-          </span>
+        <div className="flex items-center justify-between mb-1 gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+              LINE User ID
+            </span>
+            {/* Odoo-link status right next to LINE User ID */}
+            <OdooLinkBadge userId={user.id} />
+          </div>
           <Button
             variant="ghost"
             size="sm"

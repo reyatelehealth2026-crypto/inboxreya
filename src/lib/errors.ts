@@ -229,8 +229,14 @@ export function logError(error: any, context?: Record<string, any>) {
     console.error('[Error]', error, context)
   }
 
-  // In production, send to monitoring service
-  if (process.env.NODE_ENV === 'production') {
+  // Server-side production: log to console only (no HTTP self-call with relative URL)
+  if (process.env.NODE_ENV === 'production' && (typeof window !== 'object' || typeof document === 'undefined')) {
+    console.error('[Server Error]', error, context)
+  }
+
+  // In production, send to monitoring service (browser only — server-side uses console.error)
+  // Double-guard: window must exist AND be the real browser global (not a Node.js polyfill)
+  if (process.env.NODE_ENV === 'production' && typeof window === 'object' && typeof document !== 'undefined') {
     try {
       fetch('/api/errors/log', {
         method: 'POST',
