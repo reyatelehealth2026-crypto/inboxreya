@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   CheckCircle2,
   XCircle,
@@ -14,7 +14,9 @@ import {
   ShieldCheck,
   Hash,
   Phone,
+  Wrench,
 } from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
 import {
   Dialog,
   DialogContent,
@@ -37,9 +39,37 @@ interface Finding {
   detail?: string
 }
 
+type AutoFixCode =
+  | 'sync_member_id_from_link'
+  | 'create_link_from_member_id'
+  | 'relink_partner'
+
 interface SuggestedAction {
   label: string
   description: string
+  fixCode?: AutoFixCode
+  destructive?: boolean
+}
+
+interface FixResult {
+  success: boolean
+  fixCode: AutoFixCode
+  applied: boolean
+  message: string
+  details?: Record<string, unknown>
+}
+
+async function applyAutoFix(userId: string, fixCode: AutoFixCode): Promise<FixResult> {
+  const res = await fetch(`/api/inbox/customers/${userId}/odoo-diagnose/fix`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fixCode }),
+  })
+  const json = (await res.json()) as FixResult & { error?: string }
+  if (!res.ok && !json?.fixCode) {
+    throw new Error(json?.error || 'Fix request failed')
+  }
+  return json
 }
 
 interface LinkStatus {
@@ -147,7 +177,10 @@ function findingIcon(level: FindingLevel) {
 }
 
 function hasErrors(findings: Finding[]): boolean {
-  return findings.some((f) => f.level === 'error' || f.level === 'warning')
+  // Only real errors flip the button to red. Warnings keep the normal theme
+  // so that a fully-linked customer with minor data-hygiene issues doesn't
+  // look like a critical alert.
+  return findings.some((f) => f.level === 'error')
 }
 
 // Small markdown-ish renderer for AI bullet output (no external lib needed)
@@ -264,6 +297,7 @@ export function OdooLinkBadge({
       {/* Internal diagnose dialog (only used when no onClick override) */}
       {!onClick && (
         <DiagnoseDialog
+          userId={userId}
           open={isDialogOpen}
           onOpenChange={setIsDialogOpen}
           data={data}
@@ -390,6 +424,7 @@ export function OdooLinkStatusCard({ userId }: { userId: string }) {
       </div>
 
       <DiagnoseDialog
+        userId={userId}
         open={isDialogOpen}
         onOpenChange={(v) => {
           setIsDialogOpen(v)
@@ -408,11 +443,13 @@ type DiagnoseData = DiagnoseResponse['data']
 type AiMutation = ReturnType<typeof useMutation<DiagnoseData, Error, void>>
 
 function DiagnoseDialog({
+  userId,
   open,
   onOpenChange,
   data,
   aiMutation,
 }: {
+  userId: string
   open: boolean
   onOpenChange: (v: boolean) => void
   data: DiagnoseData
@@ -420,8 +457,56 @@ function DiagnoseDialog({
 }) {
   const label = overallLabel(data.linkStatus.overall)
   const { findings } = data
+  const { toast } = useToast()
+  const qc = useQueryClient()
+  const [pendingFixCode, setPendingFixCode] = useState<AutoFixCode | null>(null)
+  const [confirmFix, setConfirmFix] = useState<SuggestedAction | null>(null)
+
+  const runFix = async (action: SuggestedAction) => {
+    if (!action.fixCode) return
+    setPendingFixCode(action.fixCode)
+    try {
+      const result = await applyAutoFix(userId, action.fixCode)
+      if (result.success) {
+        toast({
+          title: result.applied ? 'แก้ไขสำเร็จ' : 'ไม่ต้องแก้',
+          description: result.message,
+        })
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'แก้ไขไม่สำเร็จ',
+          description: result.message,
+        })
+      }
+      // Invalidate and refetch diagnose + partner caches so UI refreshes
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['odoo-link-status', userId] }),
+        qc.invalidateQueries({ queryKey: ['odoo-partner', userId] }),
+        qc.invalidateQueries({ queryKey: ['customer-profile', userId] }),
+      ])
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'แก้ไขไม่สำเร็จ',
+        description: err instanceof Error ? err.message : 'Unknown error',
+      })
+    } finally {
+      setPendingFixCode(null)
+      setConfirmFix(null)
+    }
+  }
+
+  const handleFixClick = (action: SuggestedAction) => {
+    if (action.destructive) {
+      setConfirmFix(action)
+    } else {
+      void runFix(action)
+    }
+  }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
@@ -530,17 +615,50 @@ function DiagnoseDialog({
                   ขั้นตอนแนะนำ
                 </div>
                 <div className="space-y-1">
-                  {data.suggestedActions.map((a, idx) => (
-                    <div
-                      key={idx}
-                      className="text-xs bg-white border border-gray-100 rounded-md px-2 py-1.5"
-                    >
-                      <div className="font-semibold text-gray-900">
-                        {a.label}
+                  {data.suggestedActions.map((a, idx) => {
+                    const isFixable = !!a.fixCode
+                    const isBusy = pendingFixCode === a.fixCode
+                    return (
+                      <div
+                        key={idx}
+                        className={cn(
+                          'text-xs rounded-md px-2 py-1.5 border',
+                          isFixable
+                            ? 'bg-[#F0F9F8] border-[#0C665D]/20'
+                            : 'bg-white border-gray-100'
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-gray-900">
+                              {a.label}
+                            </div>
+                            <div className="text-gray-600">{a.description}</div>
+                          </div>
+                          {isFixable && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleFixClick(a)}
+                              disabled={isBusy || pendingFixCode !== null}
+                              className={cn(
+                                'h-7 px-2 text-[11px] font-semibold gap-1 flex-shrink-0 cursor-pointer',
+                                a.destructive
+                                  ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                                  : 'bg-[#0C665D] hover:bg-[#0a5048] text-white'
+                              )}
+                            >
+                              {isBusy ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Wrench className="h-3 w-3" />
+                              )}
+                              {a.destructive ? 'แก้ (ต้องยืนยัน)' : 'แก้อัตโนมัติ'}
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-gray-600">{a.description}</div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -586,6 +704,64 @@ function DiagnoseDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+      {/* Confirmation modal for destructive fixes — sibling dialog, not nested */}
+      <Dialog
+        open={!!confirmFix}
+        onOpenChange={(v) => !v && setConfirmFix(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700">
+              <AlertTriangle className="h-4 w-4" />
+              ยืนยันการแก้ไขแบบ destructive
+            </DialogTitle>
+          </DialogHeader>
+          {confirmFix && (
+            <div className="space-y-2 py-2">
+              <div className="text-sm font-semibold text-gray-900">
+                {confirmFix.label}
+              </div>
+              <div className="text-sm text-gray-600">
+                {confirmFix.description}
+              </div>
+              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                การแก้นี้จะลบ/เขียนทับข้อมูลเดิม — โปรดยืนยันว่าต้องการดำเนินการ
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmFix(null)}
+              disabled={pendingFixCode !== null}
+              className="cursor-pointer"
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => confirmFix && runFix(confirmFix)}
+              disabled={pendingFixCode !== null}
+              className="cursor-pointer bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {pendingFixCode ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                  กำลังแก้
+                </>
+              ) : (
+                <>
+                  <Wrench className="h-3.5 w-3.5 mr-1" />
+                  ยืนยันและแก้
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

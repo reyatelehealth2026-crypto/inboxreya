@@ -1,0 +1,331 @@
+/**
+ * POST /api/inbox/customers/[id]/odoo-diagnose/fix
+ *
+ * One-click auto-repair for common Odoo linkage issues.
+ * Body: { fixCode: AutoFixCode }
+ *
+ * Supported fixes:
+ * - sync_member_id_from_link: copy odoo_line_users.odoo_customer_code -> users.member_id
+ * - create_link_from_member_id: lookup partner via Odoo by memberId, INSERT link row
+ * - relink_partner: delete stale link row, then create_link_from_member_id
+ *
+ * All destructive ops run inside a single transaction where possible and roll back on failure.
+ */
+
+import { NextRequest, NextResponse } from 'next/server'
+import { auth } from '@/lib/auth'
+import prisma from '@/lib/prisma'
+import { callPhpApi } from '@/lib/php-bridge'
+
+type AutoFixCode =
+  | 'sync_member_id_from_link'
+  | 'create_link_from_member_id'
+  | 'relink_partner'
+
+interface FixResult {
+  success: boolean
+  fixCode: AutoFixCode
+  applied: boolean
+  message: string
+  details?: Record<string, unknown>
+}
+
+interface OdooPartnerPayload {
+  id: number
+  name?: string
+  partner_code?: string
+}
+
+async function lookupOdooPartnerByCode(
+  memberCode: string
+): Promise<OdooPartnerPayload | null> {
+  try {
+    const res = await callPhpApi<{ data?: { partner?: OdooPartnerPayload } }>(
+      `/api/odoo-api.php?action=get_partner`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ partner_code: memberCode }),
+      }
+    )
+    const partner = (res as unknown as {
+      data?: { data?: { partner?: OdooPartnerPayload } }
+    })?.data?.data?.partner
+    return partner && partner.id ? partner : null
+  } catch (err) {
+    console.error('[odoo-diagnose/fix] Odoo lookup failed:', err)
+    return null
+  }
+}
+
+async function upsertOdooLink(
+  lineUserId: string,
+  lineAccountId: number | null,
+  partner: OdooPartnerPayload,
+  fallbackCode: string
+) {
+  const customerCode = partner.partner_code || fallbackCode
+  const partnerName = partner.name || null
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO odoo_line_users
+      (line_account_id, line_user_id, odoo_partner_id, odoo_partner_name, odoo_customer_code, linked_via, linked_at)
+     VALUES (?, ?, ?, ?, ?, 'auto_fix', NOW())
+     ON DUPLICATE KEY UPDATE
+       odoo_partner_id = VALUES(odoo_partner_id),
+       odoo_partner_name = VALUES(odoo_partner_name),
+       odoo_customer_code = VALUES(odoo_customer_code),
+       linked_via = VALUES(linked_via),
+       updated_at = NOW()`,
+    lineAccountId ?? 1,
+    lineUserId,
+    partner.id,
+    partnerName,
+    customerCode
+  )
+  return { partnerId: partner.id, partnerName, customerCode }
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await auth()
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { id } = await params
+    const userId = Number(id)
+    if (!Number.isFinite(userId)) {
+      return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 })
+    }
+
+    const body = await request.json().catch(() => ({}))
+    const fixCode = body?.fixCode as AutoFixCode | undefined
+    if (!fixCode) {
+      return NextResponse.json({ error: 'Missing fixCode' }, { status: 400 })
+    }
+
+    // Enforce account isolation for non-super-admin
+    const user = await prisma.lineUser.findFirst({
+      where: {
+        id: userId,
+        ...(session.user.role !== 'super_admin' && session.user.lineAccountId
+          ? { lineAccountId: session.user.lineAccountId }
+          : {}),
+      },
+      select: {
+        id: true,
+        lineAccountId: true,
+        lineUserId: true,
+        memberId: true,
+        phone: true,
+      },
+    })
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    // Lookup existing link row
+    type LinkRow = {
+      odoo_partner_id: number | null
+      odoo_customer_code: string | null
+      odoo_partner_name: string | null
+    }
+    let linkRow: LinkRow | null = null
+    try {
+      const rows = await prisma.$queryRawUnsafe<LinkRow[]>(
+        `SELECT odoo_partner_id, odoo_customer_code, odoo_partner_name
+         FROM odoo_line_users WHERE line_user_id = ? LIMIT 1`,
+        user.lineUserId
+      )
+      linkRow = rows[0] || null
+    } catch {
+      // Table missing -> treat as no link
+    }
+
+    // Dispatch fix
+    let result: FixResult
+
+    switch (fixCode) {
+      // ----------------------------------------------------------------------
+      case 'sync_member_id_from_link': {
+        const customerCode = linkRow?.odoo_customer_code?.trim() || null
+        if (!customerCode) {
+          result = {
+            success: false,
+            fixCode,
+            applied: false,
+            message:
+              'ไม่พบ customer_code ใน odoo_line_users — ไม่มีอะไรให้ sync',
+          }
+          break
+        }
+        if (user.memberId && user.memberId.trim() === customerCode) {
+          result = {
+            success: true,
+            fixCode,
+            applied: false,
+            message: 'users.member_id ตรงกับ customer_code อยู่แล้ว',
+            details: { memberId: customerCode },
+          }
+          break
+        }
+        await prisma.lineUser.update({
+          where: { id: user.id },
+          data: { memberId: customerCode },
+        })
+        result = {
+          success: true,
+          fixCode,
+          applied: true,
+          message: `อัปเดต users.member_id = ${customerCode} เรียบร้อย`,
+          details: {
+            before: user.memberId,
+            after: customerCode,
+          },
+        }
+        break
+      }
+
+      // ----------------------------------------------------------------------
+      case 'create_link_from_member_id': {
+        const memberCode =
+          user.memberId?.trim() || linkRow?.odoo_customer_code?.trim() || null
+        if (!memberCode) {
+          result = {
+            success: false,
+            fixCode,
+            applied: false,
+            message:
+              'ไม่มีเลขสมาชิกให้ค้นหา partner — กรุณากรอก users.member_id ก่อน',
+          }
+          break
+        }
+
+        if (linkRow?.odoo_partner_id) {
+          result = {
+            success: true,
+            fixCode,
+            applied: false,
+            message: `มี link partner_id=${linkRow.odoo_partner_id} อยู่แล้ว`,
+            details: { partnerId: linkRow.odoo_partner_id },
+          }
+          break
+        }
+
+        const partner = await lookupOdooPartnerByCode(memberCode)
+        if (!partner) {
+          result = {
+            success: false,
+            fixCode,
+            applied: false,
+            message: `ไม่พบ partner ใน Odoo ที่มี partner_code = ${memberCode} — ต้องสร้าง partner ใน Odoo ก่อน`,
+          }
+          break
+        }
+
+        const info = await upsertOdooLink(
+          user.lineUserId,
+          user.lineAccountId ?? null,
+          partner,
+          memberCode
+        )
+        // Also sync memberId if users.member_id is empty
+        if (!user.memberId || !user.memberId.trim()) {
+          await prisma.lineUser.update({
+            where: { id: user.id },
+            data: { memberId: info.customerCode },
+          })
+        }
+        result = {
+          success: true,
+          fixCode,
+          applied: true,
+          message: `เชื่อม LINE กับ Partner #${info.partnerId} (${info.customerCode}) เรียบร้อย`,
+          details: info,
+        }
+        break
+      }
+
+      // ----------------------------------------------------------------------
+      case 'relink_partner': {
+        // Delete existing row, then look up again
+        const memberCode =
+          user.memberId?.trim() || linkRow?.odoo_customer_code?.trim() || null
+        if (!memberCode) {
+          result = {
+            success: false,
+            fixCode,
+            applied: false,
+            message: 'ไม่มีเลขสมาชิกให้ค้นหา partner — กรุณากรอกก่อน',
+          }
+          break
+        }
+
+        const partner = await lookupOdooPartnerByCode(memberCode)
+        if (!partner) {
+          result = {
+            success: false,
+            fixCode,
+            applied: false,
+            message: `ไม่พบ partner ใน Odoo (${memberCode}) — ไม่รีลิงก์เพราะจะทำให้ข้อมูลหายหมด`,
+          }
+          break
+        }
+
+        // Wrap delete + insert in one transaction to avoid empty window
+        const info = await prisma.$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(
+            `DELETE FROM odoo_line_users WHERE line_user_id = ?`,
+            user.lineUserId
+          )
+          await tx.$executeRawUnsafe(
+            `INSERT INTO odoo_line_users
+              (line_account_id, line_user_id, odoo_partner_id, odoo_partner_name, odoo_customer_code, linked_via, linked_at)
+             VALUES (?, ?, ?, ?, ?, 'auto_fix_relink', NOW())`,
+            user.lineAccountId ?? 1,
+            user.lineUserId,
+            partner.id,
+            partner.name || null,
+            partner.partner_code || memberCode
+          )
+          return {
+            partnerId: partner.id,
+            partnerName: partner.name || null,
+            customerCode: partner.partner_code || memberCode,
+          }
+        })
+
+        result = {
+          success: true,
+          fixCode,
+          applied: true,
+          message: `รีลิงก์สำเร็จ → Partner #${info.partnerId} (${info.customerCode})`,
+          details: info,
+        }
+        break
+      }
+
+      // ----------------------------------------------------------------------
+      default: {
+        return NextResponse.json(
+          { success: false, error: `Unknown fixCode: ${fixCode}` },
+          { status: 400 }
+        )
+      }
+    }
+
+    return NextResponse.json(result, { status: result.success ? 200 : 422 })
+  } catch (error) {
+    console.error('[odoo-diagnose/fix] Error:', error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Internal server error',
+      },
+      { status: 500 }
+    )
+  }
+}

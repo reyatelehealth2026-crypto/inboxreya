@@ -23,9 +23,18 @@ interface Finding {
   detail?: string
 }
 
+export type AutoFixCode =
+  | 'sync_member_id_from_link'
+  | 'create_link_from_member_id'
+  | 'relink_partner'
+
 interface SuggestedAction {
   label: string
   description: string
+  /** If present, frontend shows a one-click "แก้อัตโนมัติ" button that POSTs to /odoo-diagnose/fix */
+  fixCode?: AutoFixCode
+  /** Requires confirmation (e.g. deletes existing rows) */
+  destructive?: boolean
 }
 
 interface LinkStatus {
@@ -175,16 +184,27 @@ export async function GET(
       : null
 
     const phpLinked = Boolean(c360?.linked)
-    const phpWarnings = Array.isArray(c360?.warnings)
+    const rawPhpWarnings = Array.isArray(c360?.warnings)
       ? (c360!.warnings as string[])
       : []
+    // Filter out informational notes that aren't real problems
+    const NOISY_WARNING_PREFIXES = ['invoices_fallback', 'orders_fallback']
+    const phpWarnings = rawPhpWarnings.filter(
+      (w) => !NOISY_WARNING_PREFIXES.some((n) => w.startsWith(n))
+    )
 
     // --- 4) Build link status -------------------------------------------------
+    const userMemberId = user.memberId && user.memberId.trim() ? user.memberId.trim() : null
+    // Effective code: users.member_id OR odoo_line_users.odoo_customer_code
+    const effectiveMemberCode = userMemberId || linkRow?.odoo_customer_code || null
+
     const hasLineUserId = Boolean(user.lineUserId)
-    const hasMemberId = Boolean(user.memberId && user.memberId.trim())
+    const hasMemberId = Boolean(effectiveMemberCode)
     const hasPhone = Boolean(user.phone && user.phone.trim())
     const hasOdooLink = Boolean(linkRow)
     const hasOdooPartner = Boolean(partnerId && partnerId > 0)
+    // users.member_id field is empty but link already has customer_code — data inconsistency
+    const memberIdOutOfSync = !userMemberId && Boolean(linkRow?.odoo_customer_code)
 
     const overall: LinkStatus['overall'] = hasOdooPartner
       ? 'linked'
@@ -242,12 +262,26 @@ export async function GET(
         description:
           'กรุณาขอเลขสมาชิกจากลูกค้าหรือระบบหลังบ้าน แล้วกรอกในช่อง “เลขสมาชิก” ของโปรไฟล์',
       })
+    } else if (memberIdOutOfSync) {
+      // customer_code ในแถวเชื่อมมีแล้ว แต่ช่อง users.member_id ว่าง — ข้อมูลไม่ sync กัน
+      findings.push({
+        level: 'warning',
+        code: 'member_id_not_synced',
+        title: 'เลขสมาชิกยังไม่ sync มาที่โปรไฟล์ LINE',
+        detail: `ตาราง odoo_line_users มี customer_code "${linkRow!.odoo_customer_code}" แต่ช่อง “เลขสมาชิก” ของโปรไฟล์ว่าง — workflow ที่อ่านจาก users.member_id โดยตรงอาจหาไม่เจอ`,
+      })
+      actions.push({
+        label: `sync ${linkRow!.odoo_customer_code} ลงช่องเลขสมาชิก`,
+        description:
+          'ระบบจะเขียน customer_code จาก odoo_line_users ลงใน users.member_id ให้อัตโนมัติ',
+        fixCode: 'sync_member_id_from_link',
+      })
     } else {
       findings.push({
         level: 'ok',
         code: 'has_member_id',
         title: 'มีเลขสมาชิก',
-        detail: user.memberId!,
+        detail: effectiveMemberCode!,
       })
     }
 
@@ -269,6 +303,12 @@ export async function GET(
         detail:
           'มีเลขสมาชิกแล้ว แต่ยังไม่มีแถวเชื่อม LINE↔Partner — ระบบจะลองเชื่อมอัตโนมัติเมื่อเรียก Odoo ครั้งต่อไป',
       })
+      actions.push({
+        label: `เชื่อม LINE ↔ Partner ด้วย ${effectiveMemberCode}`,
+        description:
+          'ระบบจะเรียก Odoo เพื่อหา partner ด้วย memberId แล้วบันทึกความสัมพันธ์ใน odoo_line_users ให้เลย',
+        fixCode: 'create_link_from_member_id',
+      })
     }
 
     if (hasOdooLink && !hasOdooPartner) {
@@ -281,7 +321,10 @@ export async function GET(
       })
       actions.push({
         label: 'รีลิงก์ Partner ใหม่',
-        description: 'ล้างแถวเดิมใน odoo_line_users แล้วค้นหา partner ด้วย memberId หรือเบอร์โทรอีกครั้ง',
+        description:
+          'ล้างแถวเดิมใน odoo_line_users แล้วค้นหา partner ด้วย memberId หรือเบอร์โทรอีกครั้ง (destructive)',
+        fixCode: 'relink_partner',
+        destructive: true,
       })
     }
 
@@ -364,7 +407,7 @@ export async function GET(
           )
           .join('\n')
 
-        const prompt = `คุณเป็นผู้เชี่ยวชาญด้าน ERP/LINE integration สำหรับร้านยา ช่วยวินิจฉัย\nว่าทำไมลูกค้า "${customerLabel}" ถึงมีปัญหาในการเชื่อมกับ Odoo และ/หรือ\nทำไมส่งแจ้งเตือน BDO / ส่งยอดไม่ได้ โดยใช้ข้อมูลต่อไปนี้เท่านั้น:\n\n== สรุปสถานะ ==\n- LINE User ID: ${user.lineUserId || '(ไม่มี)'}\n- Member ID: ${user.memberId || '(ไม่มี)'}\n- เบอร์โทร: ${user.phone || '(ไม่มี)'}\n- Linked in odoo_line_users: ${hasOdooLink ? 'yes' : 'no'}\n- Odoo partner_id: ${partnerId ?? '(ไม่มี)'}\n- Odoo partner_code: ${partnerCode ?? '(ไม่มี)'}\n- Odoo partner_name: ${partnerName ?? '(ไม่มี)'}\n- PHP customer_360 linked flag: ${phpLinked}\n- Webhook summary: ${webhookSummary ? `total=${webhookSummary.total}, success=${webhookSummary.success}, failed=${webhookSummary.failed}, dlq=${webhookSummary.dead_letter}, last=${webhookSummary.last_event_at || '-'}` : '(ไม่มี)'}\n- ลูกค้าถูกบล็อก: ${user.isBlocked ? 'yes' : 'no'}\n\n== รายการตรวจ ==\n${findingsText || '  (ไม่มี)'}\n\nตอบเป็นภาษาไทย แบบกระชับ ใช้ bullet Markdown เท่านั้น ไม่ต้องมี heading\nรูปแบบที่ต้องการ (ห้ามเกิน 10 บรรทัด):\n- **สาเหตุหลัก:** ...\n- **ผลกระทบ:** ...\n- **ขั้นตอนแก้ไข:** 1) ... 2) ... 3) ...\n- **วิธีป้องกันในอนาคต:** ... (ถ้ามี)`
+        const prompt = `คุณเป็นผู้เชี่ยวชาญด้าน ERP/LINE integration สำหรับร้านยา ช่วยวินิจฉัย\nว่าลูกค้า "${customerLabel}" มีปัญหาใดบ้างในการเชื่อมกับ Odoo และ/หรือ\nการส่งแจ้งเตือน BDO / ส่งยอด โดยใช้ข้อมูลต่อไปนี้เท่านั้น (ห้ามแต่งข้อเท็จจริง):\n\n== สรุปสถานะ (overall=${overall}) ==\n- LINE User ID: ${user.lineUserId || '(ไม่มี)'}\n- users.member_id (field ในตารางลูกค้า): ${userMemberId || '(ว่าง)'}\n- odoo_line_users.odoo_customer_code: ${linkRow?.odoo_customer_code || '(ไม่มี)'}\n- Effective member code ที่ระบบใช้งานได้: ${effectiveMemberCode || '(ไม่มี)'}\n- เบอร์โทร: ${user.phone || '(ไม่มี)'}\n- แถวใน odoo_line_users: ${hasOdooLink ? 'yes' : 'no'}\n- Odoo partner_id: ${partnerId ?? '(ไม่มี)'}\n- Odoo partner_name: ${partnerName ?? '(ไม่มี)'}\n- PHP customer_360 linked: ${phpLinked}\n- Webhook summary: ${webhookSummary ? `total=${webhookSummary.total}, success=${webhookSummary.success}, failed=${webhookSummary.failed}, dlq=${webhookSummary.dead_letter}, last=${webhookSummary.last_event_at || '-'}` : '(ไม่มี)'}\n- ลูกค้าถูกบล็อก: ${user.isBlocked ? 'yes' : 'no'}\n\n== รายการตรวจที่ระบบสรุปแล้ว ==\n${findingsText || '  (ไม่มี)'}\n\n== กฎสำคัญที่ต้องจำ ==\n- ถ้า overall=linked แปลว่าเชื่อม partner แล้ว → BDO/ยอด "ส่งได้" อย่าบอกว่าส่งไม่ได้\n- ถ้า userMemberId ว่างแต่ odoo_customer_code มี → เป็นปัญหาข้อมูลไม่ sync (warning) ไม่ใช่ปัญหาเชื่อม\n- ตอบตรงกับสถานะจริง ไม่ย้ำปัญหาที่ระบบแก้ไปแล้ว\n\n== รูปแบบคำตอบ (ภาษาไทย, bullet Markdown, ≤8 บรรทัด) ==\n- **สาเหตุหลัก:** ... (ถ้าไม่มีปัญหา ให้บอกว่า “ไม่มีปัญหาหลัก”)\n- **ผลกระทบ:** ... (อิงจากสถานะจริง)\n- **ขั้นตอนแก้ไข:** 1) ... 2) ... 3) ...\n- **วิธีป้องกัน:** ... (ถ้ามี)`
 
         aiDiagnosis = await generateAiText({
           parts: [{ text: prompt }],
