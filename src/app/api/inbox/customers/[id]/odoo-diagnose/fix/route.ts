@@ -34,11 +34,76 @@ interface OdooPartnerPayload {
   id: number
   name?: string
   partner_code?: string
+  source?: 'customer_projection' | 'line_users_cache' | 'odoo_api'
 }
 
+/**
+ * Look up a partner by customer code using multiple sources, in priority order:
+ *  1. `odoo_customer_projection` — local cache rebuilt from Odoo webhooks (authoritative)
+ *  2. `odoo_line_users` — any other LINE user already linked to this partner
+ *  3. Live Odoo API via PHP bridge (last resort, can be slow/flaky)
+ *
+ * Returns the first match, or null if nothing found anywhere.
+ */
 async function lookupOdooPartnerByCode(
   memberCode: string
 ): Promise<OdooPartnerPayload | null> {
+  // 1) odoo_customer_projection (local, fast, always fresh)
+  try {
+    const rows = await prisma.$queryRawUnsafe<
+      Array<{
+        odoo_partner_id: number | null
+        customer_name: string | null
+        partner_name: string | null
+        customer_ref: string | null
+      }>
+    >(
+      `SELECT odoo_partner_id, customer_name, partner_name, customer_ref
+         FROM odoo_customer_projection
+        WHERE customer_ref = ? AND odoo_partner_id IS NOT NULL
+        LIMIT 1`,
+      memberCode
+    )
+    if (rows[0]?.odoo_partner_id) {
+      return {
+        id: rows[0].odoo_partner_id,
+        name: rows[0].customer_name || rows[0].partner_name || undefined,
+        partner_code: rows[0].customer_ref || memberCode,
+        source: 'customer_projection',
+      }
+    }
+  } catch (err) {
+    console.warn('[odoo-diagnose/fix] customer_projection lookup failed:', err)
+  }
+
+  // 2) odoo_line_users — another LINE user may already be linked to this partner
+  try {
+    const rows = await prisma.$queryRawUnsafe<
+      Array<{
+        odoo_partner_id: number | null
+        odoo_partner_name: string | null
+        odoo_customer_code: string | null
+      }>
+    >(
+      `SELECT odoo_partner_id, odoo_partner_name, odoo_customer_code
+         FROM odoo_line_users
+        WHERE odoo_customer_code = ? AND odoo_partner_id IS NOT NULL
+        LIMIT 1`,
+      memberCode
+    )
+    if (rows[0]?.odoo_partner_id) {
+      return {
+        id: rows[0].odoo_partner_id,
+        name: rows[0].odoo_partner_name || undefined,
+        partner_code: rows[0].odoo_customer_code || memberCode,
+        source: 'line_users_cache',
+      }
+    }
+  } catch (err) {
+    console.warn('[odoo-diagnose/fix] odoo_line_users lookup failed:', err)
+  }
+
+  // 3) Live Odoo API (last resort)
   try {
     const res = await callPhpApi<{ data?: { partner?: OdooPartnerPayload } }>(
       `/api/odoo-api.php?action=get_partner`,
@@ -50,11 +115,14 @@ async function lookupOdooPartnerByCode(
     const partner = (res as unknown as {
       data?: { data?: { partner?: OdooPartnerPayload } }
     })?.data?.data?.partner
-    return partner && partner.id ? partner : null
+    if (partner && partner.id) {
+      return { ...partner, source: 'odoo_api' }
+    }
   } catch (err) {
-    console.error('[odoo-diagnose/fix] Odoo lookup failed:', err)
-    return null
+    console.error('[odoo-diagnose/fix] Odoo live API lookup failed:', err)
   }
+
+  return null
 }
 
 async function upsertOdooLink(
@@ -221,7 +289,10 @@ export async function POST(
             success: false,
             fixCode,
             applied: false,
-            message: `ไม่พบ partner ใน Odoo ที่มี partner_code = ${memberCode} — ต้องสร้าง partner ใน Odoo ก่อน`,
+            message:
+              `ไม่พบ partner_code = ${memberCode} ในทุกแหล่งข้อมูล ` +
+              `(odoo_customer_projection, odoo_line_users, Odoo live API) — ` +
+              `ตรวจสอบว่า partner มีอยู่จริงใน Odoo และ webhook ทำงานปกติ`,
           }
           break
         }
@@ -232,8 +303,10 @@ export async function POST(
           partner,
           memberCode
         )
-        // Also sync memberId if users.member_id is empty
-        if (!user.memberId || !user.memberId.trim()) {
+        // Also sync memberId if users.member_id is empty or is a MEM placeholder
+        const currentMemberId = user.memberId?.trim() || null
+        const isPlaceholder = currentMemberId && /^MEM\d+$/i.test(currentMemberId)
+        if (!currentMemberId || isPlaceholder) {
           await prisma.lineUser.update({
             where: { id: user.id },
             data: { memberId: info.customerCode },
@@ -243,8 +316,8 @@ export async function POST(
           success: true,
           fixCode,
           applied: true,
-          message: `เชื่อม LINE กับ Partner #${info.partnerId} (${info.customerCode}) เรียบร้อย`,
-          details: info,
+          message: `เชื่อม LINE กับ Partner #${info.partnerId} (${info.customerCode})${partner.name ? ` — ${partner.name}` : ''} เรียบร้อย [source: ${partner.source}]`,
+          details: { ...info, source: partner.source },
         }
         break
       }
@@ -270,7 +343,7 @@ export async function POST(
             success: false,
             fixCode,
             applied: false,
-            message: `ไม่พบ partner ใน Odoo (${memberCode}) — ไม่รีลิงก์เพราะจะทำให้ข้อมูลหายหมด`,
+            message: `ไม่พบ partner (${memberCode}) ในทุกแหล่งข้อมูล — ยกเลิกรีลิงก์เพื่อไม่ทำข้อมูลหาย`,
           }
           break
         }
