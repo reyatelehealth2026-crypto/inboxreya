@@ -133,10 +133,12 @@ async function upsertOdooLink(
 ) {
   const customerCode = partner.partner_code || fallbackCode
   const partnerName = partner.name || null
+  // linked_via is ENUM('phone','email','customer_code') — must use a valid value.
+  // 'customer_code' is semantically correct since we lookup by partner_code / customer_code.
   await prisma.$executeRawUnsafe(
     `INSERT INTO odoo_line_users
       (line_account_id, line_user_id, odoo_partner_id, odoo_partner_name, odoo_customer_code, linked_via, linked_at)
-     VALUES (?, ?, ?, ?, ?, 'auto_fix', NOW())
+     VALUES (?, ?, ?, ?, ?, 'customer_code', NOW())
      ON DUPLICATE KEY UPDATE
        odoo_partner_id = VALUES(odoo_partner_id),
        odoo_partner_name = VALUES(odoo_partner_name),
@@ -357,7 +359,7 @@ export async function POST(
           await tx.$executeRawUnsafe(
             `INSERT INTO odoo_line_users
               (line_account_id, line_user_id, odoo_partner_id, odoo_partner_name, odoo_customer_code, linked_via, linked_at)
-             VALUES (?, ?, ?, ?, ?, 'auto_fix_relink', NOW())`,
+             VALUES (?, ?, ?, ?, ?, 'customer_code', NOW())`,
             user.lineAccountId ?? 1,
             user.lineUserId,
             partner.id,
