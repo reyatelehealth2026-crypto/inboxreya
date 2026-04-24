@@ -13,6 +13,84 @@ const isLegacyBroadcastStatusError = (error: unknown): boolean => {
   return LEGACY_BROADCAST_STATUS_ERROR.test(error.message);
 };
 
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const authResult = await requireAuth(request);
+    if (authResult instanceof NextResponse) return authResult;
+    const { user } = authResult;
+
+    const { id: idStr } = await params;
+    const id = parseInt(idStr);
+    if (isNaN(id)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid id' },
+        { status: 400 }
+      );
+    }
+
+    const body = (await request.json()) as { scheduledAt?: string };
+    if (!body.scheduledAt) {
+      return NextResponse.json(
+        { success: false, error: 'scheduledAt is required' },
+        { status: 400 }
+      );
+    }
+
+    const newDate = new Date(body.scheduledAt);
+    if (isNaN(newDate.getTime())) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid scheduledAt' },
+        { status: 400 }
+      );
+    }
+
+    if (newDate.getTime() <= Date.now()) {
+      return NextResponse.json(
+        { success: false, error: 'scheduledAt must be in the future' },
+        { status: 400 }
+      );
+    }
+
+    const broadcast = await prisma.broadcastMessageV2.findFirst({
+      where: { id, lineAccountId: user.lineAccountId as number },
+    });
+
+    if (!broadcast) {
+      return NextResponse.json(
+        { success: false, error: 'Not found' },
+        { status: 404 }
+      );
+    }
+
+    if (broadcast.status !== 'scheduled' && broadcast.status !== 'draft') {
+      return NextResponse.json(
+        { success: false, error: 'Only scheduled broadcasts can be rescheduled' },
+        { status: 400 }
+      );
+    }
+
+    await prisma.broadcastMessageV2.update({
+      where: { id },
+      data: { scheduledAt: newDate },
+    });
+
+    await cacheInvalidate('broadcasts:*');
+
+    return NextResponse.json({
+      success: true,
+      data: { id, scheduledAt: newDate.toISOString() },
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: (error as Error).message },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

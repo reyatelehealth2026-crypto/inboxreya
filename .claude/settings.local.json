@@ -27,7 +27,8 @@
       "Bash(npm install:*)",
       "Bash(html-pdf-chrome:*)",
       "Bash(dir:*)",
-      "Bash(npm list:*)"
+      "Bash(npm list:*)",
+      "Bash(npm run *)"
     ]
   }
 }

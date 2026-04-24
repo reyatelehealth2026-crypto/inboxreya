@@ -11,6 +11,8 @@ import {
   Send,
   RefreshCw,
   X,
+  CalendarClock,
+  Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +29,24 @@ interface ScheduledBroadcast {
   scheduledAt: string;
   totalRecipients: number;
   status: string;
+}
+
+function getDisplayName(b: ScheduledBroadcast): string {
+  for (const msg of b.messages) {
+    const m = msg as Record<string, unknown>;
+    if (m?.type === 'flex' && typeof m.altText === 'string' && m.altText.trim()) {
+      return m.altText as string;
+    }
+  }
+  return b.title;
+}
+
+// Format a Date to `YYYY-MM-DDTHH:mm` in local time for <input type="datetime-local">.
+function toLocalDatetimeInput(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate()
+  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 // Thai month names
@@ -54,6 +74,10 @@ export function BroadcastCalendar() {
   const [selectedBroadcast, setSelectedBroadcast] =
     useState<ScheduledBroadcast | null>(null);
   const [cancelling, setCancelling] = useState<number | null>(null);
+  const [reschedulingId, setReschedulingId] = useState<number | null>(null);
+  const [rescheduleValue, setRescheduleValue] = useState<string>('');
+  const [savingReschedule, setSavingReschedule] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState<string | null>(null);
 
   const fetchBroadcasts = useCallback(async () => {
     setLoading(true);
@@ -94,6 +118,66 @@ export function BroadcastCalendar() {
   );
 
   const dayBroadcasts = selectedDay ? broadcastsByDay[selectedDay] || [] : [];
+
+  const openReschedule = (b: ScheduledBroadcast) => {
+    setReschedulingId(b.id);
+    setRescheduleValue(toLocalDatetimeInput(new Date(b.scheduledAt)));
+    setRescheduleError(null);
+  };
+
+  const cancelReschedule = () => {
+    setReschedulingId(null);
+    setRescheduleValue('');
+    setRescheduleError(null);
+  };
+
+  const handleReschedule = async (id: number) => {
+    if (!rescheduleValue) return;
+    const newDate = new Date(rescheduleValue);
+    if (isNaN(newDate.getTime())) {
+      setRescheduleError('รูปแบบวันที่ไม่ถูกต้อง');
+      return;
+    }
+    if (newDate.getTime() <= Date.now()) {
+      setRescheduleError('เวลาต้องอยู่ในอนาคต');
+      return;
+    }
+    setSavingReschedule(true);
+    setRescheduleError(null);
+    try {
+      const res = await fetch(`/api/inbox/broadcasts/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scheduledAt: newDate.toISOString() }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setRescheduleError(data.error || 'เปลี่ยนเวลาไม่สำเร็จ');
+        return;
+      }
+      const iso = newDate.toISOString();
+      setBroadcasts((prev) =>
+        prev.map((x) => (x.id === id ? { ...x, scheduledAt: iso } : x))
+      );
+      if (selectedBroadcast?.id === id) {
+        setSelectedBroadcast({ ...selectedBroadcast, scheduledAt: iso });
+      }
+      const newDay = newDate.getDate();
+      const sameMonth =
+        newDate.getFullYear() === year && newDate.getMonth() === month;
+      if (sameMonth) {
+        setSelectedDay(newDay);
+      } else {
+        setSelectedDay(null);
+        setCurrentDate(new Date(newDate.getFullYear(), newDate.getMonth(), 1));
+      }
+      cancelReschedule();
+    } catch (err) {
+      setRescheduleError((err as Error).message);
+    } finally {
+      setSavingReschedule(false);
+    }
+  };
 
   const handleCancel = async (id: number) => {
     setCancelling(id);
@@ -226,7 +310,7 @@ export function BroadcastCalendar() {
                           hour: '2-digit',
                           minute: '2-digit',
                         })}{' '}
-                        {b.title}
+                        {getDisplayName(b)}
                       </div>
                     ))}
                     {events.length > 2 && (
@@ -306,7 +390,7 @@ export function BroadcastCalendar() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-gray-900 truncate">
-                              {b.title}
+                              {getDisplayName(b)}
                             </p>
                             <div className="flex items-center gap-1.5 mt-1">
                               <Clock className="w-3 h-3 text-gray-400 flex-shrink-0" />
@@ -322,19 +406,84 @@ export function BroadcastCalendar() {
                               </span>
                             </div>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-red-400 hover:text-red-600 hover:bg-red-50 flex-shrink-0"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleCancel(b.id);
-                            }}
-                            disabled={cancelling === b.id}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
+                          <div className="flex items-center gap-0.5 flex-shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-blue-400 hover:text-blue-600 hover:bg-blue-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openReschedule(b);
+                              }}
+                              disabled={reschedulingId === b.id}
+                              title="เปลี่ยนเวลา"
+                            >
+                              <CalendarClock className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-red-400 hover:text-red-600 hover:bg-red-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCancel(b.id);
+                              }}
+                              disabled={cancelling === b.id}
+                              title="ยกเลิก"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
                         </div>
+
+                        {/* Reschedule inline editor */}
+                        {reschedulingId === b.id && (
+                          <div
+                            className="mt-2 p-2 rounded-lg bg-blue-50 border border-blue-200 space-y-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <p className="text-[10px] font-medium text-blue-700 flex items-center gap-1">
+                              <CalendarClock className="w-3 h-3" /> เปลี่ยนเวลาส่ง
+                            </p>
+                            <input
+                              type="datetime-local"
+                              value={rescheduleValue}
+                              onChange={(e) => setRescheduleValue(e.target.value)}
+                              className="w-full text-xs px-2 py-1 rounded-md border border-blue-200 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            />
+                            {rescheduleError && (
+                              <p className="text-[10px] text-red-600">
+                                {rescheduleError}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-1 justify-end">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-[11px]"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  cancelReschedule();
+                                }}
+                                disabled={savingReschedule}
+                              >
+                                ยกเลิก
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="h-6 px-2 text-[11px] bg-blue-600 hover:bg-blue-700 text-white gap-1"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleReschedule(b.id);
+                                }}
+                                disabled={savingReschedule || !rescheduleValue}
+                              >
+                                <Check className="w-3 h-3" />
+                                บันทึก
+                              </Button>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Tags */}
                         <div className="flex flex-wrap gap-1">
