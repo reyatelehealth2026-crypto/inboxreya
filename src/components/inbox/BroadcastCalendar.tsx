@@ -13,6 +13,7 @@ import {
   X,
   CalendarClock,
   Check,
+  Layers,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -404,6 +405,11 @@ export function BroadcastCalendar() {
                               <span className="text-xs text-gray-600">
                                 {b.totalRecipients} คน
                               </span>
+                              {b.messages.length > 1 ? (
+                                <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
+                                  <Layers className="w-2.5 h-2.5" />{b.messages.length}
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                           <div className="flex items-center gap-0.5 flex-shrink-0">

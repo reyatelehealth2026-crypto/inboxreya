@@ -12,6 +12,10 @@ import { cn } from '@/lib/utils'
 interface TemplateSelectorProps {
   templates: BroadcastTemplate[]
   selectedTemplateId?: number
+  /** When provided, the selector becomes multi-select. Order in the array reflects send order. */
+  selectedTemplateIds?: number[]
+  /** Cap on the number of templates that can be picked at once. */
+  maxSelectable?: number
   onSelect: (template: BroadcastTemplate | null) => void
   onCustomFlex?: (flexContent: FlexMessage) => void
 }
@@ -41,6 +45,8 @@ const filterOptions = [
 export function TemplateSelector({
   templates,
   selectedTemplateId,
+  selectedTemplateIds,
+  maxSelectable,
   onSelect,
 }: TemplateSelectorProps) {
   const [previewTemplate, setPreviewTemplate] = useState<BroadcastTemplate | null>(null)
@@ -52,14 +58,30 @@ export function TemplateSelector({
       : templates.filter((template) => template.category === activeFilter)
   ), [activeFilter, templates])
 
+  const isMultiSelect = Array.isArray(selectedTemplateIds)
+  const selectedIdSet = useMemo(() => new Set(selectedTemplateIds || []), [selectedTemplateIds])
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId)
   const activePreview = previewTemplate || selectedTemplate || null
+  const reachedLimit = isMultiSelect && typeof maxSelectable === 'number'
+    && (selectedTemplateIds?.length ?? 0) >= maxSelectable
 
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
       <Card className="flex min-h-[560px] flex-col">
         <CardHeader className="space-y-4">
-          <CardTitle className="text-lg">เลือกเทมเพลต</CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="text-lg">เลือกเทมเพลต</CardTitle>
+            {isMultiSelect ? (
+              <Badge variant={reachedLimit ? 'destructive' : 'secondary'}>
+                {(selectedTemplateIds?.length ?? 0)}{typeof maxSelectable === 'number' ? ` / ${maxSelectable}` : ''} เลือกแล้ว
+              </Badge>
+            ) : null}
+          </div>
+          {isMultiSelect ? (
+            <p className="text-xs text-muted-foreground">
+              เลือกได้หลาย Flex ตัวเลขในวงกลมจะบอกลำดับการส่งให้ลูกค้า
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             {filterOptions.map((option) => {
               const active = activeFilter === option.value
@@ -87,17 +109,25 @@ export function TemplateSelector({
             <div className="space-y-3">
               {filteredTemplates.map((template) => {
                 const Icon = categoryIcons[template.category]
-                const isSelected = selectedTemplateId === template.id
+                const isSelected = isMultiSelect
+                  ? selectedIdSet.has(template.id)
+                  : selectedTemplateId === template.id
+                const orderIndex = isMultiSelect && selectedTemplateIds
+                  ? selectedTemplateIds.indexOf(template.id)
+                  : -1
+                const disableNew = !isSelected && reachedLimit
 
                 return (
                   <button
                     key={template.id}
                     type="button"
+                    disabled={disableNew}
                     className={cn(
                       'flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition-all',
                       isSelected
                         ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                        : 'border-border bg-background hover:border-primary/40 hover:bg-muted/30'
+                        : 'border-border bg-background hover:border-primary/40 hover:bg-muted/30',
+                      disableNew && 'opacity-50 cursor-not-allowed'
                     )}
                     onClick={() => {
                       onSelect(template)
@@ -109,7 +139,11 @@ export function TemplateSelector({
                       'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl',
                       isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
                     )}>
-                      {isSelected ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+                      {isSelected
+                        ? (isMultiSelect && orderIndex >= 0
+                          ? <span className="text-sm font-bold">{orderIndex + 1}</span>
+                          : <Check className="h-5 w-5" />)
+                        : <Icon className="h-5 w-5" />}
                     </div>
 
                     <div className="min-w-0 flex-1 space-y-2">
@@ -129,13 +163,16 @@ export function TemplateSelector({
 
               <button
                 type="button"
+                disabled={isMultiSelect}
                 className={cn(
                   'flex w-full items-start gap-3 rounded-2xl border border-dashed p-4 text-left transition-all',
                   selectedTemplateId === -1
                     ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                    : 'border-border bg-background hover:border-primary/40 hover:bg-muted/30'
+                    : 'border-border bg-background hover:border-primary/40 hover:bg-muted/30',
+                  isMultiSelect && 'opacity-50 cursor-not-allowed'
                 )}
                 onClick={() => {
+                  if (isMultiSelect) return
                   onSelect({ id: -1 } as BroadcastTemplate)
                   setPreviewTemplate(null)
                 }}

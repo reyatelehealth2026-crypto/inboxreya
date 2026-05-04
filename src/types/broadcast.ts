@@ -123,12 +123,18 @@ export interface CreateBroadcastInput {
   mediaUrl?: string
   messageType?: 'text' | 'image' | 'video' | 'flex'
   flexContent?: FlexMessage
+  /** Multiple flex messages bundled in a single LINE push (max 5). */
+  flexContents?: FlexMessage[]
   templateId?: number
   templateSourceTable?: 'quick_reply_templates' | 'flex_templates' | 'templates'
+  /** Source IDs of the templates picked when bundling multiple flexes. */
+  templateIds?: number[]
   targetSegmentId?: number
   targetCustomerIds?: number[]
   targetTagIds?: number[]
   scheduledAt?: string
+  /** Multiple scheduled dates. The API creates one broadcast record per date. */
+  scheduledDates?: string[]
 }
 
 export interface BroadcastStats {
