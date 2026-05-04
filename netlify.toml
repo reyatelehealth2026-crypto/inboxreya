@@ -1,6 +1,16 @@
 # Netlify config for inboxreya (Next.js 15 App Router)
 # Deploy:  netlify deploy --build --prod
 # Or connect the repo in app.netlify.com and Netlify auto-detects this file.
+#
+# NOTE: per-route function tuning (timeout/memory) is NOT settable here for
+# Next.js routes - @netlify/plugin-nextjs bundles them as one runtime and
+# the [functions."<name>"] blocks only apply to user functions in
+# netlify/functions/. To change those limits, upgrade the Netlify plan or
+# refactor the heavy route into a netlify/functions/ file. SSE realtime is
+# capped by Netlify (26s on free, 5m on Pro) regardless of config.
+#
+# Cache-Control + security headers live in public/_headers (shared with
+# Cloudflare Pages); not duplicated here.
 
 [build]
   command = "npm run build"
@@ -9,71 +19,8 @@
 [build.environment]
   NODE_VERSION = "20"
   NEXT_TELEMETRY_DISABLED = "1"
-  # Prisma needs this so query engine is downloaded for the right target
+  # Prisma query engine target for the Netlify build/runtime image
   PRISMA_CLI_BINARY_TARGETS = "native,rhel-openssl-3.0.x"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
-
-# Per-function tuning. Names follow the path of the Next.js route.
-[functions]
-  node_bundler = "esbuild"
-  external_node_modules = [
-    "@prisma/client",
-    "prisma",
-    "ioredis",
-    "pusher",
-    "playwright"
-  ]
-  included_files = [
-    "prisma/schema.prisma",
-    "node_modules/.prisma/client/**",
-    "node_modules/@prisma/client/**"
-  ]
-
-# Long upload timeout + more memory for image/file uploads
-[functions."api/inbox/upload"]
-  timeout = 60
-  memory = 1024
-
-# Netlify caps SSE/streaming hard. Keep it tight; Pusher carries the realtime load.
-[functions."api/inbox/realtime"]
-  timeout = 26
-
-[functions."api/cron/process-scheduled-broadcasts"]
-  timeout = 60
-
-# ---- Headers (cache + security) ----
-# Long-cache fingerprinted assets so most page views don't hit our function at all.
-[[headers]]
-  for = "/_next/static/*"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-
-[[headers]]
-  for = "/icons/*"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-
-[[headers]]
-  for = "/_next/image*"
-  [headers.values]
-    Cache-Control = "public, max-age=2592000, stale-while-revalidate=604800"
-
-[[headers]]
-  for = "/uploads/*"
-  [headers.values]
-    Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"
-
-[[headers]]
-  for = "/api/*"
-  [headers.values]
-    Cache-Control = "no-store"
-
-[[headers]]
-  for = "/*"
-  [headers.values]
-    X-Content-Type-Options = "nosniff"
-    X-Frame-Options = "SAMEORIGIN"
-    X-XSS-Protection = "1; mode=block"
-    Referrer-Policy = "strict-origin-when-cross-origin"
