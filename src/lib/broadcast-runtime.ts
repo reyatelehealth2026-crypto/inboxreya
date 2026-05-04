@@ -108,17 +108,27 @@ export function buildBroadcastMessages(input: {
   mediaUrl?: string
   messageType?: BroadcastMessageType | 'video'
   flexContent?: unknown
+  flexContents?: unknown[]
 }) {
   const content = input.content?.trim() || ''
-  const type = input.messageType || (input.flexContent ? 'flex' : input.mediaUrl ? 'image' : 'text')
+  const flexContentsArray = Array.isArray(input.flexContents) ? input.flexContents : null
+  const hasMultipleFlex = !!flexContentsArray && flexContentsArray.length > 0
+  const type = input.messageType || (hasMultipleFlex || input.flexContent ? 'flex' : input.mediaUrl ? 'image' : 'text')
 
   if (type === 'flex') {
-    const flexMessage = normalizeFlexMessagePayload(input.flexContent, content || 'Flex Message')
-    if (!flexMessage) throw new Error('Invalid flexContent payload')
+    const sources = hasMultipleFlex ? flexContentsArray! : [input.flexContent]
+    const flexMessages = sources.map((src, idx) => {
+      const fallback = content || `Flex Message ${idx + 1}`
+      const flex = normalizeFlexMessagePayload(src, fallback)
+      if (!flex) throw new Error(`Invalid flexContent payload at index ${idx}`)
+      return flex
+    })
+    if (flexMessages.length === 0) throw new Error('Invalid flexContent payload')
+    if (flexMessages.length > 5) throw new Error('Cannot send more than 5 flex messages in one broadcast')
     return {
-      summaryText: content || flexMessage.altText || 'Flex Message',
-      messageType: 'flex' as const,
-      messages: [flexMessage],
+      summaryText: content || flexMessages[0].altText || 'Flex Message',
+      messageType: flexMessages.length > 1 ? 'multi' as const : 'flex' as const,
+      messages: flexMessages,
     }
   }
 
@@ -162,6 +172,7 @@ export function buildBroadcastEnvelope(input: {
   mediaUrl?: string
   messageType?: BroadcastMessageType | 'video'
   flexContent?: unknown
+  flexContents?: unknown[]
   templateId?: number
   templateSourceTable?: 'quick_reply_templates' | 'flex_templates' | 'templates'
   targetSegmentId?: number

@@ -11,12 +11,15 @@ const createBroadcastSchema = z.object({
   mediaUrl: z.string().url().optional(),
   messageType: z.enum(['text', 'image', 'video', 'flex']).optional(),
   flexContent: z.any().optional(),
+  flexContents: z.array(z.any()).max(5).optional(),
   templateId: z.number().int().positive().optional(),
+  templateIds: z.array(z.number().int().positive()).max(5).optional(),
   templateSourceTable: z.enum(['templates', 'flex_templates', 'quick_reply_templates']).optional(),
   targetSegmentId: z.number().int().positive().optional(),
   targetCustomerIds: z.array(z.number().int().positive()).optional(),
   targetTagIds: z.array(z.number().int().positive()).optional(),
   scheduledAt: z.string().datetime().optional(),
+  scheduledDates: z.array(z.string().datetime()).max(31).optional(),
 })
 
 // GET /api/inbox/broadcasts - List all broadcasts
@@ -109,6 +112,7 @@ export async function POST(req: NextRequest) {
       mediaUrl: validated.mediaUrl,
       messageType: validated.messageType,
       flexContent: validated.flexContent,
+      flexContents: validated.flexContents,
       templateId: validated.templateId,
       templateSourceTable: validated.templateSourceTable,
       targetSegmentId: validated.targetSegmentId,
@@ -125,33 +129,52 @@ export async function POST(req: NextRequest) {
       targetTagIds: validated.targetTagIds,
     })
 
-    const broadcast = await prisma.broadcastMessageV2.create({
-      data: {
-        lineAccountId: session.user.lineAccountId as number,
-        content: resolvedContent,
-        mediaUrl: validated.mediaUrl || null,
-        targetSegmentId: validated.targetSegmentId,
-        scheduledAt: validated.scheduledAt ? new Date(validated.scheduledAt) : null,
-        totalRecipients,
-        status: validated.scheduledAt ? 'scheduled' : 'draft',
-        createdBy: parseInt(session.user.id),
-      },
-    })
+    // Resolve list of scheduled dates: either scheduledDates array, single scheduledAt, or none (draft).
+    const scheduleList: (Date | null)[] = (() => {
+      if (validated.scheduledDates && validated.scheduledDates.length > 0) {
+        return validated.scheduledDates.map((iso) => new Date(iso))
+      }
+      if (validated.scheduledAt) {
+        return [new Date(validated.scheduledAt)]
+      }
+      return [null]
+    })()
+
+    const created = await Promise.all(
+      scheduleList.map((scheduledAt) =>
+        prisma.broadcastMessageV2.create({
+          data: {
+            lineAccountId: session.user.lineAccountId as number,
+            content: resolvedContent,
+            mediaUrl: validated.mediaUrl || null,
+            targetSegmentId: validated.targetSegmentId,
+            scheduledAt,
+            totalRecipients,
+            status: scheduledAt ? 'scheduled' : 'draft',
+            createdBy: parseInt(session.user.id),
+          },
+        })
+      )
+    )
 
     // Invalidate broadcasts cache
     await cacheInvalidate('broadcasts:*')
 
-    // Store target customer IDs if provided
+    // Store target customer IDs if provided (mirror to every created broadcast).
     if (validated.targetCustomerIds && validated.targetCustomerIds.length > 0) {
-      await prisma.$executeRaw`
-        INSERT INTO broadcast_recipients (broadcast_id, user_id)
-        VALUES ${validated.targetCustomerIds.map((userId: number) => `(${broadcast.id}, ${userId})`).join(', ')}
-      `
+      const userIds = validated.targetCustomerIds
+      for (const broadcast of created) {
+        await prisma.$executeRaw`
+          INSERT INTO broadcast_recipients (broadcast_id, user_id)
+          VALUES ${userIds.map((userId: number) => `(${broadcast.id}, ${userId})`).join(', ')}
+        `
+      }
     }
 
+    const primary = created[0]
     return NextResponse.json({
       success: true,
-      data: broadcast,
+      data: created.length > 1 ? { ...primary, broadcasts: created } : primary,
     })
   } catch (error: any) {
     console.error('Error creating broadcast:', error)

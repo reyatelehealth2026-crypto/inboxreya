@@ -12,13 +12,17 @@ import {
   Clock,
   Eye,
   ImageIcon,
+  Layers,
   Loader2,
   MessageSquare,
+  Plus,
   Send,
   Settings2,
   Tag,
+  Trash2,
   Users,
   Video,
+  X,
 } from 'lucide-react'
 import { BroadcastTemplate, CreateBroadcastInput, FlexMessage } from '@/types/broadcast'
 import {
@@ -63,7 +67,15 @@ interface ResultState {
   mode: 'now' | 'scheduled'
   recipientCount: number
   scheduledAt?: string
+  scheduledDates?: string[]
   error?: string
+}
+
+const MAX_FLEX_PER_BROADCAST = 5
+
+function toLocalDateInputValue(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
 interface CreateBroadcastDialogProps {
@@ -75,6 +87,8 @@ interface CreateBroadcastDialogProps {
 export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateBroadcastDialogProps) {
   const [step, setStep] = useState<Step>('settings')
   const [selectedTemplate, setSelectedTemplate] = useState<BroadcastTemplate | null>(null)
+  const [selectedTemplates, setSelectedTemplates] = useState<BroadcastTemplate[]>([])
+  const [multiSelectMode, setMultiSelectMode] = useState(false)
   const [customFlexContent, setCustomFlexContent] = useState('')
   const [customFlexError, setCustomFlexError] = useState<string | null>(null)
   const [targetMode, setTargetMode] = useState<'all' | 'tags'>('all')
@@ -82,7 +96,9 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
   const [tagSearch, setTagSearch] = useState('')
   const [sendMode, setSendMode] = useState<'now' | 'scheduled'>('now')
   const [scheduledDate, setScheduledDate] = useState('')
+  const [scheduledDates, setScheduledDates] = useState<string[]>([])
   const [scheduledTime, setScheduledTime] = useState('09:00')
+  const [multiDateMode, setMultiDateMode] = useState(false)
   const [result, setResult] = useState<ResultState | null>(null)
 
   const { toast } = useToast()
@@ -95,8 +111,13 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
   const tags = Array.isArray(tagsData) ? tagsData : []
   const stepIndex = STEPS.findIndex((item) => item.key === step)
   const isSubmitting = createBroadcast.isPending || sendBroadcast.isPending
-  const isCustomFlexSelected = selectedTemplate?.id === -1
+  const isCustomFlexSelected = !multiSelectMode && selectedTemplate?.id === -1
   const sendNow = sendMode === 'now'
+
+  const flexCapableTemplates = useMemo(
+    () => selectedTemplates.filter((tpl) => !!tpl.flexContent),
+    [selectedTemplates]
+  )
 
   const parsedCustomFlex = useMemo(() => {
     if (!isCustomFlexSelected || !customFlexContent.trim()) return null
@@ -115,12 +136,24 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
     return haystack.includes(search)
   })
   const selectedTags = tags.filter((tag) => selectedTagIds.includes(Number(tag.id)))
-  const scheduledDateTime = !sendNow && scheduledDate ? new Date(`${scheduledDate}T${scheduledTime}`) : null
-  const hasValidScheduledDateTime = !!scheduledDateTime
-    && !Number.isNaN(scheduledDateTime.getTime())
-    && scheduledDateTime > new Date()
 
-  const isSettingsValid = !!selectedTemplate && (!isCustomFlexSelected || !!parsedCustomFlex)
+  const scheduledDateTimes = useMemo(() => {
+    if (sendNow) return [] as Date[]
+    const sources = multiDateMode ? scheduledDates : scheduledDate ? [scheduledDate] : []
+    return sources
+      .map((d) => new Date(`${d}T${scheduledTime}`))
+      .filter((d) => !Number.isNaN(d.getTime()))
+      .sort((a, b) => a.getTime() - b.getTime())
+  }, [sendNow, multiDateMode, scheduledDates, scheduledDate, scheduledTime])
+
+  const now = new Date()
+  const validScheduledDateTimes = scheduledDateTimes.filter((d) => d > now)
+  const hasInvalidPastDate = scheduledDateTimes.length > 0 && validScheduledDateTimes.length < scheduledDateTimes.length
+  const hasValidScheduledDateTime = !sendNow && validScheduledDateTimes.length > 0 && !hasInvalidPastDate
+
+  const isSettingsValid = multiSelectMode
+    ? selectedTemplates.length > 0
+    : !!selectedTemplate && (!isCustomFlexSelected || !!parsedCustomFlex)
   const isTargetValid = targetMode === 'all' || selectedTagIds.length > 0
   const isScheduleValid = sendNow || hasValidScheduledDateTime
   const shouldEstimate = open
@@ -151,6 +184,8 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
   const resetForm = () => {
     setStep('settings')
     setSelectedTemplate(null)
+    setSelectedTemplates([])
+    setMultiSelectMode(false)
     setCustomFlexContent('')
     setCustomFlexError(null)
     setTargetMode('all')
@@ -158,6 +193,8 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
     setTagSearch('')
     setSendMode('now')
     setScheduledDate('')
+    setScheduledDates([])
+    setMultiDateMode(false)
     setScheduledTime('09:00')
     setResult(null)
   }
@@ -236,51 +273,93 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
       return
     }
     if (!sendNow && !hasValidScheduledDateTime) {
-      toast({ title: 'วันเวลาส่งไม่ถูกต้อง', description: 'กรุณาเลือกวันเวลาที่มากกว่าปัจจุบัน', variant: 'destructive' })
+      toast({ title: 'วันเวลาส่งไม่ถูกต้อง', description: 'กรุณาเลือกวันเวลาที่มากกว่าปัจจุบันและเอาวันที่อยู่ในอดีตออก', variant: 'destructive' })
       return
     }
 
+    const scheduledIsoList = sendNow ? [] : validScheduledDateTimes.map((d) => d.toISOString())
+
     const input: CreateBroadcastInput = {
-      templateId: selectedTemplate?.sourceId,
-      templateSourceTable: selectedTemplate?.sourceTable,
-      messageType: selectedTemplate?.category,
-      scheduledAt: sendNow ? undefined : scheduledDateTime?.toISOString(),
       targetTagIds: targetMode === 'tags' ? selectedTagIds : undefined,
     }
 
-    if (isCustomFlexSelected && parsedCustomFlex) {
-      input.flexContent = parsedCustomFlex
-      input.content = parsedCustomFlex.altText || 'Flex Message'
+    if (sendNow) {
+      // no scheduled fields
+    } else if (multiDateMode && scheduledIsoList.length > 1) {
+      input.scheduledDates = scheduledIsoList
+    } else {
+      input.scheduledAt = scheduledIsoList[0]
+    }
+
+    if (multiSelectMode && selectedTemplates.length > 0) {
+      const flexContents = selectedTemplates
+        .map((tpl) => tpl.flexContent)
+        .filter((flex): flex is NonNullable<typeof flex> => !!flex)
+      if (flexContents.length === 0) {
+        toast({ title: 'ไม่พบ Flex Message ในรายการที่เลือก', variant: 'destructive' })
+        return
+      }
+      input.flexContents = flexContents
       input.messageType = 'flex'
-    } else if (selectedTemplate) {
-      if (selectedTemplate.flexContent) input.flexContent = selectedTemplate.flexContent
-      if (selectedTemplate.content) input.content = selectedTemplate.content
-      if (selectedTemplate.mediaUrl) {
-        input.mediaUrl = selectedTemplate.mediaUrl
-        if (!input.content) input.content = selectedTemplate.description || selectedTemplate.name || `[${selectedTemplate.category} broadcast]`
+      input.content = flexContents[0].altText || selectedTemplates[0].name || 'Flex Broadcast'
+      input.templateIds = selectedTemplates.map((tpl) => tpl.sourceId).filter((id): id is number => typeof id === 'number')
+      // Use first template's source for legacy fields
+      input.templateId = selectedTemplates[0]?.sourceId
+      input.templateSourceTable = selectedTemplates[0]?.sourceTable
+    } else {
+      input.templateId = selectedTemplate?.sourceId
+      input.templateSourceTable = selectedTemplate?.sourceTable
+      input.messageType = selectedTemplate?.category
+      if (isCustomFlexSelected && parsedCustomFlex) {
+        input.flexContent = parsedCustomFlex
+        input.content = parsedCustomFlex.altText || 'Flex Message'
+        input.messageType = 'flex'
+      } else if (selectedTemplate) {
+        if (selectedTemplate.flexContent) input.flexContent = selectedTemplate.flexContent
+        if (selectedTemplate.content) input.content = selectedTemplate.content
+        if (selectedTemplate.mediaUrl) {
+          input.mediaUrl = selectedTemplate.mediaUrl
+          if (!input.content) input.content = selectedTemplate.description || selectedTemplate.name || `[${selectedTemplate.category} broadcast]`
+        }
       }
     }
 
     try {
       const response = await createBroadcast.mutateAsync(input)
-      const broadcastId = response?.data?.id
-      if (sendNow && broadcastId) await sendBroadcast.mutateAsync(broadcastId)
+      const data = response?.data
+      const broadcastIds: number[] = Array.isArray(data?.broadcasts)
+        ? data.broadcasts.map((b: { id: number }) => b.id)
+        : data?.id ? [data.id] : []
+
+      if (sendNow && broadcastIds.length > 0) {
+        for (const bid of broadcastIds) await sendBroadcast.mutateAsync(bid)
+      }
 
       setResult({
         success: true,
         mode: sendMode,
         recipientCount: recipientEstimate,
-        scheduledAt: sendNow ? undefined : scheduledDateTime?.toISOString(),
+        scheduledAt: sendNow ? undefined : scheduledIsoList[0],
+        scheduledDates: scheduledIsoList.length > 1 ? scheduledIsoList : undefined,
       })
       onSuccess?.()
-      toast({ title: sendNow ? 'ส่ง Broadcast สำเร็จ' : 'บันทึก Broadcast ตามเวลาสำเร็จ' })
+      const successDescription = sendNow
+        ? undefined
+        : scheduledIsoList.length > 1
+        ? `สร้าง ${scheduledIsoList.length} รอบเรียบร้อย`
+        : undefined
+      toast({
+        title: sendNow ? 'ส่ง Broadcast สำเร็จ' : 'บันทึก Broadcast ตามเวลาสำเร็จ',
+        description: successDescription,
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'กรุณาลองใหม่อีกครั้ง'
       setResult({
         success: false,
         mode: sendMode,
         recipientCount: recipientEstimate,
-        scheduledAt: sendNow ? undefined : scheduledDateTime?.toISOString(),
+        scheduledAt: sendNow ? undefined : scheduledIsoList[0],
+        scheduledDates: scheduledIsoList.length > 1 ? scheduledIsoList : undefined,
         error: message,
       })
       toast({ title: 'ส่ง Broadcast ไม่สำเร็จ', description: message, variant: 'destructive' })
@@ -288,6 +367,35 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
   }
 
   const renderPreview = () => {
+    if (multiSelectMode && selectedTemplates.length > 0) {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Badge>{selectedTemplates.length} Flex</Badge>
+            <span className="text-xs text-muted-foreground">ส่งตามลำดับที่เลือก</span>
+          </div>
+          <div className="space-y-4">
+            {selectedTemplates.map((tpl, idx) => (
+              <div key={tpl.id} className="space-y-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Badge variant="outline">{idx + 1}</Badge>
+                  <span className="font-medium text-foreground">{tpl.name}</span>
+                </div>
+                {tpl.flexContent ? (
+                  <div className="rounded-xl bg-gradient-to-br from-[#7494a5] to-[#5a7a8a] p-4">
+                    <FlexPreview flex={tpl.flexContent} />
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed p-4 text-xs text-muted-foreground">
+                    ไม่ใช่ Flex Message
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
     if (isCustomFlexSelected && parsedCustomFlex) {
       return (
         <div className="space-y-4">
@@ -376,12 +484,96 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
         <ScrollArea className="min-h-0 flex-1 px-6 py-4">
           {step === 'settings' ? (
             <div className="space-y-4">
-              <h3 className="flex items-center gap-2 text-sm font-medium"><Settings2 className="h-4 w-4" />ตั้งค่า Broadcast จาก Template</h3>
-              <TemplateSelector templates={templates} selectedTemplateId={selectedTemplate?.id} onSelect={(template) => {
-                setSelectedTemplate(template)
-                if (template?.id !== -1) setCustomFlexError(null)
-                setResult(null)
-              }} />
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="flex items-center gap-2 text-sm font-medium"><Settings2 className="h-4 w-4" />ตั้งค่า Broadcast จาก Template</h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !multiSelectMode
+                    setMultiSelectMode(next)
+                    setResult(null)
+                    if (next) {
+                      // entering multi mode: keep current single pick (only flex templates) as starting point
+                      const seed = selectedTemplate && selectedTemplate.id !== -1 && selectedTemplate.flexContent
+                        ? [selectedTemplate]
+                        : []
+                      setSelectedTemplates(seed)
+                      setSelectedTemplate(seed[0] ?? null)
+                      setCustomFlexContent('')
+                      setCustomFlexError(null)
+                    } else {
+                      // leaving multi mode: keep first pick as the single selection
+                      const first = selectedTemplates[0] || null
+                      setSelectedTemplates([])
+                      setSelectedTemplate(first)
+                    }
+                  }}
+                  className={cn(
+                    'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                    multiSelectMode
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground'
+                  )}
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  {multiSelectMode ? `เลือกหลาย Flex (${selectedTemplates.length}/${MAX_FLEX_PER_BROADCAST})` : 'เลือกหลาย Flex'}
+                </button>
+              </div>
+              {multiSelectMode ? (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-primary">
+                  เลือก Flex ได้สูงสุด {MAX_FLEX_PER_BROADCAST} ใบในการ broadcast เดียว ระบบจะส่งเรียงตามลำดับที่เลือก
+                  ({flexCapableTemplates.length} จาก {selectedTemplates.length} รายการเป็น Flex)
+                </div>
+              ) : null}
+              <TemplateSelector
+                templates={templates}
+                selectedTemplateId={multiSelectMode ? undefined : selectedTemplate?.id}
+                selectedTemplateIds={multiSelectMode ? selectedTemplates.map((t) => t.id) : undefined}
+                maxSelectable={multiSelectMode ? MAX_FLEX_PER_BROADCAST : undefined}
+                onSelect={(template) => {
+                  setResult(null)
+                  if (!template) return
+                  if (multiSelectMode) {
+                    if (template.id === -1) return
+                    if (!template.flexContent) {
+                      toast({ title: 'รองรับเฉพาะ Flex', description: 'โหมดเลือกหลายรายการรองรับเฉพาะ Flex Message', variant: 'destructive' })
+                      return
+                    }
+                    setSelectedTemplates((current) => {
+                      const exists = current.some((t) => t.id === template.id)
+                      if (exists) return current.filter((t) => t.id !== template.id)
+                      if (current.length >= MAX_FLEX_PER_BROADCAST) return current
+                      return [...current, template]
+                    })
+                  } else {
+                    setSelectedTemplate(template)
+                    if (template.id !== -1) setCustomFlexError(null)
+                  }
+                }}
+              />
+              {multiSelectMode && selectedTemplates.length > 0 ? (
+                <Card>
+                  <CardContent className="space-y-2 p-4">
+                    <p className="text-xs font-medium text-muted-foreground">ลำดับการส่ง</p>
+                    <div className="space-y-2">
+                      {selectedTemplates.map((tpl, idx) => (
+                        <div key={tpl.id} className="flex items-center gap-3 rounded-lg border bg-muted/30 p-2">
+                          <Badge>{idx + 1}</Badge>
+                          <span className="flex-1 truncate text-sm">{tpl.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTemplates((current) => current.filter((t) => t.id !== tpl.id))}
+                            className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            title="เอาออก"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null}
               {isCustomFlexSelected ? (
                 <Card>
                   <CardContent className="space-y-4 p-4">
@@ -495,12 +687,103 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
               {!sendNow ? (
                 <Card className="border-border bg-muted/30">
                   <CardContent className="space-y-4 p-4">
-                    <div className="space-y-2"><p className="text-xs font-medium">วันที่ส่ง</p><Input type="date" value={scheduledDate} onChange={(event) => setScheduledDate(event.target.value)} min={new Date().toISOString().split('T')[0]} /></div>
-                    <div className="space-y-2"><p className="text-xs font-medium">เวลาที่ส่ง</p><Input type="time" value={scheduledTime} onChange={(event) => setScheduledTime(event.target.value)} /></div>
-                    {scheduledDateTime && !Number.isNaN(scheduledDateTime.getTime()) ? (
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs font-medium">โหมดวันที่</p>
+                      <div className="inline-flex items-center gap-1 rounded-full border bg-background p-1 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => { setMultiDateMode(false); setResult(null) }}
+                          className={cn('rounded-full px-3 py-1 transition-colors', !multiDateMode ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}
+                        >
+                          วันเดียว
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setMultiDateMode(true); setResult(null) }}
+                          className={cn('rounded-full px-3 py-1 transition-colors inline-flex items-center gap-1', multiDateMode ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}
+                        >
+                          <Layers className="h-3 w-3" />หลายวัน
+                        </button>
+                      </div>
+                    </div>
+
+                    {!multiDateMode ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium">วันที่ส่ง</p>
+                        <Input type="date" value={scheduledDate} onChange={(event) => { setScheduledDate(event.target.value); setResult(null) }} min={new Date().toISOString().split('T')[0]} />
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium">เพิ่มหลายวัน (ส่งซ้ำเวลาเดียวกัน)</p>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="date"
+                              value={scheduledDate}
+                              onChange={(event) => setScheduledDate(event.target.value)}
+                              min={toLocalDateInputValue(new Date())}
+                              className="flex-1"
+                            />
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              onClick={() => {
+                                if (!scheduledDate) return
+                                setScheduledDates((current) => current.includes(scheduledDate) ? current : [...current, scheduledDate].sort())
+                                setScheduledDate('')
+                                setResult(null)
+                              }}
+                              disabled={!scheduledDate || scheduledDates.includes(scheduledDate)}
+                            >
+                              <Plus className="mr-1 h-3.5 w-3.5" />เพิ่ม
+                            </Button>
+                          </div>
+                        </div>
+                        {scheduledDates.length > 0 ? (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-muted-foreground">วันที่เลือกไว้ ({scheduledDates.length})</p>
+                            <div className="flex flex-wrap gap-2">
+                              {scheduledDates.map((d) => (
+                                <Badge key={d} variant="secondary" className="gap-1 px-2 py-1">
+                                  {format(new Date(`${d}T${scheduledTime}`), 'd MMM', { locale: th })}
+                                  <button
+                                    type="button"
+                                    className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                                    onClick={() => { setScheduledDates((current) => current.filter((x) => x !== d)); setResult(null) }}
+                                    title="ลบวันนี้"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">ยังไม่ได้เพิ่มวันที่ใด</p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium">เวลาที่ส่ง (ใช้กับทุกวัน)</p>
+                      <Input type="time" value={scheduledTime} onChange={(event) => { setScheduledTime(event.target.value); setResult(null) }} />
+                    </div>
+
+                    {scheduledDateTimes.length > 0 ? (
                       <div className={cn('flex items-start gap-2 rounded-lg border p-3 text-xs', hasValidScheduledDateTime ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700')}>
                         <Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                        <span>{hasValidScheduledDateTime ? 'กำหนดส่ง:' : 'เวลาที่เลือกอยู่ในอดีต:'} <strong>{format(scheduledDateTime, 'PPP p', { locale: th })}</strong></span>
+                        <div className="space-y-1">
+                          {hasInvalidPastDate ? (
+                            <span><strong>{scheduledDateTimes.length - validScheduledDateTimes.length}</strong> วันอยู่ในอดีต กรุณาเอาออกหรือเปลี่ยนเวลา</span>
+                          ) : multiDateMode ? (
+                            <>
+                              <span>กำหนดส่ง <strong>{validScheduledDateTimes.length}</strong> รอบ ครั้งแรก: <strong>{format(validScheduledDateTimes[0], 'PPP p', { locale: th })}</strong></span>
+                              {validScheduledDateTimes.length > 1 ? <span className="block text-[11px] opacity-80">ครั้งสุดท้าย: {format(validScheduledDateTimes[validScheduledDateTimes.length - 1], 'PPP p', { locale: th })}</span> : null}
+                            </>
+                          ) : (
+                            <span>กำหนดส่ง: <strong>{format(validScheduledDateTimes[0] ?? scheduledDateTimes[0], 'PPP p', { locale: th })}</strong></span>
+                          )}
+                        </div>
                       </div>
                     ) : null}
                   </CardContent>
@@ -544,7 +827,11 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
                         <div className="flex items-center gap-2 font-medium text-emerald-700">{result.mode === 'scheduled' ? <Calendar className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}{result.mode === 'scheduled' ? 'บันทึก Broadcast ตามเวลาสำเร็จ' : 'ส่ง Broadcast สำเร็จ'}</div>
                         <div className="space-y-1 text-sm text-emerald-800">
                           <p>จำนวนผู้รับ: {result.recipientCount.toLocaleString()} คน</p>
-                          {result.mode === 'scheduled' && result.scheduledAt ? <p>เวลาส่ง: {format(new Date(result.scheduledAt), 'PPP p', { locale: th })}</p> : null}
+                          {result.mode === 'scheduled' && result.scheduledDates && result.scheduledDates.length > 1 ? (
+                            <p>เวลาส่ง: {result.scheduledDates.length} รอบ ({result.scheduledDates.map((iso) => format(new Date(iso), 'd MMM', { locale: th })).join(', ')})</p>
+                          ) : result.mode === 'scheduled' && result.scheduledAt ? (
+                            <p>เวลาส่ง: {format(new Date(result.scheduledAt), 'PPP p', { locale: th })}</p>
+                          ) : null}
                         </div>
                       </>
                     ) : (
@@ -557,9 +844,27 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
                   <Card className="border-amber-200 bg-amber-50"><CardContent className="space-y-3 p-4"><div className="flex items-start gap-2 text-amber-800"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><div className="space-y-1"><p className="text-sm font-medium">ระบบจะยังไม่ส่งจนกว่าจะกดปุ่มยืนยันด้านล่าง</p><p className="text-xs text-amber-700">ขั้นตอนนี้คือจุดเดียวที่ระบบจะสร้างและส่ง Broadcast จริง</p></div></div></CardContent></Card>
                   <Card>
                     <CardContent className="space-y-3 p-4 text-sm">
-                      <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Template</span><span className="font-medium">{selectedTemplate?.name || 'Broadcast'}</span></div>
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-muted-foreground">Template</span>
+                        <span className="text-right font-medium">
+                          {multiSelectMode && selectedTemplates.length > 0
+                            ? `${selectedTemplates.length} Flex: ${selectedTemplates.map((t) => t.name).join(', ')}`
+                            : selectedTemplate?.name || 'Broadcast'}
+                        </span>
+                      </div>
                       <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">กลุ่มเป้าหมาย</span><span className="text-right font-medium">{targetMode === 'all' ? 'ลูกค้าทั้งหมด' : selectedTags.length > 0 ? selectedTags.map((tag) => tag.name).join(', ') : 'ยังไม่ได้เลือก'}</span></div>
-                      <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">เวลาส่ง</span><span className="font-medium">{sendNow ? 'ส่งทันที' : scheduledDateTime && !Number.isNaN(scheduledDateTime.getTime()) ? format(scheduledDateTime, 'PPP p', { locale: th }) : 'ยังไม่ได้เลือก'}</span></div>
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-muted-foreground">เวลาส่ง</span>
+                        <span className="text-right font-medium">
+                          {sendNow
+                            ? 'ส่งทันที'
+                            : validScheduledDateTimes.length > 1
+                            ? `${validScheduledDateTimes.length} รอบ — เริ่ม ${format(validScheduledDateTimes[0], 'd MMM', { locale: th })} ถึง ${format(validScheduledDateTimes[validScheduledDateTimes.length - 1], 'd MMM HH:mm', { locale: th })}`
+                            : validScheduledDateTimes.length === 1
+                            ? format(validScheduledDateTimes[0], 'PPP p', { locale: th })
+                            : 'ยังไม่ได้เลือก'}
+                        </span>
+                      </div>
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-muted-foreground">จำนวนผู้รับล่าสุด</span>
                         {isEstimateLoading ? (
@@ -599,7 +904,12 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
                   ) : sendNow ? (
                     <><Send className="mr-2 h-4 w-4" />{hasRecipientEstimate ? `ยืนยันส่ง Broadcast (${recipientEstimate.toLocaleString()} คน)` : 'ยืนยันส่ง Broadcast'}</>
                   ) : (
-                    <><Calendar className="mr-2 h-4 w-4" />{hasRecipientEstimate ? `ยืนยันตั้งเวลา Broadcast (${recipientEstimate.toLocaleString()} คน)` : 'ยืนยันตั้งเวลา Broadcast'}</>
+                    <>
+                      <Calendar className="mr-2 h-4 w-4" />
+                      {validScheduledDateTimes.length > 1
+                        ? `ยืนยันตั้งเวลา ${validScheduledDateTimes.length} รอบ${hasRecipientEstimate ? ` (${recipientEstimate.toLocaleString()} คน/รอบ)` : ''}`
+                        : hasRecipientEstimate ? `ยืนยันตั้งเวลา Broadcast (${recipientEstimate.toLocaleString()} คน)` : 'ยืนยันตั้งเวลา Broadcast'}
+                    </>
                   )}
                 </Button>
               )}
