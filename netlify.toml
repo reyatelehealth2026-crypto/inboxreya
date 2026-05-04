@@ -1,0 +1,26 @@
+# Netlify config for inboxreya (Next.js 15 App Router)
+# Deploy:  netlify deploy --build --prod
+# Or connect the repo in app.netlify.com and Netlify auto-detects this file.
+#
+# NOTE: per-route function tuning (timeout/memory) is NOT settable here for
+# Next.js routes - @netlify/plugin-nextjs bundles them as one runtime and
+# the [functions."<name>"] blocks only apply to user functions in
+# netlify/functions/. To change those limits, upgrade the Netlify plan or
+# refactor the heavy route into a netlify/functions/ file. SSE realtime is
+# capped by Netlify (26s on free, 5m on Pro) regardless of config.
+#
+# Cache-Control + security headers live in public/_headers (shared with
+# Cloudflare Pages); not duplicated here.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NEXT_TELEMETRY_DISABLED = "1"
+  # Prisma query engine target for the Netlify build/runtime image
+  PRISMA_CLI_BINARY_TARGETS = "native,rhel-openssl-3.0.x"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
