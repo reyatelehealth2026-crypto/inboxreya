@@ -2,9 +2,17 @@ import { NextRequest } from 'next/server'
 import { auth } from '@/lib/auth'
 import { addRealtimeClient } from '@/lib/realtime'
 
-// SSE endpoint for real-time updates
+// SSE endpoint for real-time updates.
+//
+// NOTE on infra cost: each open SSE connection holds a serverless
+// function alive for the full duration, billed as Provisioned Memory
+// GB-Hrs. Pusher is already wired in this app and does the same job
+// for free up to its quota, so this route is intentionally short-lived
+// (50s self-close, 60s hard cap) to bound cost. Long term, prefer
+// Pusher and disable this route entirely (set NEXT_PUBLIC_USE_SSE=0
+// on the client).
 export const runtime = 'nodejs'
-export const maxDuration = 300
+export const maxDuration = 60
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
@@ -36,16 +44,15 @@ export async function GET(request: NextRequest) {
       }
       removeClient = addRealtimeClient(client)
 
+      // Tell the browser to wait 5s before reconnecting after we close
       controller.enqueue(encoder.encode('retry: 5000\n\n'))
 
-      // Send initial connection message
       client.send({
         type: 'ping',
         data: { userId: session.user.id },
         timestamp: Date.now(),
       })
 
-      // Keep-alive interval
       keepAliveInterval = setInterval(() => {
         try {
           client.send({
@@ -56,17 +63,16 @@ export async function GET(request: NextRequest) {
         } catch {
           closeStream()
         }
-      }, 25000) // Send ping every 25 seconds (before 30s timeout)
+      }, 25000)
 
-      // Cleanup on close
       request.signal.addEventListener('abort', () => {
         closeStream()
       })
 
-      // Close after 4 minutes to prevent timeout
+      // Self-close before the 60s platform cap so the browser reconnects cleanly
       setTimeout(() => {
         closeStream()
-      }, 240000) // 4 minutes
+      }, 50000)
     },
   })
 

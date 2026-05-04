@@ -1,0 +1,29 @@
+# Cloudflare Pages config for inboxreya.
+#
+# Build command (set this in Pages dashboard or via CLI):
+#     npx @cloudflare/next-on-pages
+# Build output directory:
+#     .vercel/output/static
+#
+# IMPORTANT - read DEPLOY_OPTIMIZE_TH.md before pointing prod traffic here.
+# Cloudflare Pages runs Next.js routes on the Workers runtime. Several
+# parts of this app currently use Node-only APIs (Prisma over TCP,
+# ioredis, server-side Pusher SDK, the SSE realtime route). They will
+# need a small refactor (Prisma Accelerate / HTTP driver, REST Pusher,
+# Pusher-only realtime) before CF Pages is a safe production target.
+# Use this config to deploy a staging build for testing.
+
+name = "inboxreya"
+compatibility_date = "2026-04-15"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".vercel/output/static"
+
+[vars]
+NODE_ENV = "production"
+NEXT_TELEMETRY_DISABLED = "1"
+
+# Set secrets via:  wrangler pages secret put <NAME>
+# Required: DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL, INTERNAL_API_SECRET,
+# LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET, PUSHER_APP_ID, PUSHER_KEY,
+# PUSHER_SECRET, PUSHER_CLUSTER, NEXT_PUBLIC_PUSHER_KEY, NEXT_PUBLIC_PUSHER_CLUSTER,
+# CRON_SECRET, REDIS_URL (optional)
