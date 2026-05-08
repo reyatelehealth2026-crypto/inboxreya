@@ -46,22 +46,38 @@ export async function GET(
     const result = await cacheQuery(
       `customer:bdos:${userId}`,
       async () => {
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'User-Agent': 'InboxReya-BDO/1.0',
-          },
-          body: JSON.stringify({
-            action: 'pending_bdo_orders',
-            customer_ref: user.memberId || '',
-            line_user_id: user.lineUserId || '',
-          }),
-          cache: 'no-store',
-        })
-
         const empty = { bdo_orders: [], total: 0 }
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 8000)
+
+        let response: Response
+        try {
+          response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'User-Agent': 'InboxReya-BDO/1.0',
+            },
+            body: JSON.stringify({
+              action: 'pending_bdo_orders',
+              customer_ref: user.memberId || '',
+              line_user_id: user.lineUserId || '',
+            }),
+            cache: 'no-store',
+            signal: controller.signal,
+          })
+        } catch (fetchErr) {
+          const isAbort = fetchErr instanceof Error && fetchErr.name === 'AbortError'
+          console.warn('[customer-bdos] PHP fetch failed', {
+            kind: isAbort ? 'timeout' : 'network',
+            error: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+            userId,
+          })
+          return empty
+        } finally {
+          clearTimeout(timeout)
+        }
 
         if (!response.ok) {
           console.warn('[customer-bdos] PHP backend non-OK response', {
