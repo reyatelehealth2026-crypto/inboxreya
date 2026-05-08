@@ -61,14 +61,43 @@ export async function GET(
           cache: 'no-store',
         })
 
-        const contentType = response.headers.get('content-type')
-        if (!contentType || !contentType.includes('application/json')) {
-          return { bdo_orders: [], total: 0 }
+        const empty = { bdo_orders: [], total: 0 }
+
+        if (!response.ok) {
+          console.warn('[customer-bdos] PHP backend non-OK response', {
+            status: response.status,
+            statusText: response.statusText,
+          })
+          return empty
         }
 
-        const res = await response.json()
+        const text = await response.text()
+        if (!text || !text.trim()) {
+          return empty
+        }
+
+        let res: { data?: { bdo_orders?: unknown; total?: unknown }; bdo_orders?: unknown; total?: unknown }
+        try {
+          res = JSON.parse(text)
+        } catch (parseErr) {
+          console.warn('[customer-bdos] Failed to parse PHP response as JSON', {
+            preview: text.slice(0, 200),
+            error: parseErr instanceof Error ? parseErr.message : String(parseErr),
+          })
+          return empty
+        }
+
         // PHP already filters by bdo_date >= 2025-03-24
-        return res.data || { bdo_orders: res.bdo_orders || [], total: res.total || 0 }
+        if (res && typeof res === 'object' && res.data && typeof res.data === 'object') {
+          return {
+            bdo_orders: Array.isArray(res.data.bdo_orders) ? res.data.bdo_orders : [],
+            total: typeof res.data.total === 'number' ? res.data.total : 0,
+          }
+        }
+        return {
+          bdo_orders: Array.isArray(res?.bdo_orders) ? res.bdo_orders : [],
+          total: typeof res?.total === 'number' ? res.total : 0,
+        }
       },
       CACHE_TTL.ORDERS  // 30s
     )
