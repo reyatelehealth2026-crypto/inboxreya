@@ -1,139 +1,123 @@
 #!/usr/bin/env node
 /**
- * Test script for ApiSlip integration
- * Usage: node test-apislip.js
+ * Test script for HaveSLIP integration.
+ *
+ * Usage:
+ *   node test-apislip.js <image_url>
  */
 
 const fs = require('fs')
 const path = require('path')
 
-// Load .env.local
 const envPath = path.join(__dirname, '.env.local')
 const envContent = fs.readFileSync(envPath, 'utf-8')
-const envLines = envContent.split('\n')
 const env = {}
-envLines.forEach(line => {
-  if (line.includes('=') && !line.startsWith('#')) {
+
+envContent.split('\n').forEach((line) => {
+  if (line.includes('=') && !line.trim().startsWith('#')) {
     const [key, ...valueParts] = line.split('=')
-    const value = valueParts.join('=').replace(/^["']|["']$/g, '')
-    env[key] = value
+    env[key.trim()] = valueParts.join('=').trim().replace(/^["']|["']$/g, '')
   }
 })
 
-const API_KEY = env.APISLIP_API_KEY
-const BASE_URL = 'https://apislip-public.n0tify.pro'
+const API_KEY = env.HAVESLIP_API_KEY
+const BASE_URL = (env.HAVESLIP_API_BASE_URL || 'https://api.haveslip.com/api').replace(/\/$/, '')
 
 if (!API_KEY) {
-  console.error('❌ APISLIP_API_KEY not found in .env.local')
+  console.error('HAVESLIP_API_KEY not found in .env.local')
   process.exit(1)
 }
 
-console.log('🔑 API Key found:', API_KEY.substring(0, 20) + '...')
+console.log('API Key found:', API_KEY.substring(0, 20) + '...')
 console.log('')
 
-async function testAccountInfo() {
-  console.log('📊 Testing /api/v1/account/info...')
+async function testCreditsBalance() {
+  console.log('Testing /credits/balance...')
   try {
-    const res = await fetch(`${BASE_URL}/api/v1/account/info`, {
-      headers: { 'X-Api-Key': API_KEY }
+    const res = await fetch(`${BASE_URL}/credits/balance`, {
+      headers: { Authorization: `Bearer ${API_KEY}` },
     })
     const data = await res.json()
-    
+
     if (data.success) {
-      console.log('✅ Account Info:')
-      console.log(`   Username: ${data.data.username}`)
-      console.log(`   Credits Balance: ${data.data.credits.balance}`)
-      console.log(`   Total Used: ${data.data.credits.totalUsed}`)
-      if (data.data.currentPlan) {
-        console.log(`   Plan: ${data.data.currentPlan.name}`)
-      }
+      console.log('Credits Balance:')
+      console.log(`   Currency: ${data.data.currency}`)
+      console.log(`   Balance: ${data.data.balance}`)
+      console.log(`   Next Expiry: ${data.data.nextExpiryAt || '-'}`)
     } else {
-      console.log('❌ Error:', data)
+      console.log('Error:', data)
     }
   } catch (err) {
-    console.error('❌ Request failed:', err.message)
+    console.error('Request failed:', err.message)
   }
   console.log('')
 }
 
 async function testVerifySlip() {
-  // Use a sample slip image URL (this is a public test image)
-  // You can replace this with a real slip image URL from your system
-  const testImageUrl = 'https://www.cnypharmacy.com/uploads/slip_test.jpg'
-  
-  console.log('🧪 Testing /api/v1/verify/slip...')
+  const testImageUrl = process.argv[2]
+
+  if (!testImageUrl) {
+    console.log('Testing /verify skipped: pass a real slip image URL as the first argument.')
+    console.log('')
+    return
+  }
+
+  console.log('Testing /verify...')
   console.log(`   Image URL: ${testImageUrl}`)
-  
+
   try {
-    // First, download the image
-    console.log('   Downloading image...')
-    const imageRes = await fetch(testImageUrl)
-    
-    if (!imageRes.ok) {
-      console.log(`   ⚠️  Image not accessible (${imageRes.status}), using a placeholder test`)
-      console.log('   Note: Replace testImageUrl with a real slip image to test actual verification')
-      return
-    }
-    
-    const imageBuffer = await imageRes.arrayBuffer()
-    const contentType = imageRes.headers.get('content-type') || 'image/jpeg'
-    
-    // Build FormData
-    const formData = new FormData()
-    const blob = new Blob([imageBuffer], { type: contentType })
-    formData.append('slip', blob, 'slip.jpg')
-    
-    // Call ApiSlip
-    console.log('   Sending to ApiSlip...')
-    const res = await fetch(`${BASE_URL}/api/v1/verify/slip`, {
+    const res = await fetch(`${BASE_URL}/verify`, {
       method: 'POST',
-      headers: { 'X-Api-Key': API_KEY },
-      body: formData
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': `test-${Date.now()}`,
+      },
+      body: JSON.stringify({
+        inputType: 'image',
+        imageUrl: testImageUrl,
+        mode: 'sync',
+      }),
     })
-    
+
     const data = await res.json()
-    
+
     if (data.success) {
-      console.log('✅ Verification Result:')
-      console.log(`   Status: ${data.data.status}`)
-      console.log(`   Authentic: ${data.data.isAuthentic}`)
-      console.log(`   Message: ${data.data.message}`)
-      if (data.data.transaction) {
-        console.log(`   Amount: ${data.data.transaction.amount} ${data.data.transaction.currency}`)
-        console.log(`   Ref: ${data.data.transaction.refId}`)
-        console.log(`   Sender: ${data.data.transaction.sender?.name || 'N/A'}`)
+      const tx = data.data?.result?.transactionData
+      console.log('Verification Result:')
+      console.log(`   Status: ${data.data?.status}`)
+      console.log(`   Valid: ${data.data?.result?.valid}`)
+      console.log(`   UUID: ${data.data?.uuid}`)
+      if (tx) {
+        console.log(`   Amount: ${tx.amount} ${tx.currency || 'THB'}`)
+        console.log(`   Date: ${tx.transactionDate || 'N/A'}`)
+        console.log(`   Sender: ${tx.sender?.name || 'N/A'}`)
+        console.log(`   Receiver: ${tx.receiver?.name || 'N/A'}`)
       }
     } else {
-      console.log('❌ Verification failed:', data)
+      console.log('Verification failed:', data)
     }
   } catch (err) {
-    console.error('❌ Request failed:', err.message)
+    console.error('Request failed:', err.message)
   }
   console.log('')
 }
 
 async function testVerifyEndpoint() {
-  // Test our Next.js verify-slip endpoint
-  const testImageUrl = 'https://www.cnypharmacy.com/uploads/slip_test.jpg'
+  const testImageUrl = process.argv[2] || '<real_slip_image_url>'
   const localEndpoint = 'http://localhost:3000/api/inbox/verify-slip'
-  
-  console.log('🧪 Testing local Next.js endpoint...')
+
+  console.log('Local Next.js endpoint:')
   console.log(`   Endpoint: ${localEndpoint}`)
-  console.log(`   Image URL: ${testImageUrl}`)
-  console.log('   Note: This requires Next.js dev server to be running')
+  console.log(`   Body: { "imageUrl": "${testImageUrl}" }`)
+  console.log('   Note: requires Next.js dev server and an authenticated session.')
   console.log('')
 }
 
-// Run tests
 ;(async () => {
-  await testAccountInfo()
+  await testCreditsBalance()
   await testVerifySlip()
   await testVerifyEndpoint()
-  
-  console.log('✨ Test complete!')
-  console.log('')
-  console.log('📝 To test with a real slip:')
-  console.log('   1. Find a slip image URL from your system')
-  console.log('   2. Update testImageUrl in this script')
-  console.log('   3. Run: node test-apislip.js')
+
+  console.log('Test complete.')
 })()

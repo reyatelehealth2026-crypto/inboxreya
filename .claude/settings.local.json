@@ -28,7 +28,26 @@
       "Bash(html-pdf-chrome:*)",
       "Bash(dir:*)",
       "Bash(npm list:*)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(git stash *)",
+      "Bash(where netlify *)",
+      "Bash(netlify --version)",
+      "Bash(netlify status *)",
+      "PowerShell(Get-Process *)",
+      "Bash(Select-String -Pattern \"bdos\" -Context 0,2)",
+      "Bash(curl -sS -i -X POST 'https://cny.re-ya.com/api/odoo-webhooks-dashboard.php' -H 'Content-Type: application/json' -H 'Accept: application/json' -d '{\"action\":\"pending_bdo_orders\",\"customer_ref\":\"\",\"line_user_id\":\"\"}')",
+      "Bash(php *)",
+      "PowerShell(Test-Path *)",
+      "Bash(git -C \"C:/Users/Administrator/odoo\" status)",
+      "Bash(git -C \"C:/Users/Administrator/odoo\" remote -v)",
+      "Bash(git *)",
+      "Bash(curl -sS -X POST https://cny.re-ya.com/api/odoo-webhooks-dashboard.php -H 'Content-Type: application/json' -d '{\"action\":\"pending_bdo_orders\",\"customer_ref\":\"\",\"line_user_id\":\"\"}' --max-time 20)",
+      "Bash(curl -sS -X POST https://cny.re-ya.com/api/odoo-dashboard-api.php -H 'Content-Type: application/json' -d '{\"action\":\"odoo_bdo_list_api\",\"limit\":3}' --max-time 20)",
+      "Bash(curl -sS -i 'https://inbox.re-ya.com/api/inbox/customers/895/bdos' --max-time 20)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "claude-flow"
+  ]
 }

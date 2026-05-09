@@ -203,13 +203,13 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
       setVerifyResult(json)
 
       if (json.success && json.verified && json.data) {
-        // Auto-fill amount from SlipMate if available
+        // Auto-fill amount from slip verification if available
         if (json.data.amount) {
           setAmount(json.data.amount.toString())
         }
         // Auto-fill transfer date
         if (json.data.transDate) {
-          // transDate format from SlipMate could be various — try to parse
+          // transDate format can vary by provider, so try to parse it defensively.
           const parsed = new Date(json.data.transDate)
           if (!isNaN(parsed.getTime())) {
             setTransferDate(parsed.toISOString().slice(0, 10))

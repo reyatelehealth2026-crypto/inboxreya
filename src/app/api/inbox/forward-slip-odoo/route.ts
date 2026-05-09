@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
     if (orderId) phpPayload.order_id = Number(orderId)
     if (bdoId) phpPayload.bdo_id = Number(bdoId)
 
-    // SlipMate verification data (pass-through to PHP)
+    // Slip verification data (pass-through to PHP)
     if (slip_verified !== undefined) phpPayload.slip_verified = slip_verified
     if (slip_verify_ref) phpPayload.slip_verify_ref = slip_verify_ref
     if (slip_verify_amount !== undefined) phpPayload.slip_verify_amount = slip_verify_amount

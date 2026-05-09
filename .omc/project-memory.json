@@ -1,0 +1,305 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1778210748230,
+  "projectRoot": "C:\\Users\\Administrator\\inboxreya",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "next",
+        "version": "15.1.0",
+        "category": "fullstack"
+      },
+      {
+        "name": "playwright",
+        "version": "1.59.1",
+        "category": "testing"
+      },
+      {
+        "name": "react",
+        "version": "19.0.0",
+        "category": "frontend"
+      },
+      {
+        "name": "react-dom",
+        "version": "19.0.0",
+        "category": "frontend"
+      },
+      {
+        "name": "vitest",
+        "version": "4.0.18",
+        "category": "testing"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "npm run build",
+    "testCommand": "npm test",
+    "lintCommand": "npm run lint",
+    "devCommand": "npm run dev",
+    "scripts": {
+      "dev": "next dev",
+      "build": "next build",
+      "start": "next start",
+      "test": "vitest run",
+      "test:watch": "vitest",
+      "check-types": "tsc --noEmit",
+      "lint": "next lint",
+      "postinstall": "prisma generate",
+      "db:generate": "prisma generate",
+      "db:push": "prisma db push",
+      "db:migrate": "prisma migrate deploy",
+      "db:seed": "tsx prisma/seed.ts",
+      "db:studio": "prisma studio",
+      "db:stats": "node /root/.openclaw/workspace/get-daily-stats.js",
+      "prepare": "husky"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": "type-based"
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "public",
+      "scripts",
+      "src",
+      "tests"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "design-system": {
+      "path": "design-system",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1778210748194,
+      "keyFiles": []
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 5,
+      "lastAccessed": 1778210748194,
+      "keyFiles": [
+        "analysis-feature-planning.md",
+        "broadcast-template-flex-backend.md",
+        "broadcast-template-flex-plan.md",
+        "broadcast-template-flex-review.md",
+        "broadcast-template-flex-ux.md"
+      ]
+    },
+    "includes": {
+      "path": "includes",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1778210748199,
+      "keyFiles": []
+    },
+    "mockups": {
+      "path": "mockups",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1778210748199,
+      "keyFiles": [
+        "inbox-v2-style-mockup.html"
+      ]
+    },
+    "prisma": {
+      "path": "prisma",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1778210748199,
+      "keyFiles": [
+        "run-migration.js",
+        "run-template-migration.js",
+        "schema.prisma",
+        "seed.ts"
+      ]
+    },
+    "public": {
+      "path": "public",
+      "purpose": "Public files",
+      "fileCount": 1,
+      "lastAccessed": 1778210748200,
+      "keyFiles": [
+        "manifest.json"
+      ]
+    },
+    "screenshots": {
+      "path": "screenshots",
+      "purpose": null,
+      "fileCount": 23,
+      "lastAccessed": 1778210748200,
+      "keyFiles": [
+        "01_login_page.png",
+        "02_dashboard_overview.png",
+        "03_dashboard_kpi_cards.png",
+        "04_inbox_overview.png",
+        "05_inbox_click_customer.png"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 3,
+      "lastAccessed": 1778210748201,
+      "keyFiles": [
+        "generate_update_sql.js",
+        "get-daily-stats.ts",
+        "migrate_display_name.js"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1778210748201,
+      "keyFiles": []
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 1,
+      "lastAccessed": 1778210748201,
+      "keyFiles": [
+        "setup.ts"
+      ]
+    },
+    "prisma\\migrations": {
+      "path": "prisma\\migrations",
+      "purpose": "Database migrations",
+      "fileCount": 4,
+      "lastAccessed": 1778210748203,
+      "keyFiles": [
+        "001_inbox_feature_parity_upgrade.sql",
+        "002_add_template_fields.sql",
+        "migration_lock.toml"
+      ]
+    },
+    "public\\data": {
+      "path": "public\\data",
+      "purpose": "Data files",
+      "fileCount": 1,
+      "lastAccessed": 1778210748203,
+      "keyFiles": [
+        "cnypharmacyz.csv"
+      ]
+    },
+    "src\\app": {
+      "path": "src\\app",
+      "purpose": "Application code",
+      "fileCount": 3,
+      "lastAccessed": 1778210748205,
+      "keyFiles": [
+        "globals.css",
+        "layout.tsx",
+        "page.tsx"
+      ]
+    },
+    "src\\components": {
+      "path": "src\\components",
+      "purpose": "UI components",
+      "fileCount": 3,
+      "lastAccessed": 1778210748205,
+      "keyFiles": [
+        "ErrorBoundary.tsx",
+        "ErrorMessage.tsx",
+        "WebVitals.tsx"
+      ]
+    },
+    "src\\config": {
+      "path": "src\\config",
+      "purpose": "Configuration files",
+      "fileCount": 1,
+      "lastAccessed": 1778210748205,
+      "keyFiles": [
+        "assignee-colors.ts"
+      ]
+    },
+    "src\\lib": {
+      "path": "src\\lib",
+      "purpose": "Library code",
+      "fileCount": 32,
+      "lastAccessed": 1778210748205,
+      "keyFiles": [
+        "accessibility.ts",
+        "ai.ts",
+        "api-utils.ts"
+      ]
+    },
+    "src\\types": {
+      "path": "src\\types",
+      "purpose": "Type definitions",
+      "fileCount": 5,
+      "lastAccessed": 1778210748206,
+      "keyFiles": [
+        "broadcast.ts",
+        "group.ts",
+        "index.ts"
+      ]
+    },
+    "src\\__tests__": {
+      "path": "src\\__tests__",
+      "purpose": "Test files",
+      "fileCount": 1,
+      "lastAccessed": 1778210748206,
+      "keyFiles": [
+        "smoke.test.ts"
+      ]
+    },
+    "tests\\api": {
+      "path": "tests\\api",
+      "purpose": "API routes",
+      "fileCount": 2,
+      "lastAccessed": 1778210748206,
+      "keyFiles": [
+        "analytics.test.ts",
+        "broadcasts-cancel.test.ts"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "src\\app\\api\\inbox\\customers\\[id]\\bdos\\route.ts",
+      "accessCount": 3,
+      "lastAccessed": 1778210845617,
+      "type": "file"
+    },
+    {
+      "path": "src",
+      "accessCount": 2,
+      "lastAccessed": 1778210822988,
+      "type": "directory"
+    }
+  ],
+  "userDirectives": []
+}

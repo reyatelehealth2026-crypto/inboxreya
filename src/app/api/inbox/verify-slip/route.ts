@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 
@@ -76,10 +77,48 @@ function isReceiverNameMatch(actualName: string, expectedName: string) {
   return false
 }
 
+function buildIdempotencyKey(imageUrl: string) {
+  return `inboxreya-slip-${crypto.createHash('sha256').update(imageUrl).digest('hex')}`
+}
+
+async function readJsonResponse(response: Response) {
+  const text = await response.text()
+  if (!text) return null
+
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { message: text }
+  }
+}
+
+function normalizeHaveSlipTransaction(data: any) {
+  const result = data?.result || {}
+  const tx = result?.transactionData || {}
+
+  return {
+    amount: tx.amount,
+    refId: tx.refId || tx.referenceId || tx.transactionId || data?.uuid || '',
+    date: tx.transactionDate || tx.date || data?.completedAt || data?.createdAt || '',
+    sender: {
+      name: tx.sender?.name || '',
+      bank: tx.sender?.bank || '',
+      account: tx.sender?.account || tx.sender?.accountNumber || '',
+    },
+    receiver: {
+      name: tx.receiver?.name || '',
+      bank: tx.receiver?.bank || '',
+      account: tx.receiver?.account || tx.receiver?.accountNumber || '',
+    },
+    currency: tx.currency || 'THB',
+    transFeeAmount: tx.transFeeAmount || 0,
+  }
+}
+
 /**
  * POST /api/inbox/verify-slip
  *
- * Verify a payment slip image via ApiSlip API.
+ * Verify a payment slip image via HaveSLIP API.
  * Proxies the request server-side so the API key stays hidden.
  *
  * Body (JSON):
@@ -102,69 +141,54 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const apiKey = process.env.APISLIP_API_KEY
+    const apiKey = process.env.HAVESLIP_API_KEY
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'ApiSlip API key not configured (APISLIP_API_KEY)' },
+        { error: 'HaveSLIP API key not configured (HAVESLIP_API_KEY)' },
         { status: 500 }
       )
     }
 
-    // Download image from imageUrl
-    const imageRes = await fetch(imageUrl)
-    if (!imageRes.ok) {
+    const apiBaseUrl = (process.env.HAVESLIP_API_BASE_URL || 'https://api.haveslip.com/api').replace(/\/$/, '')
+    const haveSlipRes = await fetch(`${apiBaseUrl}/verify`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': buildIdempotencyKey(imageUrl),
+      },
+      body: JSON.stringify({
+        inputType: 'image',
+        imageUrl,
+        mode: 'sync',
+        forceRefresh: false,
+      }),
+    })
+
+    const haveSlipData = await readJsonResponse(haveSlipRes)
+
+    if (!haveSlipRes.ok) {
+      // HaveSLIP returned an error. Keep 200 so the frontend can handle gracefully.
       return NextResponse.json(
         {
           success: false,
           verified: false,
-          error: `Failed to download image (${imageRes.status})`,
+          error: haveSlipData?.message || haveSlipData?.error || `HaveSLIP API error (${haveSlipRes.status})`,
+          statusCode: haveSlipRes.status,
         },
         { status: 200 }
       )
     }
 
-    const imageBuffer = await imageRes.arrayBuffer()
-    const contentType = imageRes.headers.get('content-type') || 'image/jpeg'
-    const filename = imageUrl.split('/').pop() || 'slip.jpg'
-
-    // Build multipart/form-data
-    const formData = new FormData()
-    const blob = new Blob([imageBuffer], { type: contentType })
-    formData.append('slip', blob, filename)
-
-    // Call ApiSlip verify endpoint
-    const apiSlipRes = await fetch('https://apislip-public.n0tify.pro/api/v1/verify/slip', {
-      method: 'POST',
-      headers: {
-        'X-Api-Key': apiKey,
-      },
-      body: formData,
-    })
-
-    const apiSlipData = await apiSlipRes.json()
-
-    if (!apiSlipRes.ok) {
-      // ApiSlip returned an error
-      return NextResponse.json(
-        {
-          success: false,
-          verified: false,
-          error: apiSlipData?.message || apiSlipData?.error || `ApiSlip API error (${apiSlipRes.status})`,
-          statusCode: apiSlipRes.status,
-        },
-        { status: 200 } // Return 200 so frontend can handle gracefully
-      )
-    }
-
-    // Parse ApiSlip response format to match frontend expectations
-    // ApiSlip: { success, data: { status, isAuthentic, transaction: { amount, refId, sender, receiver, date } } }
+    // Parse HaveSLIP response format to match frontend expectations.
+    // HaveSLIP: { success, data: { status, result: { valid, transactionData } } }
     // Frontend expects: { success, verified, data: { amount, transRef, sender, receiver, ... } }
     
-    const { data } = apiSlipData
-    const tx = data.transaction || {}
+    const { data } = haveSlipData || {}
+    const tx = normalizeHaveSlipTransaction(data)
     
-    if (data.status === 'success' && data.isAuthentic === true) {
-      // Build response compatible with both old SlipMate format and new ApiSlip format
+    if (haveSlipData?.success === true && data?.status === 'completed' && data?.result?.valid === true) {
+      // Build response compatible with the existing frontend contract.
       const transDate = tx.date || ''
       const transTime = transDate ? transDate.split('T')[1]?.replace(/\.\d+Z$/, '') || '' : ''
       
@@ -241,9 +265,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         verified: false,
-        error: data.message || `Verification failed: ${data.status}`,
-        status: data.status,
-        isAuthentic: data.isAuthentic,
+        error: data?.result?.message || data?.error || `Verification failed: ${data?.status || 'unknown'}`,
+        status: data?.status,
+        isAuthentic: data?.result?.valid === true,
         data: data,
       }, { status: 200 })
     }
