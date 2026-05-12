@@ -27,7 +27,7 @@ async function timed(fn: () => Promise<unknown>): Promise<DepResult> {
  *
  * Returns per-dependency status (db, redis, php) so uptime monitors can
  * differentiate transient PHP outages from full Next.js degradation.
- * Returns 503 when any required dep is unhealthy.
+ * Returns 503 only when core Next.js dependencies are unhealthy.
  *
  * Total budget: ~2.5s (each dep capped at 2s).
  */
@@ -60,7 +60,8 @@ export async function GET() {
     php: phpResult,
   }
 
-  const allOk = dbResult.ok && redisResult.ok && phpResult.ok
+  const coreOk = dbResult.ok && redisResult.ok
+  const allOk = coreOk && phpResult.ok
   const status = allOk ? 'ok' : 'degraded'
 
   if (!allOk) {
@@ -78,7 +79,7 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       deps,
     },
-    { status: allOk ? 200 : 503 }
+    { status: coreOk ? 200 : 503 }
   )
 }
 
