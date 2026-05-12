@@ -230,8 +230,8 @@ confidence is 0..1. Use only SKUs from the catalog context; if no match, emit co
 
   // ----- Feature flags (off by default; admin enables when ready) -----
   const flagSeeds = [
-    { key: 'ai_draft', enabled: true, enabledForRoles: 'admin,super_admin,supervisor' },
-    { key: 'ai_summarizer', enabled: true, enabledForRoles: 'admin,super_admin,supervisor' },
+    { key: 'ai_draft', enabled: false, enabledForRoles: 'admin,super_admin,supervisor' },
+    { key: 'ai_summarizer', enabled: false, enabledForRoles: 'admin,super_admin,supervisor' },
     { key: 'ai_action_suggester', enabled: false, enabledForRoles: 'admin,super_admin' },
     { key: 'ai_order_parser', enabled: false, enabledForRoles: 'admin,super_admin' },
   ]

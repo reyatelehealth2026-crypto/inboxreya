@@ -21,8 +21,26 @@ function maskPhone(phone: string): string {
   return `${head}${middle}${tail}`
 }
 
+function readNonNegativeNumberEnv(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
+}
+
 function estimateCostUsd(_model: string, usage: GeminiStreamUsage): number {
-  const cost = (usage.promptTokens * 0.075 + usage.outputTokens * 0.3) / 1_000_000
+  const promptCostPerMillion = readNonNegativeNumberEnv(
+    'AI_GEMINI_PROMPT_COST_PER_MILLION_USD',
+    0.075
+  )
+  const outputCostPerMillion = readNonNegativeNumberEnv(
+    'AI_GEMINI_OUTPUT_COST_PER_MILLION_USD',
+    0.3
+  )
+  const cost =
+    (usage.promptTokens * promptCostPerMillion +
+      usage.outputTokens * outputCostPerMillion) /
+    1_000_000
   return Math.round(cost * 1_000_000) / 1_000_000
 }
 
