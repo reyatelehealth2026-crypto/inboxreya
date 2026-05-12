@@ -125,7 +125,7 @@ export async function POST(request: Request) {
           parts: [{ text: userText }],
           systemPrompt: prompt.body,
           model: prompt.model,
-          maxTokens: 500,
+          maxTokens: 1200,
         })
 
         const latencyMs = Date.now() - startedAt

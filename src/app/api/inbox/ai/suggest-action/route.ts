@@ -173,7 +173,7 @@ export async function GET(request: Request) {
           parts: [{ text: userText }],
           systemPrompt: prompt.body,
           model: prompt.model,
-          maxTokens: 500,
+          maxTokens: 900,
           temperature: 0.3,
         })
 

@@ -36,6 +36,14 @@ interface PromptRow {
 }
 
 const PROMPT_KEYS = ['ghost_draft', 'summarizer', 'action_suggester', 'order_parser'] as const
+type PromptKey = (typeof PROMPT_KEYS)[number]
+
+const PROMPT_LABELS: Record<PromptKey, string> = {
+  ghost_draft: 'Ghost Draft',
+  summarizer: 'สรุปแชท',
+  action_suggester: 'แนะนำขั้นตอนถัดไป',
+  order_parser: 'แปลงข้อความเป็นออเดอร์',
+}
 
 async function fetchPrompts(): Promise<PromptRow[]> {
   const res = await fetch('/api/admin/ai-prompts')
@@ -63,9 +71,13 @@ export function PromptsTab() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'ai-prompts'] }),
   })
 
-  const [dialogKey, setDialogKey] = useState<string | null>(null)
+  const [dialogKey, setDialogKey] = useState<PromptKey | null>(null)
   const [draftBody, setDraftBody] = useState('')
   const [draftModel, setDraftModel] = useState('gemini-flash-latest')
+
+  const activePromptByKey = new Map(
+    (data ?? []).filter((row) => row.isActive).map((row) => [row.key, row]),
+  )
 
   const createMutation = useMutation({
     mutationFn: async (vars: { key: string; body: string; model: string }) => {
@@ -84,44 +96,62 @@ export function PromptsTab() {
     },
   })
 
-  if (isLoading) return <div className="text-sm text-muted-foreground">Loading prompts…</div>
-  if (error) return <div className="text-sm text-red-600">Failed to load prompts.</div>
+  function openDialog(key: PromptKey) {
+    const active = activePromptByKey.get(key)
+    setDialogKey(key)
+    setDraftBody(active?.body ?? '')
+    setDraftModel(active?.model ?? 'gemini-flash-latest')
+  }
+
+  if (isLoading) return <div className="text-sm text-muted-foreground">กำลังโหลดคำสั่ง AI...</div>
+  if (error) return <div className="text-sm text-red-600">โหลดคำสั่ง AI ไม่สำเร็จ</div>
 
   return (
     <div className="space-y-4">
+      <div className="rounded-md border bg-muted/20 p-4 text-sm text-muted-foreground">
+        หน้านี้ใช้ตอนต้องการปรับคำสั่ง AI จริง ๆ ระบบจะคัดลอก prompt ปัจจุบันมาให้แก้ก่อน
+        แล้วค่อยบันทึกเป็นเวอร์ชันใหม่
+      </div>
+
       <div className="flex flex-wrap gap-2">
-        {PROMPT_KEYS.map((k) => (
+        {PROMPT_KEYS.map((key) => (
           <Dialog
-            key={k}
-            open={dialogKey === k}
-            onOpenChange={(open) => setDialogKey(open ? k : null)}
+            key={key}
+            open={dialogKey === key}
+            onOpenChange={(open) => {
+              if (open) {
+                openDialog(key)
+              } else {
+                setDialogKey(null)
+              }
+            }}
           >
             <DialogTrigger asChild>
               <Button variant="outline" size="sm">
-                + New version: {k}
+                แก้คำสั่ง: {PROMPT_LABELS[key]}
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-2xl">
               <DialogHeader>
-                <DialogTitle>New prompt version — {k}</DialogTitle>
+                <DialogTitle>แก้คำสั่ง AI: {PROMPT_LABELS[key]}</DialogTitle>
                 <DialogDescription>
-                  Creates a new active version and deactivates the previous one.
+                  ระบบจะสร้างเวอร์ชันใหม่จากคำสั่งเดิม และสลับไปใช้เวอร์ชันล่าสุดเมื่อบันทึก
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="model">Model</Label>
+                  <Label htmlFor={`model-${key}`}>โมเดล</Label>
                   <Input
-                    id="model"
+                    id={`model-${key}`}
                     value={draftModel}
                     onChange={(e) => setDraftModel(e.target.value)}
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="body">Prompt body</Label>
+                  <Label htmlFor={`body-${key}`}>คำสั่งที่ AI ใช้</Label>
                   <Textarea
-                    id="body"
-                    rows={10}
+                    id={`body-${key}`}
+                    rows={14}
                     value={draftBody}
                     onChange={(e) => setDraftBody(e.target.value)}
                   />
@@ -130,11 +160,11 @@ export function PromptsTab() {
               <DialogFooter>
                 <Button
                   onClick={() =>
-                    createMutation.mutate({ key: k, body: draftBody, model: draftModel })
+                    createMutation.mutate({ key, body: draftBody, model: draftModel })
                   }
                   disabled={createMutation.isPending || draftBody.trim().length === 0}
                 >
-                  {createMutation.isPending ? 'Saving…' : 'Save version'}
+                  {createMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกเป็นเวอร์ชันใหม่'}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -145,32 +175,38 @@ export function PromptsTab() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Key</TableHead>
-            <TableHead>Version</TableHead>
-            <TableHead>Model</TableHead>
-            <TableHead>Active</TableHead>
-            <TableHead>Updated</TableHead>
+            <TableHead>ฟีเจอร์</TableHead>
+            <TableHead>เวอร์ชัน</TableHead>
+            <TableHead>โมเดล</TableHead>
+            <TableHead>กำลังใช้</TableHead>
+            <TableHead>อัปเดตล่าสุด</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {(data ?? []).map((row) => (
-            <TableRow key={row.id}>
-              <TableCell className="font-mono text-xs">{row.key}</TableCell>
-              <TableCell>{row.version}</TableCell>
-              <TableCell className="font-mono text-xs">{row.model}</TableCell>
-              <TableCell>
-                <Switch
-                  checked={row.isActive}
-                  onCheckedChange={(v) =>
-                    toggleMutation.mutate({ id: row.id, isActive: Boolean(v) })
-                  }
-                />
-              </TableCell>
-              <TableCell className="text-xs text-muted-foreground">
-                {new Date(row.updatedAt).toLocaleString()}
-              </TableCell>
-            </TableRow>
-          ))}
+          {(data ?? []).map((row) => {
+            const key = row.key as PromptKey
+            return (
+              <TableRow key={row.id}>
+                <TableCell>
+                  <div className="font-medium">{PROMPT_LABELS[key] ?? row.key}</div>
+                  <div className="font-mono text-xs text-muted-foreground">{row.key}</div>
+                </TableCell>
+                <TableCell>{row.version}</TableCell>
+                <TableCell className="font-mono text-xs">{row.model}</TableCell>
+                <TableCell>
+                  <Switch
+                    checked={row.isActive}
+                    onCheckedChange={(v) =>
+                      toggleMutation.mutate({ id: row.id, isActive: Boolean(v) })
+                    }
+                  />
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {new Date(row.updatedAt).toLocaleString()}
+                </TableCell>
+              </TableRow>
+            )
+          })}
         </TableBody>
       </Table>
     </div>

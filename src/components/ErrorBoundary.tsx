@@ -41,6 +41,10 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    if (this.isChunkLoadError(error) && this.reloadOnceForChunkError()) {
+      return
+    }
+
     // Log error to monitoring service
     this.logErrorToService(error, errorInfo)
 
@@ -54,6 +58,30 @@ export class ErrorBoundary extends Component<Props, State> {
       error,
       errorInfo,
     })
+  }
+
+  isChunkLoadError(error: Error) {
+    return (
+      error.name === 'ChunkLoadError' ||
+      /ChunkLoadError|Loading chunk \d+ failed|Failed to fetch dynamically imported module/i.test(
+        error.message,
+      )
+    )
+  }
+
+  reloadOnceForChunkError() {
+    if (typeof window === 'undefined') return false
+    const key = `chunk-reload:${window.location.pathname}`
+    const lastReload = Number(window.sessionStorage.getItem(key) || 0)
+    const now = Date.now()
+
+    if (Number.isFinite(lastReload) && now - lastReload < 30_000) {
+      return false
+    }
+
+    window.sessionStorage.setItem(key, String(now))
+    window.location.reload()
+    return true
   }
 
   logErrorToService(error: Error, errorInfo: ErrorInfo) {

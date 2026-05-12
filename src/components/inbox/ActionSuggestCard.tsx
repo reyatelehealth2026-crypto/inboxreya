@@ -87,7 +87,7 @@ export function ActionSuggestCard({
       {query.isError && !query.isLoading && (
         <div className="space-y-1.5">
           <div className="p-2 rounded-md bg-red-50 border border-red-200 text-red-700 text-xs">
-            ดึงคำแนะนำไม่ได้
+            {query.error instanceof Error ? query.error.message : 'ดึงคำแนะนำไม่ได้'}
           </div>
           <button
             type="button"

@@ -16,7 +16,7 @@ export function useAiSummary() {
         body: JSON.stringify({ userId, messageCount }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to summarize')
+      if (!res.ok) throw new Error(data.message || data.error || 'Failed to summarize')
       return data as SummaryResult
     },
   })

@@ -1214,6 +1214,7 @@ function MessageComposer({
         { onChunk: (chunk) => setAiResult((prev) => prev + chunk) },
       )
     } catch (error: any) {
+      setAiResult('')
       toast({
         title: 'AI Draft ล้มเหลว',
         description: error?.message || 'กรุณาลองใหม่อีกครั้ง',

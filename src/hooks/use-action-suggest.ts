@@ -22,7 +22,7 @@ export function useActionSuggest(userId: number | null, opts?: { enabled?: boole
     queryFn: async () => {
       const res = await fetch(`/api/inbox/ai/suggest-action?userId=${userId}`)
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to fetch suggestions')
+      if (!res.ok) throw new Error(data.message || data.error || 'Failed to fetch suggestions')
       return data as SuggestResult
     },
   })

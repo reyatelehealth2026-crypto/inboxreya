@@ -112,6 +112,26 @@ export async function generateAiText({
       model: resolvedModel,
     })
   } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === 'AI response was truncated by the output token limit' &&
+      maxTokens < 2048
+    ) {
+      const retryMaxTokens = Math.min(maxTokens * 2, 2048)
+      logger.warn('AI response hit output token limit; retrying once', {
+        scope: 'ai:gemini',
+        model: resolvedModel,
+        previousMaxTokens: maxTokens,
+        retryMaxTokens,
+      })
+      return callGemini({
+        parts,
+        systemPrompt,
+        temperature,
+        maxTokens: retryMaxTokens,
+        model: resolvedModel,
+      })
+    }
     logger.error(error, { scope: 'ai:gemini', model: resolvedModel })
     throw error
   }
