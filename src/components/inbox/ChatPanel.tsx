@@ -15,6 +15,7 @@ import { useAiReply, useAiDraft, useAiAnalyzeImage } from '@/hooks/use-ai'
 import { useAdmins } from '@/hooks/use-admins'
 import { TemplateSelector } from '@/components/inbox/TemplateSelector'
 import { TemplatePickerModal } from '@/components/inbox/TemplatePickerModal'
+import { SummaryModal } from '@/components/inbox/SummaryModal'
 import { useInboxStore } from '@/stores/inbox'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
@@ -1189,12 +1190,19 @@ function MessageComposer({
 
   const handleAiDraft = useCallback(async () => {
     if (!userId) return
+    setAiResult('')
+    setIsAiOpen(true)
     try {
-      const result = await aiDraft.mutateAsync({ userId, tone: aiTone })
-      setAiResult(result.text)
-      setIsAiOpen(true)
-    } catch (error) {
-      toast({ title: 'AI Draft ล้มเหลว', description: 'กรุณาลองใหม่อีกครั้ง' })
+      await aiDraft.run(
+        { userId, tone: aiTone },
+        { onChunk: (chunk) => setAiResult((prev) => prev + chunk) },
+      )
+    } catch (error: any) {
+      toast({
+        title: 'AI Draft ล้มเหลว',
+        description: error?.message || 'กรุณาลองใหม่อีกครั้ง',
+        variant: 'destructive',
+      })
     }
   }, [aiDraft, aiTone, toast, userId])
 
@@ -1215,6 +1223,7 @@ function MessageComposer({
 
   const isAiBusy = aiReply.isPending || aiDraft.isPending || aiAnalyze.isPending
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
+  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false)
 
   const handleFlexSelect = useCallback(async (flexContent: object, altText: string) => {
     if (!userId) {
@@ -1288,6 +1297,14 @@ function MessageComposer({
           <Button size="sm" variant="outline" onClick={handleAiAnalyze} disabled={isAiBusy}>
             วิเคราะห์รูป
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setIsSummaryModalOpen(true)}
+            disabled={!userId}
+          >
+            สรุปแชท
+          </Button>
           <select
             className="h-8 rounded-md border bg-background px-2 text-xs"
             value={aiTone}
@@ -1299,6 +1316,12 @@ function MessageComposer({
           </select>
         </div>
       )}
+
+      <SummaryModal
+        open={isSummaryModalOpen}
+        onOpenChange={setIsSummaryModalOpen}
+        userId={userId ? parseInt(userId, 10) : null}
+      />
 
       {/* Template Modal */}
       <TemplatePickerModal
