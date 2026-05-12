@@ -65,8 +65,12 @@ async function callGemini({
   }
 
   const data = await response.json()
-  if (data?.candidates?.[0]?.finishReason === 'SAFETY') {
+  const finishReason = data?.candidates?.[0]?.finishReason
+  if (finishReason === 'SAFETY') {
     throw new Error('Content blocked by safety filters')
+  }
+  if (finishReason === 'MAX_TOKENS') {
+    throw new Error('AI response was truncated by the output token limit')
   }
   const text =
     data?.candidates?.[0]?.content?.parts
@@ -189,12 +193,17 @@ export async function streamAiText({
   let fullText = ''
   let usage: GeminiStreamUsage = { promptTokens: 0, outputTokens: 0, totalTokens: 0 }
   let buffer = ''
+  let truncatedByMaxTokens = false
 
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
         const { done, value } = await upstreamReader.read()
         if (done) {
+          if (truncatedByMaxTokens) {
+            controller.error(new Error('AI response was truncated by the output token limit'))
+            return
+          }
           if (onFinish) await onFinish(fullText, usage)
           controller.close()
           return
@@ -215,6 +224,9 @@ export async function streamAiText({
           if (!json) continue
           try {
             const parsed = JSON.parse(json)
+            if (parsed?.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+              truncatedByMaxTokens = true
+            }
             const chunkText: string =
               parsed?.candidates?.[0]?.content?.parts
                 ?.map((p: { text?: string }) => p.text || '')

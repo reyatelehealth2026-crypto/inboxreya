@@ -64,7 +64,7 @@ Reply:`
     const text = await generateAiText({
       parts: [{ text: prompt }],
       systemPrompt: 'Be concise, polite, and accurate.',
-      maxTokens: 400,
+      maxTokens: 800,
     })
 
     return NextResponse.json({ text })
