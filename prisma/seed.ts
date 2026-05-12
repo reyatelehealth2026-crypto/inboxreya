@@ -188,6 +188,62 @@ async function main() {
     console.log('✅ Assigned tags to users')
   }
 
+  // ----- Sales-admin AI prompts (Phase 2) -----
+  const promptSeeds = [
+    {
+      key: 'ghost_draft',
+      body: `You are drafting a reply for a Thai pharmacy sales admin replying to a B2B customer (a pharmacy/clinic).
+Use the conversation history, customer profile, recent orders, and product catalog (when provided).
+Write 1-3 short paragraphs in Thai. Be helpful, accurate, and respectful. Quote SKU/price only when they appear in the catalog context. Do not invent stock numbers, lead times, or promotions.
+If the customer asked something out of scope (medical advice, regulatory questions), draft a polite handoff message instead.`,
+    },
+    {
+      key: 'summarizer',
+      body: `Summarize the conversation between a Thai pharmacy sales admin and a B2B customer.
+Output 3-5 bullet points in Thai:
+- Main topic + decisions reached
+- Open items / pending action from the admin's side
+- Customer sentiment (positive | neutral | negative) and one-line reason
+Keep each bullet under 30 words. No greetings or preamble.`,
+    },
+    {
+      key: 'action_suggester',
+      body: `Given the conversation history and customer profile, suggest 2-3 concrete next actions the admin can take RIGHT NOW.
+Output JSON only: { "actions": [ { "label": string, "reason": string, "type": "reply" | "price_list" | "follow_up" | "order_check" | "escalate", "priority": 1 | 2 | 3 } ] }.
+priority 1 = urgent, 3 = nice-to-have. Labels are in Thai, short (under 8 words). Reasons cite the conversation evidence.`,
+    },
+    {
+      key: 'order_parser',
+      body: `Parse the customer's message into structured order items by matching against the provided catalog.
+Output JSON only: { "items": [ { "sku": string, "name": string, "qty": number, "price": number, "confidence": number } ] }.
+confidence is 0..1. Use only SKUs from the catalog context; if no match, emit confidence < 0.5 and keep the customer's phrasing in name. Quantities must be positive integers.`,
+    },
+  ]
+  for (const p of promptSeeds) {
+    await prisma.aiPrompt.upsert({
+      where: { key_version: { key: p.key, version: 1 } },
+      update: {},
+      create: { key: p.key, version: 1, body: p.body, isActive: true },
+    })
+  }
+  console.log('✅ Seeded', promptSeeds.length, 'AI prompts')
+
+  // ----- Feature flags (off by default; admin enables when ready) -----
+  const flagSeeds = [
+    { key: 'ai_draft', enabled: false, enabledForRoles: 'admin,super_admin,supervisor' },
+    { key: 'ai_summarizer', enabled: false, enabledForRoles: 'admin,super_admin,supervisor' },
+    { key: 'ai_action_suggester', enabled: false, enabledForRoles: 'admin,super_admin' },
+    { key: 'ai_order_parser', enabled: false, enabledForRoles: 'admin,super_admin' },
+  ]
+  for (const f of flagSeeds) {
+    await prisma.featureFlag.upsert({
+      where: { key: f.key },
+      update: {},
+      create: f,
+    })
+  }
+  console.log('✅ Seeded', flagSeeds.length, 'feature flags')
+
   console.log('🎉 Seed completed!')
 }
 

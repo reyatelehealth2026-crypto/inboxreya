@@ -113,6 +113,139 @@ export async function generateAiText({
   }
 }
 
+export interface GeminiStreamUsage {
+  promptTokens: number
+  outputTokens: number
+  totalTokens: number
+}
+
+/**
+ * Stream tokens from Gemini's `streamGenerateContent` SSE endpoint.
+ *
+ * Returns a `ReadableStream<Uint8Array>` that the caller pipes back to the
+ * client. Plain-text chunks (no SSE framing) so a basic `fetch` reader on the
+ * UI side can append straight into a textarea.
+ *
+ * `onFinish` runs once after the upstream stream closes, with the full text
+ * and usage metadata (from Gemini's `usageMetadata` field). Use it to log
+ * cost/latency into `ai_usage_logs`.
+ */
+export async function streamAiText({
+  parts,
+  systemPrompt,
+  temperature = 0.4,
+  maxTokens = 512,
+  model,
+  onFinish,
+}: GeminiRequestOptions & {
+  onFinish?: (full: string, usage: GeminiStreamUsage) => void | Promise<void>
+}): Promise<ReadableStream<Uint8Array>> {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) {
+    throw new Error('AI service not configured: Missing GEMINI_API_KEY')
+  }
+  const resolvedModel = model || DEFAULT_GEMINI_MODEL
+
+  logger.info('AI stream request', {
+    scope: 'ai:gemini-stream',
+    model: resolvedModel,
+    partsCount: parts.length,
+    hasSystemPrompt: !!systemPrompt,
+    maxTokens,
+  })
+
+  const upstream = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:streamGenerateContent?alt=sse&key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts }],
+        generationConfig: {
+          temperature,
+          maxOutputTokens: maxTokens,
+        },
+        ...(systemPrompt
+          ? { systemInstruction: { parts: [{ text: systemPrompt }] } }
+          : {}),
+      }),
+    }
+  )
+
+  if (!upstream.ok || !upstream.body) {
+    const errorText = await upstream.text().catch(() => upstream.statusText)
+    logger.error('Gemini stream API error', {
+      scope: 'ai:gemini-stream',
+      status: upstream.status,
+      body: errorText.slice(0, 500),
+    })
+    throw new Error(`AI stream error (${upstream.status}): ${errorText}`)
+  }
+
+  const encoder = new TextEncoder()
+  const decoder = new TextDecoder()
+  const upstreamReader = upstream.body.getReader()
+
+  let fullText = ''
+  let usage: GeminiStreamUsage = { promptTokens: 0, outputTokens: 0, totalTokens: 0 }
+  let buffer = ''
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await upstreamReader.read()
+        if (done) {
+          if (onFinish) await onFinish(fullText, usage)
+          controller.close()
+          return
+        }
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // SSE frame separator is "\n\n"; each data line is `data: {json}`
+        let sepIdx: number
+        while ((sepIdx = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, sepIdx)
+          buffer = buffer.slice(sepIdx + 2)
+          const dataLine = frame
+            .split('\n')
+            .find((l) => l.startsWith('data: '))
+          if (!dataLine) continue
+          const json = dataLine.slice(6).trim()
+          if (!json) continue
+          try {
+            const parsed = JSON.parse(json)
+            const chunkText: string =
+              parsed?.candidates?.[0]?.content?.parts
+                ?.map((p: { text?: string }) => p.text || '')
+                .join('') || ''
+            if (chunkText) {
+              fullText += chunkText
+              controller.enqueue(encoder.encode(chunkText))
+            }
+            const um = parsed?.usageMetadata
+            if (um) {
+              usage = {
+                promptTokens: um.promptTokenCount ?? usage.promptTokens,
+                outputTokens: um.candidatesTokenCount ?? usage.outputTokens,
+                totalTokens: um.totalTokenCount ?? usage.totalTokens,
+              }
+            }
+          } catch {
+            // Ignore malformed frame; upstream will close eventually
+          }
+        }
+      } catch (err) {
+        logger.error(err, { scope: 'ai:gemini-stream' })
+        controller.error(err)
+      }
+    },
+    cancel() {
+      upstreamReader.cancel().catch(() => undefined)
+    },
+  })
+}
+
 export async function fetchImageAsInlineData(imageUrl: string) {
   const response = await fetch(imageUrl)
   if (!response.ok) {

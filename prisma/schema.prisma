@@ -5255,4 +5255,59 @@ model TikTokShopAccount {
   @@map("tiktok_shop_accounts")
 }
 
+// ============================================================================
+// Sales-admin AI (Phase 2 of inboxreya stability + AI plan)
+// AiPrompt    — versioned prompt rows for ghost_draft, summarizer, etc.
+// AiUsageLog  — per-call telemetry (tokens, cost, latency, error)
+// FeatureFlag — kill-switch for AI surfaces; role + canary allowlist
+// Note: these intentionally live alongside the legacy `ai_settings` /
+// `ai_chat_settings` tables, which power auto-reply — different feature.
+// ============================================================================
+
+model AiPrompt {
+  id        Int      @id @default(autoincrement())
+  key       String   @db.VarChar(50)
+  version   Int      @default(1)
+  body      String   @db.Text
+  model     String   @default("gemini-flash-latest") @db.VarChar(50)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdBy Int?     @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([key, version])
+  @@index([key, isActive])
+  @@map("ai_prompts")
+}
+
+model AiUsageLog {
+  id             Int      @id @default(autoincrement())
+  adminUserId    Int      @map("admin_user_id")
+  feature        String   @db.VarChar(40)
+  model          String   @db.VarChar(50)
+  promptTokens   Int      @map("prompt_tokens")
+  outputTokens  Int      @map("output_tokens")
+  costUsd        Decimal  @db.Decimal(10, 6) @map("cost_usd")
+  latencyMs      Int      @map("latency_ms")
+  success        Boolean
+  errorCode      String?  @map("error_code") @db.VarChar(80)
+  conversationId Int?     @map("conversation_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([adminUserId, createdAt])
+  @@index([feature, createdAt])
+  @@map("ai_usage_logs")
+}
+
+model FeatureFlag {
+  id                Int      @id @default(autoincrement())
+  key               String   @unique @db.VarChar(60)
+  enabled           Boolean  @default(false)
+  enabledForRoles   String?  @map("enabled_for_roles") @db.VarChar(255)
+  enabledForUserIds String?  @map("enabled_for_user_ids") @db.Text
+  metadata          Json?
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("feature_flags")
+}
 
