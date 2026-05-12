@@ -19,19 +19,42 @@ export async function GET(request: NextRequest) {
     start(controller) {
       let removeClient = () => { }
       let keepAliveInterval: ReturnType<typeof setInterval> | null = null
+      let closeTimeout: ReturnType<typeof setTimeout> | null = null
+      let isClosed = false
 
       const closeStream = () => {
-        removeClient()
+        if (isClosed) return
+        isClosed = true
+
+        try {
+          removeClient()
+        } catch {
+          // Ignore cleanup races when the connection is already gone.
+        }
         if (keepAliveInterval) {
           clearInterval(keepAliveInterval)
+          keepAliveInterval = null
         }
-        controller.close()
+        if (closeTimeout) {
+          clearTimeout(closeTimeout)
+          closeTimeout = null
+        }
+        try {
+          controller.close()
+        } catch {
+          // Browser disconnects can close the controller before our cleanup runs.
+        }
       }
 
       const client = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         send: (event: { type: string; data: unknown; timestamp: number }) => {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+          if (isClosed) return
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+          } catch {
+            closeStream()
+          }
         },
       }
       removeClient = addRealtimeClient(client)
@@ -64,7 +87,7 @@ export async function GET(request: NextRequest) {
       })
 
       // Close after 4 minutes to prevent timeout
-      setTimeout(() => {
+      closeTimeout = setTimeout(() => {
         closeStream()
       }, 240000) // 4 minutes
     },
