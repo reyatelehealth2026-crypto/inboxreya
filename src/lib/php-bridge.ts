@@ -3,6 +3,10 @@
  * Provides type-safe wrappers for PHP service calls
  */
 
+import { retry, retryPresets } from './retry'
+import { withCircuit, serviceFromUrl, CircuitOpenError } from './php-circuit'
+import { logger } from './logger'
+
 interface PhpApiResponse<T = any> {
   success: boolean
   data?: T
@@ -22,13 +26,24 @@ class PhpBridgeError extends Error {
   }
 }
 
+export interface CallPhpApiOptions {
+  /** Retry POST/PUT/DELETE on transient failure. GET is always retried. */
+  retryWrites?: boolean
+}
+
 /**
- * Call PHP API endpoint with enhanced error handling
- * @throws PhpBridgeError if request fails
+ * Call PHP API endpoint with enhanced error handling, retry (idempotent
+ * verbs only by default), and circuit-breaker.
+ *
+ * @param endpoint  Absolute URL or path starting with `/`
+ * @param options   Standard `RequestInit` (method, headers, body)
+ * @param callOpts  `{ retryWrites }` — opt in to retrying POST/PUT/DELETE
+ * @throws never (errors are returned as `{ success: false, error }`)
  */
 export async function callPhpApi<T = any>(
   endpoint: string,
-  options?: RequestInit
+  options?: RequestInit,
+  callOpts?: CallPhpApiOptions
 ): Promise<PhpApiResponse<T>> {
   try {
     const isAbsolute = /^https?:\/\//i.test(endpoint)
@@ -37,97 +52,142 @@ export async function callPhpApi<T = any>(
       process.env.NEXT_PUBLIC_PHP_API_URL ||
       process.env.NEXT_PUBLIC_BASE_URL ||
       ''
-    
+
     if (!baseUrl && !isAbsolute) {
       throw new PhpBridgeError('PHP_API_URL is not configured', 500)
     }
 
     const url = isAbsolute ? endpoint : `${baseUrl}${endpoint}`
-    
+    const service = serviceFromUrl(url)
+    const method = (options?.method ?? 'GET').toUpperCase()
+    const isIdempotent = method === 'GET' || method === 'HEAD'
+    const shouldRetry = isIdempotent || callOpts?.retryWrites === true
+
     // Detect cross-origin requests - cannot use credentials: 'include' with wildcard CORS
     const isCrossOrigin = typeof window !== 'undefined' && url.startsWith('http') && !url.startsWith(window.location.origin)
-    
-    // Add timeout to prevent hanging requests
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
 
-    try {
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-        credentials: isCrossOrigin ? 'omit' : 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Internal-Request': 'true',
-          ...options?.headers,
-        },
-      })
+    const doFetch = async (): Promise<PhpApiResponse<T>> => {
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
 
-      clearTimeout(timeoutId)
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal,
+          credentials: isCrossOrigin ? 'omit' : 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Internal-Request': 'true',
+            ...options?.headers,
+          },
+        })
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => response.statusText)
+        clearTimeout(timeoutId)
 
-        let parsedError: any = null
-        try {
-          parsedError = JSON.parse(errorText)
-        } catch {
-          parsedError = null
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => response.statusText)
+
+          let parsedError: any = null
+          try {
+            parsedError = JSON.parse(errorText)
+          } catch {
+            parsedError = null
+          }
+
+          const backendMessage =
+            parsedError?.error ||
+            parsedError?.message ||
+            (typeof errorText === 'string' && errorText.trim() ? errorText.trim() : response.statusText)
+
+          throw new PhpBridgeError(
+            `PHP API error (${response.status}): ${backendMessage}`,
+            response.status,
+            parsedError ?? errorText
+          )
         }
 
-        const backendMessage =
-          parsedError?.error ||
-          parsedError?.message ||
-          (typeof errorText === 'string' && errorText.trim() ? errorText.trim() : response.statusText)
+        const rawText = await response.text()
+        let data: any
+        try {
+          data = JSON.parse(rawText)
+        } catch {
+          logger.error('PHP returned non-JSON response', {
+            scope: 'php-bridge',
+            service,
+            url,
+            preview: rawText.slice(0, 500),
+          })
+          throw new PhpBridgeError(
+            `PHP returned non-JSON response: ${rawText.slice(0, 200)}`,
+            response.status
+          )
+        }
 
-        throw new PhpBridgeError(
-          `PHP API error (${response.status}): ${backendMessage}`,
-          response.status,
-          parsedError ?? errorText
-        )
-      }
+        // Handle PHP error responses
+        if (data.success === false && data.error) {
+          throw new PhpBridgeError(data.error, response.status, data)
+        }
 
-      const rawText = await response.text()
-      let data: any
-      try {
-        data = JSON.parse(rawText)
-      } catch {
-        console.error('[PHP Bridge] Non-JSON response from', url, '\n---\n', rawText.slice(0, 500), '\n---')
-        throw new PhpBridgeError(
-          `PHP returned non-JSON response: ${rawText.slice(0, 200)}`,
-          response.status
-        )
-      }
+        return data
+      } catch (error) {
+        clearTimeout(timeoutId)
 
-      // Handle PHP error responses
-      if (data.success === false && data.error) {
-        throw new PhpBridgeError(data.error, response.status, data)
-      }
+        if (error instanceof PhpBridgeError) {
+          throw error
+        }
 
-      return data
-    } catch (error) {
-      clearTimeout(timeoutId)
-      
-      if (error instanceof PhpBridgeError) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new PhpBridgeError('Request timeout - PHP API did not respond', 504)
+        }
+
         throw error
       }
-      
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new PhpBridgeError('Request timeout - PHP API did not respond', 504)
-      }
-      
-      throw error
     }
+
+    // Circuit-breaker on the outside; retry inside so the circuit sees one
+    // outcome per request batch, not per attempt.
+    const data = await withCircuit(service, () =>
+      shouldRetry
+        ? retry(doFetch, {
+            ...retryPresets.standard,
+            shouldRetry: (err, _attempt) => {
+              if (err instanceof CircuitOpenError) return false
+              if (err instanceof PhpBridgeError) {
+                // 4xx are caller errors — don't retry
+                return !err.statusCode || err.statusCode >= 500
+              }
+              if (err?.name === 'AbortError') return true
+              if (err?.message?.includes('fetch')) return true
+              if (err?.message?.includes('network')) return true
+              return false
+            },
+          })
+        : doFetch()
+    )
+
+    return data
   } catch (error) {
-    console.error('PHP Bridge error:', error)
-    
+    logger.error(error, {
+      scope: 'php-bridge',
+      endpoint,
+      method: (options?.method ?? 'GET').toUpperCase(),
+    })
+
+    if (error instanceof CircuitOpenError) {
+      return {
+        success: false,
+        error: error.message,
+      }
+    }
+
     if (error instanceof PhpBridgeError) {
       return {
         success: false,
         error: error.message,
       }
     }
-    
+
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -186,28 +246,42 @@ export async function sendPlatformMessage(params: {
   }
 
   const baseUrl = process.env.PHP_API_URL || process.env.NEXT_PUBLIC_PHP_API_URL || ''
+  const url = `${baseUrl}/api/messages.php`
 
   try {
-    const response = await fetch(`${baseUrl}/api/messages.php`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'X-Internal-Request': 'true',
-      },
-      body: formData.toString(),
-      credentials: 'include',
+    return await withCircuit(serviceFromUrl(url), async () => {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-Internal-Request': 'true',
+        },
+        body: formData.toString(),
+        credentials: 'include',
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => response.statusText)
+        logger.error('PHP send message error', {
+          scope: 'php-bridge',
+          service: serviceFromUrl(url),
+          status: response.status,
+          body: errorText,
+        })
+        // Throw so the circuit-breaker counts a failure; outer catch returns
+        // the structured error.
+        throw new PhpBridgeError(
+          `PHP send message error (${response.status}): ${errorText}`,
+          response.status,
+          errorText
+        )
+      }
+
+      const data = await response.json()
+      return data
     })
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => response.statusText)
-      console.error('PHP send message error:', errorText)
-      return { success: false, error: errorText }
-    }
-
-    const data = await response.json()
-    return data
   } catch (error) {
-    console.error('Send message error:', error)
+    logger.error(error, { scope: 'php-bridge:sendPlatformMessage' })
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -291,23 +365,83 @@ export async function callPhpApiFormData<T = any>(
       }
     }
 
-    const response = await fetch(`${baseUrl}${endpoint}`, {
-      method: 'POST',
-      body: formData,
-      credentials: 'include',
-      headers: {
-        'X-Internal-Request': 'true',
-        // ไม่ใส่ Content-Type ให้ browser จัดการ multipart boundary
-      },
+    const url = `${baseUrl}${endpoint}`
+    const service = serviceFromUrl(url)
+
+    const result = await withCircuit(service, async () => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000)
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          body: formData,
+          credentials: 'include',
+          signal: controller.signal,
+          headers: {
+            'X-Internal-Request': 'true',
+            // ไม่ใส่ Content-Type ให้ browser จัดการ multipart boundary
+          },
+        })
+
+        clearTimeout(timeoutId)
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => response.statusText)
+
+          let parsedError: any = null
+          try {
+            parsedError = JSON.parse(errorText)
+          } catch {
+            parsedError = null
+          }
+
+          const backendMessage =
+            parsedError?.error ||
+            parsedError?.message ||
+            (typeof errorText === 'string' && errorText.trim() ? errorText.trim() : response.statusText)
+
+          throw new PhpBridgeError(
+            `PHP API error (${response.status}): ${backendMessage}`,
+            response.status,
+            parsedError ?? errorText
+          )
+        }
+
+        return (await response.json()) as PhpApiResponse<T>
+      } catch (error) {
+        clearTimeout(timeoutId)
+
+        if (error instanceof PhpBridgeError) {
+          throw error
+        }
+
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new PhpBridgeError('Request timeout - PHP API did not respond', 504)
+        }
+
+        throw error
+      }
     })
 
-    if (!response.ok) {
-      throw new Error(`PHP API error: ${response.statusText}`)
+    return result
+  } catch (error) {
+    logger.error(error, { scope: 'php-bridge:formData', endpoint })
+
+    if (error instanceof CircuitOpenError) {
+      return {
+        success: false,
+        error: error.message,
+      }
     }
 
-    return await response.json()
-  } catch (error) {
-    console.error('PHP Bridge FormData error:', error)
+    if (error instanceof PhpBridgeError) {
+      return {
+        success: false,
+        error: error.message,
+      }
+    }
+
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

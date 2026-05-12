@@ -3,6 +3,7 @@
  */
 
 import prisma from './prisma'
+import { logger } from './logger'
 
 interface LineMessage {
   type: string
@@ -36,9 +37,11 @@ function capFlexCarouselBubbles<T>(node: T): T {
     Array.isArray(obj.contents) &&
     obj.contents.length > LINE_CAROUSEL_BUBBLE_LIMIT
   ) {
-    console.warn(
-      `[LINE] Flex carousel had ${obj.contents.length} bubbles; truncating to ${LINE_CAROUSEL_BUBBLE_LIMIT}`
-    )
+    logger.warn('Flex carousel exceeded bubble limit; truncating', {
+      scope: 'line-api',
+      original: obj.contents.length,
+      limit: LINE_CAROUSEL_BUBBLE_LIMIT,
+    })
     return {
       ...obj,
       contents: obj.contents
@@ -80,7 +83,7 @@ async function getChannelAccessToken(lineAccountId?: number | null): Promise<str
 
     return defaultAccount?.channelAccessToken || null
   } catch (error) {
-    console.error('Failed to get LINE channel access token:', error)
+    logger.error(error, { scope: 'line-api:getChannelAccessToken', lineAccountId })
     return null
   }
 }
@@ -148,7 +151,7 @@ export async function pushLineMessage(
           fetchErr?.name === 'TimeoutError' ||
           String(fetchErr?.message).includes('timeout')
         if (isTimeout && attempt < 2) {
-          console.warn(`[LINE] Push timeout on attempt ${attempt}, retrying…`)
+          logger.warn('LINE push timeout — retrying', { scope: 'line-api', attempt })
           continue
         }
         throw fetchErr
@@ -157,7 +160,11 @@ export async function pushLineMessage(
 
     if (!response || !response.ok) {
       const errorData = response ? await response.json().catch(() => ({})) : {}
-      console.error('LINE Push Message error:', response?.status, errorData)
+      logger.error('LINE Push Message error', {
+        scope: 'line-api',
+        status: response?.status,
+        body: errorData,
+      })
       return {
         success: false,
         error: response
@@ -168,7 +175,7 @@ export async function pushLineMessage(
 
     return { success: true }
   } catch (error) {
-    console.error('LINE Push Message error:', error)
+    logger.error(error, { scope: 'line-api:pushLineMessage' })
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

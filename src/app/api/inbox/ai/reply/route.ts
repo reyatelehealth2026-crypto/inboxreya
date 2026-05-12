@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { generateAiText } from '@/lib/ai'
+import { logger } from '@/lib/logger'
 
 export async function POST(request: Request) {
   let debugUserId: number | null = null
@@ -68,7 +69,7 @@ Reply:`
 
     return NextResponse.json({ text })
   } catch (error) {
-    console.error('AI reply error:', error)
+    logger.error(error, { scope: 'api:ai:reply', userId: debugUserId, tone: debugTone })
     // #region agent log
     /*
     fetch('http://127.0.0.1:7242/ingest/93a2d762-e9a0-44b0-a3f0-f6fecdab7f7f', {

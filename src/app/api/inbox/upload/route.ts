@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { uploadMediaOnly } from '@/lib/php-bridge'
 import { sendFlexMessage, sendImageMessage, sendTextMessage } from '@/lib/line-api'
+import { logger } from '@/lib/logger'
 
 // Upload API endpoint for sending files/images to LINE
 // Note: Vercel has a 4.5MB body size limit for serverless functions
@@ -102,7 +103,11 @@ export async function POST(request: NextRequest) {
 
         // Log for debugging
         if (!resolvedLineUserId) {
-          console.warn(`[Upload] User ${parsedInternalId} (${userForLineId?.displayName}) has no lineUserId in database`)
+          logger.warn('User has no lineUserId in database', {
+            scope: 'api:inbox:upload',
+            internalUserId: parsedInternalId,
+            displayName: userForLineId?.displayName,
+          })
         }
       }
     }
@@ -113,7 +118,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (!resolvedLineUserId) {
-      console.error(`[Upload] Failed to resolve LINE User ID. internalUserId=${internalUserId}, lineUserId=${lineUserId}`)
+      logger.error('Failed to resolve LINE User ID', {
+        scope: 'api:inbox:upload',
+        internalUserId,
+        lineUserId,
+      })
       return NextResponse.json({
         error: 'ไม่พบ LINE User ID - ลูกค้านี้อาจยังไม่ได้เชื่อมต่อ LINE',
         details: 'User does not have a LINE User ID in the database. They may need to re-add the LINE account.'
@@ -192,9 +201,15 @@ export async function POST(request: NextRequest) {
 
             if (sendResult.success) {
               lineSendSuccess = true
-              console.log('✅ Image uploaded to PHP and sent via Next.js LINE API:', { mediaUrl: finalMediaUrl })
+              logger.info('Image uploaded and sent via LINE', {
+                scope: 'api:inbox:upload',
+                mediaUrl: finalMediaUrl,
+              })
             } else {
-              console.warn('❌ Failed to send image via Next.js LINE API:', sendResult.error)
+              logger.warn('Failed to send image via LINE API', {
+                scope: 'api:inbox:upload',
+                error: sendResult.error,
+              })
             }
           } else if (type === 'file') {
             const { title, subtitle, buttonLabel } = getFileFlexMeta(file.name)
@@ -248,16 +263,26 @@ export async function POST(request: NextRequest) {
 
             if (sendResult.success) {
               lineSendSuccess = true
-              console.log('✅ File uploaded and flex sent via LINE API:', { mediaUrl: finalMediaUrl, fileName: file.name })
+              logger.info('File uploaded and flex sent via LINE', {
+                scope: 'api:inbox:upload',
+                mediaUrl: finalMediaUrl,
+                fileName: file.name,
+              })
             } else {
-              console.warn('❌ Failed to send file flex via LINE API:', sendResult.error)
+              logger.warn('Failed to send file flex via LINE API', {
+                scope: 'api:inbox:upload',
+                error: sendResult.error,
+              })
             }
           }
         } else {
-          console.warn('❌ PHP API upload failed:', uploadResult.error)
+          logger.warn('PHP API upload failed', {
+            scope: 'api:inbox:upload',
+            error: uploadResult.error,
+          })
         }
       } catch (error) {
-        console.warn('❌ Error in upload/send process:', error)
+        logger.error(error, { scope: 'api:inbox:upload', step: 'upload-and-send' })
       }
     }
 
@@ -276,7 +301,7 @@ export async function POST(request: NextRequest) {
         )
         lineSendSuccess = sendResult.success
       } catch (error) {
-        console.error('Failed to send notification:', error)
+        logger.error(error, { scope: 'api:inbox:upload', step: 'fallback-notification' })
       }
     }
 
@@ -333,7 +358,7 @@ export async function POST(request: NextRequest) {
             })
           }
         } catch (dbError) {
-          console.error('Database save error:', dbError)
+          logger.error(dbError, { scope: 'api:inbox:upload', step: 'db-save' })
         }
       }
     }
@@ -349,7 +374,7 @@ export async function POST(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Upload error:', error)
+    logger.error(error, { scope: 'api:inbox:upload' })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Upload failed' },
       { status: 500 }
