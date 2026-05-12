@@ -169,7 +169,7 @@ export async function POST(request: Request) {
       parts: [{ text: userText }],
       systemPrompt: prompt.body,
       model: prompt.model,
-      maxTokens: 1400,
+      maxTokens: 8192,
       onFinish: async (fullText, usage) => {
         try {
           await prisma.aiUsageLog.create({
