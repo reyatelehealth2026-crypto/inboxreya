@@ -280,6 +280,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // If upload or LINE send failed, return error without saving a misleading message
+    if (!finalMediaUrl || !lineSendSuccess) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: !finalMediaUrl
+            ? 'อัปโหลดไฟล์ไปยัง PHP server ไม่สำเร็จ - กรุณาตรวจสอบการตั้งค่า PHP_API_URL'
+            : 'ส่งไปยัง LINE ไม่สำเร็จ - กรุณาตรวจสอบ LINE Channel Access Token',
+          details: {
+            uploadSucceeded: Boolean(finalMediaUrl),
+            lineSendSucceeded: lineSendSuccess,
+          },
+        },
+        { status: 502 }
+      )
+    }
+
     // Save message to database if we have internal user ID
     let savedMessage = null
     if (internalUserId) {

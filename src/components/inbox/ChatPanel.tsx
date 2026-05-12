@@ -258,7 +258,8 @@ function MessageBubble({
     if (content.startsWith('http://') || content.startsWith('https://')) return content
 
     const idMatch = content.match(/ID:\s*(\d+)/i)
-    const id = idMatch ? idMatch[1] : content.trim()
+    if (!idMatch) return null
+
     const baseUrl =
       process.env.NEXT_PUBLIC_PHP_API_URL ||
       process.env.NEXT_PUBLIC_BASE_URL ||
@@ -268,7 +269,7 @@ function MessageBubble({
       return null
     }
 
-    return `${baseUrl.replace(/\/$/, '')}/api/line_content.php?id=${id}`
+    return `${baseUrl.replace(/\/$/, '')}/api/line_content.php?id=${idMatch[1]}`
   }
 
   const parseLocationFromContent = (content: string | null) => {
