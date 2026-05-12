@@ -48,7 +48,7 @@ export async function POST(request: Request) {
         },
       ],
       systemPrompt: 'Be factual and cautious. If unsure, say so.',
-      maxTokens: 300,
+      maxTokens: 800,
     })
 
     return NextResponse.json({ text })

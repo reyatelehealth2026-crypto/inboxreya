@@ -151,7 +151,7 @@ export async function POST(request: Request) {
       parts: [{ text: userText }],
       systemPrompt: prompt.body,
       model: prompt.model,
-      maxTokens: 800,
+      maxTokens: 2000,
       temperature: 0.1,
     })
 
