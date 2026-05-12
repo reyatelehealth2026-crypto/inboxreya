@@ -16,6 +16,8 @@ import { useAdmins } from '@/hooks/use-admins'
 import { TemplateSelector } from '@/components/inbox/TemplateSelector'
 import { TemplatePickerModal } from '@/components/inbox/TemplatePickerModal'
 import { SummaryModal } from '@/components/inbox/SummaryModal'
+import { OrderDraftModal } from '@/components/inbox/OrderDraftModal'
+import { ActionSuggestCard } from '@/components/inbox/ActionSuggestCard'
 import { useInboxStore } from '@/stores/inbox'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
@@ -220,11 +222,13 @@ function MessageBubble({
   isLast,
   senderName,
   user,
+  onParseOrder,
 }: {
   message: Message
   isLast: boolean
   senderName?: string | null
   user?: { displayName?: string | null; pictureUrl?: string | null } | null
+  onParseOrder?: (messageId: number, text: string) => void
 }) {
   const isOutgoing = message.direction === 'outgoing'
   const { setReplyToMessage, setLightboxImage } = useChatStore()
@@ -295,12 +299,24 @@ function MessageBubble({
   const isLineJson = normalizedMessageType === 'text' && !isFlexJson && isLineMessageJson(message.content)
   const lineDisplayText = isLineJson ? getLineMessageDisplayText(message.content || '') : null
 
+  const canParseOrder =
+    !isOutgoing && (message.messageType ?? 'text') === 'text' && !!message.content && !!onParseOrder
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (!canParseOrder) return
+    e.preventDefault()
+    const parsedId = typeof message.id === 'number' ? message.id : parseInt(String(message.id), 10)
+    if (!Number.isFinite(parsedId)) return
+    onParseOrder?.(parsedId, message.content ?? '')
+  }
+
   return (
     <div
       className={cn(
         'flex gap-2 mb-3 message-bubble px-2 group',
         isOutgoing ? 'justify-end' : 'justify-start'
       )}
+      onContextMenu={handleContextMenu}
     >
       {!isOutgoing && (
         <Avatar className="h-8 w-8 flex-shrink-0">
@@ -1541,6 +1557,7 @@ export function ChatPanel() {
   const { getTypingUsers, lightboxImage, closeLightbox } = useChatStore()
   const { data: session } = useSession()
   const { data: admins = [] } = useAdmins()
+  const { toast } = useToast()
 
   // Mark performance start when conversation is selected
   useEffect(() => {
@@ -1553,6 +1570,15 @@ export function ChatPanel() {
   const { data: messagesData, isLoading } = useMessages(selectedConversationId)
   const messages = useMemo(() => messagesData?.data || [], [messagesData])
   useNewMessageAnnouncement(messages)
+
+  // OrderDraftModal state — driven by right-clicking a customer message.
+  const [orderDraft, setOrderDraft] = useState<{ messageId: number; text: string } | null>(null)
+  const handleParseOrder = useCallback((messageId: number, text: string) => {
+    setOrderDraft({ messageId, text })
+  }, [])
+
+  const selectedUserId = selectedConversationId ? parseInt(selectedConversationId, 10) : null
+  const validSelectedUserId = selectedUserId != null && Number.isFinite(selectedUserId) ? selectedUserId : null
 
   // Mark performance end when messages are loaded
   useEffect(() => {
@@ -1643,6 +1669,15 @@ export function ChatPanel() {
     <div id="chat-panel" className="flex flex-col h-full bg-background" aria-label="แผงแชท">
       <ChatHeader conversation={conversation} />
 
+      {validSelectedUserId !== null && (
+        <div className="px-3 pt-2">
+          <ActionSuggestCard
+            userId={validSelectedUserId}
+            onAction={(action) => toast({ title: action.label, description: action.reason })}
+          />
+        </div>
+      )}
+
       <ScrollArea ref={parentRef} className="flex-1">
         {isLoading ? (
           <div className="space-y-4 p-4">
@@ -1716,6 +1751,7 @@ export function ChatPanel() {
                     isLast={virtualRow.index === messages.length - 1}
                     senderName={senderName}
                     user={conversation?.user}
+                    onParseOrder={handleParseOrder}
                   />
                 </div>
               )
@@ -1737,6 +1773,23 @@ export function ChatPanel() {
         src={lightboxImage}
         isOpen={!!lightboxImage}
         onClose={closeLightbox}
+      />
+
+      <OrderDraftModal
+        open={orderDraft !== null && validSelectedUserId !== null}
+        onOpenChange={(open) => {
+          if (!open) setOrderDraft(null)
+        }}
+        userId={validSelectedUserId}
+        messageId={orderDraft?.messageId ?? null}
+        initialText={orderDraft?.text ?? ''}
+        onCreated={(result) => {
+          toast({
+            title: 'สร้างออเดอร์เรียบร้อย',
+            description: `เลขออเดอร์ ${result.orderNumber}`,
+          })
+          setOrderDraft(null)
+        }}
       />
     </div>
   )
