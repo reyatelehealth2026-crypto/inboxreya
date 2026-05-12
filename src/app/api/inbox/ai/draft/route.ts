@@ -208,6 +208,7 @@ export async function POST(request: Request) {
         'X-Ai-Prompt-Version': String(prompt.version),
         'X-Ai-Context-Degraded': ctx.degraded.join(',') || '',
         'Cache-Control': 'no-store',
+        'X-Accel-Buffering': 'no',
       },
     })
   } catch (error) {
