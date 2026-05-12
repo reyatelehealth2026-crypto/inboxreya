@@ -11,8 +11,9 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/prepare-standalone.mjs",
     "start": "next start",
+    "start:standalone": "node .next/standalone/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "check-types": "tsc --noEmit",
