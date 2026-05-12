@@ -939,11 +939,13 @@ function ChatHeader({ conversation }: { conversation: any }) {
 
 function MessageComposer({
   userId,
+  actionSuggestUserId,
   latestImageUrl,
   lineUserId,
   user,
 }: {
   userId: string | null
+  actionSuggestUserId?: number | null
   latestImageUrl?: string | null
   lineUserId?: string | null
   user?: LineUser | null
@@ -1322,6 +1324,10 @@ function MessageComposer({
           >
             สรุปแชท
           </Button>
+          <ActionSuggestCard
+            userId={actionSuggestUserId ?? null}
+            onAction={(action) => toast({ title: action.label, description: action.reason })}
+          />
           <select
             className="h-8 rounded-md border bg-background px-2 text-xs"
             value={aiTone}
@@ -1670,15 +1676,6 @@ export function ChatPanel() {
     <div id="chat-panel" className="flex flex-col h-full bg-background" aria-label="แผงแชท">
       <ChatHeader conversation={conversation} />
 
-      {validSelectedUserId !== null && (
-        <div className="px-3 pt-2">
-          <ActionSuggestCard
-            userId={validSelectedUserId}
-            onAction={(action) => toast({ title: action.label, description: action.reason })}
-          />
-        </div>
-      )}
-
       <ScrollArea ref={parentRef} className="flex-1">
         {isLoading ? (
           <div className="space-y-4 p-4">
@@ -1764,6 +1761,7 @@ export function ChatPanel() {
 
       <MessageComposer
         userId={selectedConversationId}
+        actionSuggestUserId={validSelectedUserId}
         latestImageUrl={latestImageUrl}
         lineUserId={conversation?.user?.lineUserId}
         user={conversation?.user}
