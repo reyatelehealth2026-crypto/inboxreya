@@ -10,7 +10,7 @@ const getGeminiClient = () => {
   return new GoogleGenerativeAI(apiKey);
 };
 
-const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 
 /**
  * Analyze sentiment of a message using Gemini AI

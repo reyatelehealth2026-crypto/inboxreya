@@ -10,91 +10,7 @@ interface GeminiRequestOptions {
   model?: string
 }
 
-const DEFAULT_GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
-const DEFAULT_GLM_MODEL = process.env.GLM_MODEL || 'glm-4-flash'
-const DEFAULT_GLM_BASE_URL =
-  process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4'
-
-// AI_PROVIDER switches primary provider. Supported: 'gemini' (default) | 'glm'
-const AI_PROVIDER = (process.env.AI_PROVIDER || 'gemini').toLowerCase()
-
-function hasInlineData(parts: GeminiPart[]) {
-  return parts.some((p) => 'inline_data' in p)
-}
-
-function flattenPartsToText(parts: GeminiPart[]): string {
-  return parts
-    .map((p) => ('text' in p ? p.text : ''))
-    .filter(Boolean)
-    .join('\n\n')
-}
-
-/**
- * OpenAI-compatible Chat Completions call.
- * Used for GLM (Zhipu AI / z.ai) and any other OpenAI-compatible provider.
- */
-async function callOpenAiCompat({
-  baseUrl,
-  apiKey,
-  model,
-  prompt,
-  systemPrompt,
-  temperature,
-  maxTokens,
-  providerLabel,
-}: {
-  baseUrl: string
-  apiKey: string
-  model: string
-  prompt: string
-  systemPrompt?: string
-  temperature: number
-  maxTokens: number
-  providerLabel: string
-}): Promise<string> {
-  const messages: Array<{ role: string; content: string }> = []
-  if (systemPrompt) messages.push({ role: 'system', content: systemPrompt })
-  messages.push({ role: 'user', content: prompt })
-
-  const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-      stream: false,
-    }),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    console.error(`[AI Error] ${providerLabel} API error:`, {
-      status: response.status,
-      statusText: response.statusText,
-      error: errorText,
-    })
-    throw new Error(`AI API error (${response.status}): ${errorText}`)
-  }
-
-  const data = await response.json()
-  const text =
-    data?.choices?.[0]?.message?.content ||
-    data?.choices?.[0]?.delta?.content ||
-    ''
-
-  if (!text.trim()) {
-    console.error(`[AI Error] Empty response from ${providerLabel}:`, data)
-    throw new Error('AI response was empty')
-  }
-
-  return text.trim()
-}
+const DEFAULT_GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest'
 
 /**
  * Gemini v1beta generateContent call.
@@ -169,19 +85,10 @@ export async function generateAiText({
   maxTokens = 512,
   model,
 }: GeminiRequestOptions) {
-  const partsHasImage = hasInlineData(parts)
-
-  // GLM path: only when AI_PROVIDER=glm AND request is text-only.
-  // Image prompts always fall through to Gemini because the z.ai coding endpoint
-  // does not accept vision inputs.
-  const useGlm =
-    AI_PROVIDER === 'glm' && !partsHasImage && !!process.env.GLM_API_KEY
-
-  const resolvedModel =
-    model || (useGlm ? DEFAULT_GLM_MODEL : DEFAULT_GEMINI_MODEL)
+  const resolvedModel = model || DEFAULT_GEMINI_MODEL
 
   console.log('[AI Request]', {
-    provider: useGlm ? 'glm' : 'gemini',
+    provider: 'gemini',
     model: resolvedModel,
     partsCount: parts.length,
     hasSystemPrompt: !!systemPrompt,
@@ -189,19 +96,6 @@ export async function generateAiText({
   })
 
   try {
-    if (useGlm) {
-      return await callOpenAiCompat({
-        baseUrl: DEFAULT_GLM_BASE_URL,
-        apiKey: process.env.GLM_API_KEY!,
-        model: resolvedModel,
-        prompt: flattenPartsToText(parts),
-        systemPrompt,
-        temperature,
-        maxTokens,
-        providerLabel: 'GLM',
-      })
-    }
-
     return await callGemini({
       parts,
       systemPrompt,
