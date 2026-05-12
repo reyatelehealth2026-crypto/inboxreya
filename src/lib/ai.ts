@@ -45,6 +45,7 @@ async function callGemini({
         generationConfig: {
           temperature,
           maxOutputTokens: maxTokens,
+          thinkingConfig: { thinkingBudget: 0 },
         },
         ...(systemPrompt
           ? { systemInstruction: { parts: [{ text: systemPrompt }] } }
@@ -188,6 +189,7 @@ export async function streamAiText({
         generationConfig: {
           temperature,
           maxOutputTokens: maxTokens,
+          thinkingConfig: { thinkingBudget: 0 },
         },
         ...(systemPrompt
           ? { systemInstruction: { parts: [{ text: systemPrompt }] } }
