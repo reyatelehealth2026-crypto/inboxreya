@@ -34,6 +34,7 @@ import {
   Tag,
   Receipt,
   CalendarDays,
+  Sparkles,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -104,6 +105,7 @@ const menuGroups: MenuGroup[] = [
     menus: [
       { title: 'ตั้งค่าทั่วไป', icon: <Settings className="h-4 w-4" />, href: '/inbox/settings' },
       { title: 'การเชื่อมต่อแพลตฟอร์ม', icon: <Link2 className="h-4 w-4" />, href: '/inbox/settings?tab=integrations' },
+      { title: 'AI Control', icon: <Sparkles className="h-4 w-4" />, href: '/admin/ai-control' },
     ],
   },
 ];
