@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { fetchImageAsInlineData, generateAiText } from '@/lib/ai'
+import { logger } from '@/lib/logger'
 
 export async function POST(request: Request) {
   try {
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ text })
   } catch (error) {
-    console.error('AI analyze error:', error)
+    logger.error(error, { scope: 'api:ai:analyze' })
     return NextResponse.json({ error: 'Failed to analyze image' }, { status: 500 })
   }
 }

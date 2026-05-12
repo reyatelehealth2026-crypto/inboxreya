@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { generateAiText } from '@/lib/ai'
+import { logger } from '@/lib/logger'
 
 export async function POST(request: Request) {
   try {
@@ -63,7 +64,7 @@ Draft:`
 
     return NextResponse.json({ text })
   } catch (error: any) {
-    console.error('AI draft error:', error)
+    logger.error(error, { scope: 'api:ai:draft' })
     return NextResponse.json(
       { 
         error: 'Failed to generate draft',

@@ -1,4 +1,21 @@
 {
   "root": true,
-  "extends": ["next/core-web-vitals"]
+  "extends": ["next/core-web-vitals"],
+  "overrides": [
+    {
+      "files": [
+        "src/lib/php-bridge.ts",
+        "src/lib/php-circuit.ts",
+        "src/lib/ai.ts",
+        "src/lib/line-api.ts",
+        "src/lib/logger.ts",
+        "src/app/api/inbox/ai/**/*.ts",
+        "src/app/api/inbox/upload/**/*.ts",
+        "src/app/api/health/**/*.ts"
+      ],
+      "rules": {
+        "no-console": "error"
+      }
+    }
+  ]
 }

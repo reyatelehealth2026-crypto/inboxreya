@@ -1,3 +1,5 @@
+import { logger } from './logger'
+
 type GeminiPart =
   | { text: string }
   | { inline_data: { mime_type: string; data: string } }
@@ -53,10 +55,11 @@ async function callGemini({
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error('[AI Error] Gemini API error:', {
+    logger.error('Gemini API error', {
+      scope: 'ai:gemini',
       status: response.status,
       statusText: response.statusText,
-      error: errorText,
+      body: errorText.slice(0, 500),
     })
     throw new Error(`AI API error (${response.status}): ${errorText}`)
   }
@@ -71,7 +74,7 @@ async function callGemini({
       .join('') || ''
 
   if (!text.trim()) {
-    console.error('[AI Error] Empty response from Gemini:', data)
+    logger.error('Empty response from Gemini', { scope: 'ai:gemini', data })
     throw new Error('AI response was empty')
   }
 
@@ -87,7 +90,8 @@ export async function generateAiText({
 }: GeminiRequestOptions) {
   const resolvedModel = model || DEFAULT_GEMINI_MODEL
 
-  console.log('[AI Request]', {
+  logger.info('AI request', {
+    scope: 'ai:gemini',
     provider: 'gemini',
     model: resolvedModel,
     partsCount: parts.length,
@@ -104,7 +108,7 @@ export async function generateAiText({
       model: resolvedModel,
     })
   } catch (error) {
-    console.error('[AI Error] Failed to generate text:', error)
+    logger.error(error, { scope: 'ai:gemini', model: resolvedModel })
     throw error
   }
 }
