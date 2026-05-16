@@ -159,6 +159,8 @@ export async function POST(request: NextRequest) {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'User-Agent': 'Mozilla/5.0 (compatible; inboxreya/1.0; +https://inbox.re-ya.com)',
       },
       body: JSON.stringify({
         url: imageUrl,
