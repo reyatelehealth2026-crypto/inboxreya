@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Test script for HaveSLIP integration.
+ * Test script for Thunder slip verification integration.
  *
  * Usage:
  *   node test-apislip.js <image_url>
@@ -20,30 +20,34 @@ envContent.split('\n').forEach((line) => {
   }
 })
 
-const API_KEY = env.HAVESLIP_API_KEY
-const BASE_URL = (env.HAVESLIP_API_BASE_URL || 'https://api.haveslip.com/api').replace(/\/$/, '')
+const API_KEY = env.THUNDER_API_KEY
+const BASE_URL = (env.THUNDER_API_BASE_URL || 'https://api.thunder.in.th/v2').replace(/\/$/, '')
 
 if (!API_KEY) {
-  console.error('HAVESLIP_API_KEY not found in .env.local')
+  console.error('THUNDER_API_KEY not found in .env.local')
   process.exit(1)
 }
 
-console.log('API Key found:', API_KEY.substring(0, 20) + '...')
+console.log('API Key found:', API_KEY.substring(0, 8) + '...')
 console.log('')
 
-async function testCreditsBalance() {
-  console.log('Testing /credits/balance...')
+async function testInfo() {
+  console.log('Testing /info...')
   try {
-    const res = await fetch(`${BASE_URL}/credits/balance`, {
+    const res = await fetch(`${BASE_URL}/info`, {
       headers: { Authorization: `Bearer ${API_KEY}` },
     })
     const data = await res.json()
 
     if (data.success) {
-      console.log('Credits Balance:')
-      console.log(`   Currency: ${data.data.currency}`)
-      console.log(`   Balance: ${data.data.balance}`)
-      console.log(`   Next Expiry: ${data.data.nextExpiryAt || '-'}`)
+      console.log('App Info:')
+      console.log(`   Application: ${data.data.application?.name || '-'}`)
+      console.log(`   Branch: ${data.data.branch?.name || '-'}`)
+      console.log(`   Branch Active: ${data.data.branch?.isActive}`)
+      console.log(`   Credit: ${data.data.account?.credit ?? '-'}`)
+      console.log(`   Quota Used: ${data.data.application?.quota?.used ?? '-'}`)
+      console.log(`   Quota Remaining: ${data.data.application?.quota?.remaining ?? '-'}`)
+      console.log(`   Product: ${data.data.product?.name || '-'}`)
     } else {
       console.log('Error:', data)
     }
@@ -57,42 +61,41 @@ async function testVerifySlip() {
   const testImageUrl = process.argv[2]
 
   if (!testImageUrl) {
-    console.log('Testing /verify skipped: pass a real slip image URL as the first argument.')
+    console.log('Testing /verify/bank skipped: pass a real slip image URL as the first argument.')
     console.log('')
     return
   }
 
-  console.log('Testing /verify...')
+  console.log('Testing /verify/bank...')
   console.log(`   Image URL: ${testImageUrl}`)
 
   try {
-    const res = await fetch(`${BASE_URL}/verify`, {
+    const res = await fetch(`${BASE_URL}/verify/bank`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${API_KEY}`,
         'Content-Type': 'application/json',
-        'Idempotency-Key': `test-${Date.now()}`,
       },
       body: JSON.stringify({
-        inputType: 'image',
-        imageUrl: testImageUrl,
-        mode: 'sync',
+        url: testImageUrl,
+        checkDuplicate: true,
+        remark: 'inboxreya-test',
       }),
     })
 
     const data = await res.json()
 
     if (data.success) {
-      const tx = data.data?.result?.transactionData
+      const slip = data.data?.rawSlip
       console.log('Verification Result:')
-      console.log(`   Status: ${data.data?.status}`)
-      console.log(`   Valid: ${data.data?.result?.valid}`)
-      console.log(`   UUID: ${data.data?.uuid}`)
-      if (tx) {
-        console.log(`   Amount: ${tx.amount} ${tx.currency || 'THB'}`)
-        console.log(`   Date: ${tx.transactionDate || 'N/A'}`)
-        console.log(`   Sender: ${tx.sender?.name || 'N/A'}`)
-        console.log(`   Receiver: ${tx.receiver?.name || 'N/A'}`)
+      console.log(`   Duplicate: ${data.data?.isDuplicate}`)
+      console.log(`   Amount In Slip: ${data.data?.amountInSlip}`)
+      if (slip) {
+        console.log(`   Amount: ${slip.amount?.amount} ${slip.amount?.local?.currency || 'THB'}`)
+        console.log(`   Ref: ${slip.transRef}`)
+        console.log(`   Date: ${slip.date || 'N/A'}`)
+        console.log(`   Sender: ${slip.sender?.account?.name?.th || slip.sender?.account?.name?.en || 'N/A'}`)
+        console.log(`   Receiver: ${slip.receiver?.account?.name?.th || slip.receiver?.account?.name?.en || 'N/A'}`)
       }
     } else {
       console.log('Verification failed:', data)
@@ -115,7 +118,7 @@ async function testVerifyEndpoint() {
 }
 
 ;(async () => {
-  await testCreditsBalance()
+  await testInfo()
   await testVerifySlip()
   await testVerifyEndpoint()
 

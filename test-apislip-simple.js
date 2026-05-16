@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Simple test for HaveSLIP API.
+ * Simple test for Thunder slip verification API.
  *
  * Usage:
  *   node test-apislip-simple.js <image_url>
@@ -11,35 +11,36 @@ const path = require('path')
 
 const envPath = path.join(__dirname, '.env.local')
 const envContent = fs.readFileSync(envPath, 'utf-8')
-const apiKeyMatch = envContent.match(/HAVESLIP_API_KEY="?([^"\r\n]+)"?/)
-const baseUrlMatch = envContent.match(/HAVESLIP_API_BASE_URL="?([^"\r\n]+)"?/)
+const apiKeyMatch = envContent.match(/THUNDER_API_KEY="?([^"\r\n]+)"?/)
+const baseUrlMatch = envContent.match(/THUNDER_API_BASE_URL="?([^"\r\n]+)"?/)
 
 if (!apiKeyMatch) {
-  console.error('HAVESLIP_API_KEY not found in .env.local')
+  console.error('THUNDER_API_KEY not found in .env.local')
   process.exit(1)
 }
 
 const API_KEY = apiKeyMatch[1]
-const BASE_URL = (baseUrlMatch?.[1] || 'https://api.haveslip.com/api').replace(/\/$/, '')
+const BASE_URL = (baseUrlMatch?.[1] || 'https://api.thunder.in.th/v2').replace(/\/$/, '')
 
-console.log('API Key loaded:', API_KEY.substring(0, 10) + '...')
+console.log('API Key loaded:', API_KEY.substring(0, 8) + '...')
 console.log('')
 
-async function testCreditsBalance() {
-  console.log('Test 1: Get credits balance...')
+async function testInfo() {
+  console.log('Test 1: Get app info...')
 
   try {
-    const res = await fetch(`${BASE_URL}/credits/balance`, {
+    const res = await fetch(`${BASE_URL}/info`, {
       headers: { Authorization: `Bearer ${API_KEY}` },
     })
 
     const data = await res.json()
 
     if (data.success) {
-      console.log('Credits Balance:')
-      console.log(`   Currency: ${data.data.currency}`)
-      console.log(`   Balance: ${data.data.balance}`)
-      console.log(`   Next Expiry: ${data.data.nextExpiryAt || '-'}`)
+      console.log('App Info:')
+      console.log(`   Application: ${data.data.application?.name || '-'}`)
+      console.log(`   Branch: ${data.data.branch?.name || '-'}`)
+      console.log(`   Credit: ${data.data.account?.credit ?? '-'}`)
+      console.log(`   Quota Remaining: ${data.data.application?.quota?.remaining ?? '-'}`)
     } else {
       console.log('Error:', data)
     }
@@ -63,36 +64,35 @@ async function testVerifySlip() {
   console.log(`   Image: ${testImageUrl}`)
 
   try {
-    const res = await fetch(`${BASE_URL}/verify`, {
+    const res = await fetch(`${BASE_URL}/verify/bank`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${API_KEY}`,
         'Content-Type': 'application/json',
-        'Idempotency-Key': `test-${Date.now()}`,
       },
       body: JSON.stringify({
-        inputType: 'image',
-        imageUrl: testImageUrl,
-        mode: 'sync',
+        url: testImageUrl,
+        checkDuplicate: true,
       }),
     })
 
     const data = await res.json()
 
-    if (data.success && data.data?.status === 'completed' && data.data?.result?.valid) {
-      const tx = data.data.result.transactionData || {}
+    if (data.success && data.data?.rawSlip) {
+      const slip = data.data.rawSlip
       console.log('Verification Success!')
-      console.log(`   Amount: ${tx.amount} ${tx.currency || 'THB'}`)
-      console.log(`   Ref: ${data.data.uuid}`)
-      console.log(`   Date: ${tx.transactionDate}`)
-      console.log(`   Sender: ${tx.sender?.name || '-'}`)
-      console.log(`   Sender Bank: ${tx.sender?.bank || '-'}`)
-      console.log(`   Receiver: ${tx.receiver?.name || '-'}`)
-      console.log(`   Receiver Bank: ${tx.receiver?.bank || '-'}`)
+      console.log(`   Amount: ${slip.amount?.amount} ${slip.amount?.local?.currency || 'THB'}`)
+      console.log(`   Ref: ${slip.transRef}`)
+      console.log(`   Date: ${slip.date}`)
+      console.log(`   Sender: ${slip.sender?.account?.name?.th || slip.sender?.account?.name?.en || '-'}`)
+      console.log(`   Sender Bank: ${slip.sender?.bank?.name || slip.sender?.bank?.short || '-'}`)
+      console.log(`   Receiver: ${slip.receiver?.account?.name?.th || slip.receiver?.account?.name?.en || '-'}`)
+      console.log(`   Receiver Bank: ${slip.receiver?.bank?.name || slip.receiver?.bank?.short || '-'}`)
+      console.log(`   Duplicate: ${data.data.isDuplicate}`)
     } else {
       console.log('Verification failed')
-      console.log(`   Status: ${data.data?.status || '-'}`)
-      console.log(`   Message: ${data.message || data.error || data.data?.error || '-'}`)
+      console.log(`   Code: ${data.error?.code || '-'}`)
+      console.log(`   Message: ${data.error?.message || data.message || '-'}`)
     }
   } catch (err) {
     console.error('Failed:', err.message)
@@ -101,6 +101,6 @@ async function testVerifySlip() {
 }
 
 ;(async () => {
-  await testCreditsBalance()
+  await testInfo()
   await testVerifySlip()
 })()

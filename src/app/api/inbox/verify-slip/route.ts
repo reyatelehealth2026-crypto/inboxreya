@@ -1,4 +1,3 @@
-import crypto from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 
@@ -77,10 +76,6 @@ function isReceiverNameMatch(actualName: string, expectedName: string) {
   return false
 }
 
-function buildIdempotencyKey(imageUrl: string) {
-  return `inboxreya-slip-${crypto.createHash('sha256').update(imageUrl).digest('hex')}`
-}
-
 async function readJsonResponse(response: Response) {
   const text = await response.text()
   if (!text) return null
@@ -92,33 +87,42 @@ async function readJsonResponse(response: Response) {
   }
 }
 
-function normalizeHaveSlipTransaction(data: any) {
-  const result = data?.result || {}
-  const tx = result?.transactionData || {}
+function getPartyName(party: any) {
+  return party?.account?.name?.th || party?.account?.name?.en || ''
+}
+
+function getPartyAccount(party: any) {
+  return party?.account?.bank?.account || party?.account?.proxy?.account || ''
+}
+
+function normalizeThunderTransaction(data: any) {
+  const rawSlip = data?.rawSlip || {}
 
   return {
-    amount: tx.amount,
-    refId: tx.refId || tx.referenceId || tx.transactionId || data?.uuid || '',
-    date: tx.transactionDate || tx.date || data?.completedAt || data?.createdAt || '',
+    amount: rawSlip.amount?.amount ?? rawSlip.amount?.local?.amount ?? data?.amountInSlip,
+    refId: rawSlip.transRef || '',
+    date: rawSlip.date || '',
     sender: {
-      name: tx.sender?.name || '',
-      bank: tx.sender?.bank || '',
-      account: tx.sender?.account || tx.sender?.accountNumber || '',
+      name: getPartyName(rawSlip.sender),
+      bank: rawSlip.sender?.bank?.id || rawSlip.sender?.bank?.short || rawSlip.sender?.bank?.name || '',
+      bankName: rawSlip.sender?.bank?.name || rawSlip.sender?.bank?.short || rawSlip.sender?.bank?.id || '',
+      account: getPartyAccount(rawSlip.sender),
     },
     receiver: {
-      name: tx.receiver?.name || '',
-      bank: tx.receiver?.bank || '',
-      account: tx.receiver?.account || tx.receiver?.accountNumber || '',
+      name: getPartyName(rawSlip.receiver),
+      bank: rawSlip.receiver?.bank?.id || rawSlip.receiver?.bank?.short || rawSlip.receiver?.bank?.name || '',
+      bankName: rawSlip.receiver?.bank?.name || rawSlip.receiver?.bank?.short || rawSlip.receiver?.bank?.id || '',
+      account: getPartyAccount(rawSlip.receiver),
     },
-    currency: tx.currency || 'THB',
-    transFeeAmount: tx.transFeeAmount || 0,
+    currency: rawSlip.amount?.local?.currency || 'THB',
+    transFeeAmount: rawSlip.fee || 0,
   }
 }
 
 /**
  * POST /api/inbox/verify-slip
  *
- * Verify a payment slip image via HaveSLIP API.
+ * Verify a payment slip image via Thunder API.
  * Proxies the request server-side so the API key stays hidden.
  *
  * Body (JSON):
@@ -141,53 +145,52 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const apiKey = process.env.HAVESLIP_API_KEY
+    const apiKey = process.env.THUNDER_API_KEY
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'HaveSLIP API key not configured (HAVESLIP_API_KEY)' },
+        { error: 'Thunder API key not configured (THUNDER_API_KEY)' },
         { status: 500 }
       )
     }
 
-    const apiBaseUrl = (process.env.HAVESLIP_API_BASE_URL || 'https://api.haveslip.com/api').replace(/\/$/, '')
-    const haveSlipRes = await fetch(`${apiBaseUrl}/verify`, {
+    const apiBaseUrl = (process.env.THUNDER_API_BASE_URL || 'https://api.thunder.in.th/v2').replace(/\/$/, '')
+    const thunderRes = await fetch(`${apiBaseUrl}/verify/bank`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'Idempotency-Key': buildIdempotencyKey(imageUrl),
       },
       body: JSON.stringify({
-        inputType: 'image',
-        imageUrl,
-        mode: 'sync',
-        forceRefresh: false,
+        url: imageUrl,
+        checkDuplicate: true,
+        remark: 'inboxreya-slip-verify',
       }),
     })
 
-    const haveSlipData = await readJsonResponse(haveSlipRes)
+    const thunderData = await readJsonResponse(thunderRes)
 
-    if (!haveSlipRes.ok) {
-      // HaveSLIP returned an error. Keep 200 so the frontend can handle gracefully.
+    if (!thunderRes.ok) {
+      // Thunder returned an error. Keep 200 so the frontend can handle gracefully.
       return NextResponse.json(
         {
           success: false,
           verified: false,
-          error: haveSlipData?.message || haveSlipData?.error || `HaveSLIP API error (${haveSlipRes.status})`,
-          statusCode: haveSlipRes.status,
+          error: thunderData?.error?.message || thunderData?.message || `Thunder API error (${thunderRes.status})`,
+          status: thunderData?.error?.code,
+          statusCode: thunderRes.status,
         },
         { status: 200 }
       )
     }
 
-    // Parse HaveSLIP response format to match frontend expectations.
-    // HaveSLIP: { success, data: { status, result: { valid, transactionData } } }
+    // Parse Thunder response format to match frontend expectations.
+    // Thunder: { success, data: { rawSlip: { transRef, date, amount, sender, receiver } } }
     // Frontend expects: { success, verified, data: { amount, transRef, sender, receiver, ... } }
     
-    const { data } = haveSlipData || {}
-    const tx = normalizeHaveSlipTransaction(data)
+    const { data } = thunderData || {}
+    const tx = normalizeThunderTransaction(data)
     
-    if (haveSlipData?.success === true && data?.status === 'completed' && data?.result?.valid === true) {
+    if (thunderData?.success === true && data?.rawSlip) {
       // Build response compatible with the existing frontend contract.
       const transDate = tx.date || ''
       const transTime = transDate ? transDate.split('T')[1]?.replace(/\.\d+Z$/, '') || '' : ''
@@ -239,7 +242,7 @@ export async function POST(request: NextRequest) {
             },
           },
           sendingBank: tx.sender?.bank || '',
-          sendingBankName: tx.sender?.bank || '',
+          sendingBankName: tx.sender?.bankName || tx.sender?.bank || '',
           
           // Receiver info
           receiver: {
@@ -250,7 +253,7 @@ export async function POST(request: NextRequest) {
             },
           },
           receivingBank: tx.receiver?.bank || '',
-          receivingBankName: tx.receiver?.bank || '',
+          receivingBankName: tx.receiver?.bankName || tx.receiver?.bank || '',
           
           // Additional fields
           transFeeAmount: tx.transFeeAmount || 0,
@@ -265,9 +268,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         verified: false,
-        error: data?.result?.message || data?.error || `Verification failed: ${data?.status || 'unknown'}`,
-        status: data?.status,
-        isAuthentic: data?.result?.valid === true,
+        error: thunderData?.error?.message || thunderData?.message || 'Verification failed',
+        status: thunderData?.error?.code,
+        isAuthentic: false,
         data: data,
       }, { status: 200 })
     }
