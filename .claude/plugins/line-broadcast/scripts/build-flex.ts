@@ -45,7 +45,34 @@
  *   }
  */
 
-import type { ExportPreviewProduct, FlexMessageTemplate } from '../../../../src/lib/flex-builder'
+// Types inlined so the plugin is portable (works at account-level
+// ~/.claude/plugins/ without needing src/lib/flex-builder.ts in cwd).
+// Shape mirrors src/lib/flex-builder.ts ExportPreviewProduct + FlexMessageTemplate.
+type FlexMessageTemplate =
+  | 'product_catalog'
+  | 'promotion'
+  | 'flash_sale'
+  | 'new_arrival'
+  | 'bestseller'
+
+interface ExportPreviewProduct {
+  productId: number
+  sku: string
+  name: string
+  imageUrl: string | null
+  basePrice: number
+  promotionPrice: number | null
+  unitLabel?: string
+  quantity?: number
+  promoLine1?: string
+  promoLine2?: string
+  offerStart?: string
+  offerEnd?: string
+  productUrl?: string
+  isPrescription?: boolean
+  ribbonText?: string
+  ctaLabel?: string
+}
 
 const CNY_BASE = 'https://www.cnypharmacy.com'
 const CNY_IMG_BASE = 'https://manager.cnypharmacy.com'
