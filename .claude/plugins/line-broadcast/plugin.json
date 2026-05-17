@@ -1,0 +1,36 @@
+{
+  "name": "line-broadcast",
+  "version": "0.1.0",
+  "description": "สร้าง LINE broadcast จากคำสั่งภาษาธรรมชาติ — agent ดึงสินค้าจริงจาก CNY Manager DB, สร้าง Flex, แนะนำเวลาส่ง, แสดง preview, แล้วบันทึก scheduled broadcast ให้ cron เดิมส่งเมื่อถึงเวลา",
+  "author": "inboxreya team",
+  "commands": [
+    {
+      "name": "broadcast",
+      "description": "สร้าง LINE broadcast จากคำสั่งภาษาธรรมชาติ (chat approval)",
+      "path": "commands/broadcast.md"
+    },
+    {
+      "name": "broadcast-auto",
+      "description": "ลงทะเบียน auto-cycle broadcast ที่ระบบจะสร้าง draft ตามรอบ",
+      "path": "commands/broadcast-auto.md"
+    },
+    {
+      "name": "broadcast-list",
+      "description": "แสดง broadcast drafts + scheduled ใน chat",
+      "path": "commands/broadcast-list.md"
+    }
+  ],
+  "agents": [
+    {
+      "name": "broadcast-builder",
+      "description": "Parse intent → fetch CNY products → build Flex → suggest send time → return preview",
+      "path": "agents/broadcast-builder.md"
+    }
+  ],
+  "skills": [
+    { "name": "cny-products", "path": "skills/cny-products/SKILL.md" },
+    { "name": "flex-compose", "path": "skills/flex-compose/SKILL.md" },
+    { "name": "send-time-heuristics", "path": "skills/send-time-heuristics/SKILL.md" },
+    { "name": "submit-broadcast", "path": "skills/submit-broadcast/SKILL.md" }
+  ]
+}
