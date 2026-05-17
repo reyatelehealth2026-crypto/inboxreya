@@ -109,17 +109,54 @@ async function main() {
   process.stderr.write('[1/4] fetch page 1 to discover total…\n');
   const page1 = await fetchPage(1);
   const items1 = page1.product || [];
-  const total   = page1.paginate?.total || items1.length;
   const perPage = items1.length || PAGE_SIZE;
-  const pages   = Math.max(1, Math.ceil(total / perPage));
-  process.stderr.write(`     total=${total} per_page=${perPage} pages=${pages}\n`);
+  const declaredTotal = page1.paginate?.total ?? null;
+  let pages;
+  if (declaredTotal && declaredTotal > 0) {
+    pages = Math.max(1, Math.ceil(declaredTotal / perPage));
+    process.stderr.write(`     total=${declaredTotal} per_page=${perPage} pages=${pages}\n`);
+  } else {
+    pages = items1.length < PAGE_SIZE ? 1 : null;
+    process.stderr.write(`     paginate.total missing — will probe pages until a short page is seen (per_page=${perPage})\n`);
+  }
 
-  process.stderr.write(`[2/4] fetch ${pages - 1} remaining pages (concurrency=${CONCURRENCY})…\n`);
-  const remaining = Array.from({ length: pages - 1 }, (_, i) => i + 2);
-  const restPages = await pMap(remaining, CONCURRENCY, async (p) => {
-    const d = await fetchPage(p);
-    return d.product || [];
-  });
+  let restPages;
+  if (pages !== null) {
+    process.stderr.write(`[2/4] fetch ${pages - 1} remaining pages (concurrency=${CONCURRENCY})…\n`);
+    const remaining = Array.from({ length: pages - 1 }, (_, i) => i + 2);
+    restPages = await pMap(remaining, CONCURRENCY, async (p) => {
+      const d = await fetchPage(p);
+      return d.product || [];
+    });
+  } else {
+    process.stderr.write(`[2/4] probe pages in batches of ${CONCURRENCY} until short page…\n`);
+    restPages = [];
+    let nextPage = 2;
+    let stop = false;
+    while (!stop) {
+      const batch = Array.from({ length: CONCURRENCY }, (_, i) => nextPage + i);
+      const batchResults = await pMap(batch, CONCURRENCY, async (p) => {
+        try {
+          const d = await fetchPage(p);
+          return d.product || [];
+        } catch (e) {
+          return [];
+        }
+      });
+      for (let i = 0; i < batchResults.length; i++) {
+        const items = batchResults[i];
+        restPages.push(items);
+        if (items.length < PAGE_SIZE) {
+          stop = true;
+          pages = batch[i];
+          break;
+        }
+      }
+      if (!stop) nextPage += CONCURRENCY;
+      if (nextPage > 200) { stop = true; pages = nextPage - 1; }
+    }
+    process.stderr.write(`     discovered pages=${pages}\n`);
+  }
 
   const rawItems = items1.concat(...restPages);
   process.stderr.write(`[3/4] flatten + classify ${rawItems.length} items…\n`);
