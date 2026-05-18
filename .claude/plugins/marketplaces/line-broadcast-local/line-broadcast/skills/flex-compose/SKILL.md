@@ -1,6 +1,6 @@
 ---
 name: flex-compose
-description: เรียก helper `scripts/build-flex.ts` เพื่อสร้าง LINE Flex messages จาก raw CNY response หรือ ExportPreviewProduct[]. ใช้ template substitution ตรงตามเทมเพลตของ admin (mega bubbles + SPECIAL OFFER badge + promo box + price + date range).
+description: เรียก helper `scripts/build-flex.ts` เพื่อสร้าง LINE Flex messages จาก raw CNY response หรือ ExportPreviewProduct[]. Template ตรงตามการ์ดสินค้าของ cnypharmacy.com — hero 4:3 → SPECIAL OFFER box (red border + เริ่ม/ถึง date) → SKU label → ชื่อสินค้า → red-bordered promo terms box → ราคา → CTA button.
 ---
 
 # flex-compose skill
@@ -107,8 +107,8 @@ Cover bg / icon / title default แปรไปตาม `theme`:
 
 **Conditional rendering** per product:
 - ถ้า `promotionPrice < basePrice` → strike-through line ใต้ราคา
-- ถ้า `promoLine1` หรือ `promoLine2` ตั้งค่า → promo box สีส้ม (`#FFF7ED`)
-- ถ้า `offerStart` + `offerEnd` ตั้งค่า → date range row
+- ถ้า `promoLine1` หรือ `promoLine2` ตั้งค่า → red-bordered terms box (ตามภาพการ์ด CNY)
+- ถ้า `offerStart` + `offerEnd` ตั้งค่า → แสดงในกล่อง SPECIAL OFFER ด้านบน (เริ่ม DD-MM-YYYY / ถึง DD-MM-YYYY)
 
 ## Capacity
 

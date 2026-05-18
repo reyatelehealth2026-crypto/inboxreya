@@ -352,50 +352,75 @@ function buildProductBubble(opts: ProductBubbleOpts): object {
   const promoLines = [p.promoLine1, p.promoLine2].filter(
     (s): s is string => Boolean(s && s.trim())
   )
-  const dateRange =
-    p.offerStart && p.offerEnd
-      ? `เริ่ม เริ่ม ${formatDate(p.offerStart)} — ถึง ถึง ${formatDate(p.offerEnd)}`
-      : null
+  const dateRows: object[] = []
+  if (p.offerStart) {
+    dateRows.push({ type: 'text', text: `เริ่ม ${formatDate(p.offerStart)}`, size: 'sm', color: '#E53E3E', weight: 'bold', align: 'center' })
+  }
+  if (p.offerEnd) {
+    dateRows.push({ type: 'text', text: `ถึง ${formatDate(p.offerEnd)}`, size: 'sm', color: '#E53E3E', weight: 'bold', align: 'center' })
+  }
 
   const bodyContents: object[] = [
-    // Badge row
+    // SPECIAL OFFER box (red bordered, badge + date range inside)
     {
       type: 'box',
-      layout: 'horizontal',
+      layout: 'vertical',
       spacing: 'xs',
+      borderColor: '#E53E3E',
+      borderWidth: '2px',
+      cornerRadius: '8px',
+      paddingAll: '10px',
+      backgroundColor: '#FFFFFF',
       contents: [
         {
           type: 'box',
           layout: 'vertical',
           flex: 0,
-          backgroundColor: color,
-          cornerRadius: '10px',
-          paddingAll: '5px',
+          alignItems: 'center',
           contents: [
-            { type: 'text', text: opts.badgeText, size: 'xxs', weight: 'bold', color: '#FFFFFF' },
+            {
+              type: 'box',
+              layout: 'vertical',
+              flex: 0,
+              backgroundColor: '#E53E3E',
+              cornerRadius: '4px',
+              paddingTop: '4px',
+              paddingBottom: '4px',
+              paddingStart: '12px',
+              paddingEnd: '12px',
+              contents: [
+                { type: 'text', text: opts.badgeText, color: '#FFFFFF', weight: 'bold', size: 'xs', align: 'center' },
+              ],
+            },
           ],
         },
+        ...dateRows,
       ],
     },
     // SKU
-    { type: 'text', text: `SKU ${p.sku}`, size: 'xxs', color: '#64748B' },
+    { type: 'text', text: `รหัสสินค้า ${p.sku}`, size: 'xs', color: '#64748B', margin: 'md' },
     // Name
-    { type: 'text', text: p.name, size: 'sm', weight: 'bold', color: '#0F172A', wrap: true, maxLines: 3 },
+    { type: 'text', text: p.name, size: 'md', weight: 'bold', color: '#0F172A', wrap: true, maxLines: 3 },
   ]
 
   if (promoLines.length > 0) {
     bodyContents.push({
       type: 'box',
       layout: 'vertical',
-      backgroundColor: '#FFF7ED',
-      cornerRadius: '10px',
+      spacing: 'xs',
+      borderColor: '#E53E3E',
+      borderWidth: '1px',
+      cornerRadius: '6px',
       paddingAll: '8px',
+      backgroundColor: '#FFFFFF',
       contents: promoLines.map((line) => ({
         type: 'text',
         text: line,
-        size: 'xxs',
-        color: '#C2410C',
+        size: 'xs',
+        color: '#E53E3E',
+        weight: 'bold',
         wrap: true,
+        align: 'center',
       })),
     })
   }
@@ -404,9 +429,9 @@ function buildProductBubble(opts: ProductBubbleOpts): object {
     {
       type: 'text',
       text: formatPrice(salePrice, p.unitLabel),
-      size: 'lg',
+      size: 'md',
       weight: 'bold',
-      color: color,
+      color: '#0F172A',
       wrap: true,
     },
   ]
@@ -423,18 +448,9 @@ function buildProductBubble(opts: ProductBubbleOpts): object {
     type: 'box',
     layout: 'vertical',
     spacing: 'xs',
+    margin: 'sm',
     contents: priceContents,
   })
-
-  if (dateRange) {
-    bodyContents.push({
-      type: 'text',
-      text: dateRange,
-      size: 'xxs',
-      color: '#94A3B8',
-      wrap: true,
-    })
-  }
 
   return {
     type: 'bubble',
