@@ -113,20 +113,30 @@ prod cron (* * * * *) → LINE OA
    └─ build-flex.ts       # raw CNY → filtered products → Flex JSON (local)
 ```
 
-## Theme filter logic (mirrors production /ai-agent)
+## Theme + promo filter (v2 — promo-only cache)
 
-| theme | match condition |
+`theme` = visual styling (color/icon/cover title). `promoFilter` = filter on `promos[]` ที่อยู่ในแต่ละ product.
+
+| theme | color | icon | cover title |
+|---|---|---|---|
+| `promotion`       | `#E53E3E` | 🔥 | "โปรโมชันพิเศษ" |
+| `flash_sale`      | `#D69E2E` | ⚡ | "Flash Sale" |
+| `bestseller`      | `#15803D` | 🏆 | "สินค้าขายดี" |
+| `new_arrival`     | `#805AD5` | ✨ | "สินค้าใหม่" |
+| `product_catalog` | `#4299E1` | 🛍️ | "แคตตาล็อคสินค้า" |
+
+| promoFilter | match condition |
 |---|---|
-| `flash_sale` | `product_is_flashSale=1 \|\| is_promotion=1` **AND** `promotion_price < price` |
-| `promotion` | `is_promotion=1` |
-| `bestseller` | `is_bestseller=1 \|\| customer_buyed>0` |
-| `new_arrival` | `product_is_recommend=1 \|\| is_recommend=1` |
-| `product_catalog` | all |
+| `all`      | (default) ทุก product ที่อยู่ใน cache (cache เป็น promo-only อยู่แล้ว) |
+| `discount` | `promos.some(x=>x.campaignGroup==='discount')` |
+| `giveaway` | `promos.some(x=>x.campaignGroup==='giveaway')` |
+| `buy_pack` | `promos.some(x=>x.isBuyPack)` |
 
-ถ้า filter ได้น้อยกว่า limit → top-up จาก in-stock catalog (preserve primary order).
+ถ้า primary set ได้น้อยกว่า limit → top-up จาก keyword-matched promo cache (preserve primary order).
 
 ## Changelog
 
+- **2026-05-18**: cache เป็น promo-only — ดึงผ่าน `data_promotion_only` (83 campaigns / 2,453 SKUs) → enrich catalog detail. แต่ละ product มี `promos[]` (start/end/discount/qty/unit/isBuyPack/isGiveaway). Template flex ใหม่ตามการ์ดสินค้า cnypharmacy.com (SPECIAL OFFER box + red-bordered promo terms + 1 product/bubble).
 - **2026-05-17**: ใช้ผ่าน chat ปกติได้เลย — เรียก CNY public + prod inbox.re-ya.com ตรง,
   ไม่ต้อง `npm run dev`. `build-flex.ts` รวม filter+map+build ในขั้นเดียว.
 - **2026-05-17**: เปลี่ยน product source จาก MySQL/SSH-tunnel → public CNY HTTP API.

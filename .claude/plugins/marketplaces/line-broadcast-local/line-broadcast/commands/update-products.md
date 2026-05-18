@@ -6,7 +6,7 @@ argument-hint: (ไม่ต้องใส่ arg)
 
 # /update-products — อัพเดทโปรสินค้า (CNY product cache)
 
-ดึงสินค้า CNY ทั้งหมด (~6,400 รายการ, ~65 pages) แบบ parallel ลง local cache เพื่อให้ `/broadcast` ใช้งานได้ทันที (instant lookup)
+ดึง **เฉพาะสินค้าที่ติดโปรจริง** (~2,300 SKU จาก 83 campaigns ใน `data_promotion_only`) → enrich ด้วย product detail (image/price/stock) จาก catalog crawl → ลง local cache เพื่อให้ `/broadcast` ใช้งานได้ทันที (instant lookup). ใช้เวลา ~40s
 
 ## เมื่อไหร่ควรรัน
 
@@ -42,28 +42,45 @@ npm install --prefix "$CLAUDE_PLUGIN_ROOT" --silent
 ```jsonc
 {
   "fetchedAt":   "2026-05-18T04:00:00.000Z",
-  "durationMs":  23832,
+  "durationMs":  38500,
   "pagesScanned": 65,
-  "totalUnique": 4323,
+  "rawCount": 6406,
+  "campaignsCount": 83,
+  "totalUnique": 2369,
   "summary": {
-    "promotion":    142,   // is_promotion=1
-    "flash_sale":   71,    // product_is_flashSale=1
-    "bestseller":   141,   // is_bestseller=1 OR customer_buyed>0
-    "new_arrival":  156,   // is_recommend=1 OR product_is_recommend=1
-    "in_stock":     3285,
-    "total_unique": 4323
+    "discount":     2301,   // promos[].campaignGroup='discount'
+    "giveaway":     86,     // promos[].campaignGroup='giveaway'
+    "buy_pack":     2288,   // promos[].isBuyPack=true (ซื้อยกแพ็ค)
+    "in_stock":     1790,
+    "total_unique": 2369,
+    "promo_skus_total":     2453,
+    "missing_from_catalog": 84
   },
+  "missingSkus": ["6669","7105", "..."],
   "products": [{
-    "sku": "0141", "productId": 4044,
-    "name": "ซีฟอร์ซ-1000 1X10X6'S (ฟอยล์)",
-    "nameEn": "C-FORCE 1000MG 10X6'S",
-    "specName": "ASCORBIC ACID",
-    "image": "https://manager.cnypharmacy.com/uploads/product_photo/0141.jpg",
-    "url":   "https://www.cnypharmacy.com/product/0141",
-    "basePrice": 422, "promotionPrice": null,
-    "unit": "กล่อง[10แผง]", "stock": 53,
+    "sku": "2288", "productId": ...,
+    "name": "3M NEXCARE TRANSPORE 1/2นิ้วx5หลาx12ม้วน [BJC]",
+    "nameEn": "...",
+    "specName": "...",
+    "image": "https://manager.cnypharmacy.com/uploads/product_photo/2288.jpg",
+    "url":   "https://www.cnypharmacy.com/product/2288",
+    "basePrice": 198, "promotionPrice": null,
+    "unit": "กล่อง[12ม้วน]", "stock": 12,
     "isPrescription": false,
-    "tags": ["promotion", "bestseller"]
+    "promos": [{
+      "campaignId":   952,
+      "campaignType": "discount",
+      "campaignGroup":"discount",      // 'discount' | 'giveaway'
+      "campaignName": "CNY-BOOM4",
+      "startPro":     "2026-04-01 00:00:01",
+      "endPro":       "2026-05-31 00:00:01",
+      "discount":     5.76,
+      "discountUnit": "percent",       // 'percent' | 'baht'
+      "qty":          3,
+      "unit":         "กล่อง[12ม้วน]",
+      "isGiveaway":   false,
+      "isBuyPack":    true
+    }]
   }]
 }
 ```
@@ -72,31 +89,29 @@ npm install --prefix "$CLAUDE_PLUGIN_ROOT" --silent
 
 | Sheet | Rows |
 |---|---|
-| `all_products` | ทั้งหมด |
-| `promotion`    | filter `tags includes 'promotion'` |
-| `flash_sale`   | filter `tags includes 'flash_sale'` |
-| `bestseller`   | filter `tags includes 'bestseller'` |
-| `new_arrival`  | filter `tags includes 'new_arrival'` |
+| `all_promos` | ทั้งหมด |
+| `discount`   | filter `promos.some(x=>x.campaignGroup==='discount')` |
+| `giveaway`   | filter `promos.some(x=>x.campaignGroup==='giveaway')` |
 
 ## รายงานผลใน chat
 
 หลัง refresh เสร็จ ให้ render:
 
 ```
-🔄 อัพเดทโปรสินค้าเสร็จสิ้น (23.8s)
+🔄 อัพเดทโปรสินค้าเสร็จสิ้น (38.5s) — โหมด: เฉพาะโปรจริง
 ─────────────────────────────────────
-📦 Total unique: 4,323 / 6,406 raw
-✅ In stock:     3,285
+📦 Promo SKUs: 2,369 (จาก 83 campaigns / 2,453 ใน manifest)
+✅ In stock:   1,790
+❓ Missing from catalog: 84 (อยู่ใน manifest แต่ไม่อยู่ใน catalog)
 
-🏷  ตามหมวด:
-   • promotion:    142
-   • flash_sale:   71
-   • bestseller:   141
-   • new_arrival:  156
+🏷  ตามประเภทโปร:
+   • discount:   2,301
+   • giveaway:   86
+   • buy_pack:   2,288
 
 📁 Cache files:
    • <plugin>/.cache/cny-products.json
-   • <plugin>/.cache/cny-products.xlsx
+   • <plugin>/.cache/cny-products.xlsx (sheets: all_promos/discount/giveaway)
 
 ⏰ Next refresh แนะนำ: ภายใน 24 ชั่วโมง
 ```

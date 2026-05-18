@@ -89,23 +89,35 @@ function reshapeForFlex(products) {
   return products.map(p => ({
     product_data: [{
       id: p.productId, sku: p.sku, name: p.name, name_en: p.nameEn, spec_name: p.specName,
-      is_promotion:  p.tags?.includes('promotion')   ? 1 : 0,
-      is_bestseller: p.tags?.includes('bestseller')  ? 1 : 0,
-      is_recommend:  p.tags?.includes('new_arrival') ? 1 : 0,
     }],
     product_photo: [{ photo_path: (p.image || '').replace('https://manager.cnypharmacy.com/','') }],
     product_price: [{ product_price: [{ price: p.basePrice, promotion_price: p.promotionPrice || p.basePrice }] }],
     product_unit:  [{ unit: p.unit || '' }],
     product_stock: [{ stock_num: p.stock ?? 0 }],
-    product_is_flashSale: p.tags?.includes('flash_sale') ? 1 : 0,
     is_rx: p.isPrescription ? 1 : 0,
+    promos: Array.isArray(p.promos) ? p.promos : [],
   }));
 }
+
+const PROMO_FILTERS = {
+  all:       () => true,
+  discount:  promos => promos.some(x => x.campaignGroup === 'discount'),
+  giveaway:  promos => promos.some(x => x.campaignGroup === 'giveaway'),
+  buy_pack:  promos => promos.some(x => x.isBuyPack),
+};
+
+const THEME_TO_PROMO_FILTER = {
+  promotion:       'all',
+  flash_sale:      'discount',
+  bestseller:      'all',
+  new_arrival:     'all',
+  product_catalog: 'all',
+};
 
 // ── tools ───────────────────────────────────────────────────────────
 const tools = {
   update_products: {
-    description: 'Refresh local CNY product cache (~24s). Fetches ~6,400 products from CNY API in parallel, classifies by tags, writes <plugin>/.cache/cny-products.json + .xlsx. Run before first use, then every ~24h or whenever stock/promo changes.',
+    description: 'Refresh local CNY promo cache (~40s). Pulls data_promotion_only (83 campaigns / ~2,400 SKUs) and enriches with product detail from the catalog crawl. Writes <plugin>/.cache/cny-products.json + .xlsx with promos[] attached per product. Run before first use, then every ~24h or whenever campaigns/stock change.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     async handler() {
       const { stdout } = await spawnNode(REFRESH_SCRIPT);
@@ -135,32 +147,36 @@ const tools = {
   },
 
   pick_products: {
-    description: 'Pick N products from local cache by keyword + theme. Fast (<50ms). If theme has fewer than `limit` matches, fills the remainder with keyword-matched items.',
+    description: 'Pick N products from local promo cache by keyword + theme. Cache is promo-only (all products carry promos[]). If theme/promoFilter primary set has fewer than `limit` matches, fills with keyword-matched promo items.',
     inputSchema: {
       type: 'object',
       properties: {
         keyword: { type: 'string', description: 'substring match on name+nameEn+specName, case-insensitive (Thai/English).' },
-        theme:   { type: 'string', enum: ['promotion','flash_sale','bestseller','new_arrival','product_catalog'], default: 'promotion' },
+        theme:   { type: 'string', enum: ['promotion','flash_sale','bestseller','new_arrival','product_catalog'], default: 'promotion', description: 'visual theme (color/icon/title). Defaults map to promoFilter when promoFilter not set.' },
+        promoFilter: { type: 'string', enum: ['all','discount','giveaway','buy_pack'], description: 'filter on promos[] shape. If omitted, derived from theme.' },
         limit:   { type: 'integer', minimum: 1, maximum: 47, default: 12 },
         skus:    { type: 'array', items: { type: 'string' }, description: 'explicit SKU allowlist (overrides keyword).' },
         requireStock: { type: 'boolean', default: false, description: 'if true, only include products with stock > 0.' },
       },
       additionalProperties: false,
     },
-    async handler({ keyword = '', theme = 'promotion', limit = 12, skus = null, requireStock = false }) {
+    async handler({ keyword = '', theme = 'promotion', promoFilter = null, limit = 12, skus = null, requireStock = false }) {
       const cache = loadCache();
       const kw = keyword.toLowerCase();
       let filtered = cache.products.filter(p => p.basePrice > 0);
       if (requireStock) filtered = filtered.filter(p => p.stock > 0);
       if (skus && skus.length) filtered = filtered.filter(p => skus.includes(p.sku));
       else if (kw) filtered = filtered.filter(p => (p.name + p.nameEn + p.specName).toLowerCase().includes(kw));
-      const primary = filtered.filter(p => p.tags.includes(theme));
+      const filterKey = promoFilter || THEME_TO_PROMO_FILTER[theme] || 'all';
+      const filterFn = PROMO_FILTERS[filterKey] || PROMO_FILTERS.all;
+      const primary = filtered.filter(p => filterFn(p.promos || []));
       const primaryIds = new Set(primary.map(p => p.productId));
       const picked = primary.length >= limit
         ? primary.slice(0, limit)
         : [...primary, ...filtered.filter(p => !primaryIds.has(p.productId))].slice(0, limit);
       return {
         picked,
+        promoFilter: filterKey,
         cacheAgeHours: Number(cache.ageHours.toFixed(2)),
         cacheFetchedAt: cache.fetchedAt,
         totalMatched: filtered.length,

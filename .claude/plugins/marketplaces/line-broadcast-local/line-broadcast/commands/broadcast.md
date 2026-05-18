@@ -51,14 +51,18 @@ node -e "const d=require('$CACHE'); const age=(Date.now()-new Date(d.fetchedAt))
 ### Phase 1 — Parse intent
 
 อ่าน `$ARGUMENTS`, แยก:
-- `theme`: `flash_sale | promotion | bestseller | new_arrival | product_catalog`
+- `theme`: `flash_sale | promotion | bestseller | new_arrival | product_catalog` (visual styling — color/icon/title)
   - keyword map: "โปร" → promotion, "flash"/"ลดล้าง" → flash_sale, "ขายดี" → bestseller, "ใหม่"/"new" → new_arrival
+- `promoFilter`: `all | discount | giveaway | buy_pack` (filter on `promos[]`)
+  - keyword map: "ลด %"/"ลดเงิน" → discount, "แถม"/"ฟรี" → giveaway, "ยกแพ็ค" → buy_pack. default `all`
 - `keywords`: free-text (เช่น "วิตามินซี")
 - `productCount`: N (default 6, cap 12)
 - `target`: `{mode:'all'}` | `{mode:'tags', tagNames:[...]}` | `{mode:'segment', id}`
 - `scheduledAt`: ISO 8601 Asia/Bangkok (+07:00)
 
 ถ้ากำกวมตรงไหน → ถาม 1 รอบ.
+
+> Cache ตอนนี้เป็น **promo-only** (~2,300 SKU ที่ติดโปร) — ทุกสินค้ามี `promos[]` พร้อม start/end/discount/qty/unit/isBuyPack/isGiveaway. theme ใช้แค่ visual; ของจริงที่จะกรอง = `promoFilter`.
 
 ### Phase 2 — Resolve tags + estimate (ขนาน)
 
@@ -87,33 +91,41 @@ curl -sS -H "Cookie: $COOKIE" -H 'Content-Type: application/json' --max-time 10 
 node -e "
 const fs=require('fs');
 const cache=JSON.parse(fs.readFileSync(process.env.CLAUDE_PLUGIN_ROOT+'/.cache/cny-products.json','utf8'));
-const KW='วิตามินซี';          // จาก intent
-const THEME='promotion';      // จาก intent
+const KW='วิตามินซี';          // จาก intent (free-text)
+const THEME='promotion';      // visual theme — promotion|flash_sale|bestseller|new_arrival|product_catalog
+const PROMO_FILTER='all';     // all | discount | giveaway | buy_pack
 const N=12;
 const kw=KW.toLowerCase();
 const filtered = cache.products.filter(p => {
-  if (kw && !(p.name+p.nameEn+p.specName).toLowerCase().includes(kw)) return false;
   if (p.basePrice <= 0) return false;
+  if (kw && !(p.name+p.nameEn+p.specName).toLowerCase().includes(kw)) return false;
   return true;
 });
-const primary = filtered.filter(p => p.tags.includes(THEME));
+const promoMatch = {
+  all:      () => true,
+  discount: ps => ps.some(x => x.campaignGroup === 'discount'),
+  giveaway: ps => ps.some(x => x.campaignGroup === 'giveaway'),
+  buy_pack: ps => ps.some(x => x.isBuyPack),
+}[PROMO_FILTER] || (() => true);
+const primary = filtered.filter(p => promoMatch(p.promos || []));
 const pickIds = new Set(primary.map(p=>p.productId));
 const pick = primary.length >= N ? primary.slice(0,N)
   : [...primary, ...filtered.filter(p => !pickIds.has(p.productId))].slice(0,N);
-// Re-shape to cny.product[] for build-flex-2up.cjs
+// Re-shape to cny.product[] for build-flex-2up.cjs (carries promos[] through)
 const cnyShape = pick.map(p => ({
-  product_data: [{ id:p.productId, sku:p.sku, name:p.name, name_en:p.nameEn, spec_name:p.specName, is_promotion: p.tags.includes('promotion')?1:0 }],
+  product_data: [{ id:p.productId, sku:p.sku, name:p.name, name_en:p.nameEn, spec_name:p.specName }],
   product_photo: [{ photo_path: p.image.replace('https://manager.cnypharmacy.com/','') }],
   product_price: [{ product_price:[{ price:p.basePrice, promotion_price:p.promotionPrice||p.basePrice }] }],
   product_unit:  [{ unit: p.unit }],
   product_stock: [{ stock_num: p.stock }],
   is_rx: p.isPrescription ? 1 : 0,
+  promos: p.promos || [],
 }));
 fs.writeFileSync('.tmp/flex-payload.json', JSON.stringify({
   cny: { product: cnyShape },
   theme: THEME, limit: N,
   title:'<Q1>', intro:'<theme-intro>',
-  ctaLabel:'<Q2>', badgeText:'PROMOTION',
+  ctaLabel:'<Q2>', badgeText:'SPECIAL OFFER',
   actionUrl:'https://www.cnypharmacy.com',
   footerText:'สนใจตัวไหน แจ้งรหัสส่งกลับมาได้เลย',
   closingText:'ด่วน! โปรโมชั่นนี้มีจำนวนจำกัด ทักแชทสั่งซื้อได้เลยค่ะ 👇'
@@ -140,9 +152,10 @@ console.log('picked', pick.length, 'products');
 node "$CLAUDE_PLUGIN_ROOT/scripts/build-flex-2up.cjs" .tmp/flex-payload.json > .tmp/flex.json
 ```
 
-- 1 cover bubble + ⌈N/2⌉ product bubbles (2 สินค้า/bubble)
-- 12 products → 7 bubbles → 1 carousel
-- + closing text = 2 LINE messages (within quota 5)
+- 1 cover bubble + N product bubbles (1 สินค้า/bubble — รวม SPECIAL OFFER box, promo terms, price, CTA)
+- 12 products → 13 bubbles → 2 carousels (12 + 1) — แต่ละ carousel เต็มที่ 12 bubble
+- + closing text = 3 LINE messages (within quota 5)
+- การ์ดแต่ละใบมี: hero 4:3 → SPECIAL OFFER box (red border + start/end date) → SKU → name → sub-text → promo terms box (red border) → price → CTA
 
 ### Phase 6 — Render preview
 
@@ -153,10 +166,10 @@ node "$CLAUDE_PLUGIN_ROOT/scripts/build-flex-2up.cjs" .tmp/flex-payload.json > .
 ⏰ Send at:   <display> Asia/Bangkok (อีก ~<delta>)
 🧾 Flex msgs: <n> (<carousels> carousel × <bubbles> bubbles + 1 closing text)
 
-📐 Layout: 1 bubble = 2 สินค้า (mega, stacked + separator)
+📐 Layout: 1 bubble = 1 สินค้า (mega, SPECIAL OFFER + promo terms + price)
 
-📦 Pairs (<N> → <N/2> bubbles):
-   B1: [SKU] name ฿X  +  [SKU] name ฿Y
+📦 Bubbles (<N>):
+   B1: [SKU] name — โปร: "<promo line>" — ฿X / unit
    ...
 
 🎨 Theme: <theme> | Title: "<title>" | CTA: "<cta>"
