@@ -19,8 +19,8 @@ const CNY_API     = 'https://www.cnypharmacy.com/api/getDataProductIsGroup';
 const CNY_IMG     = 'https://manager.cnypharmacy.com';
 const CNY_BASE    = 'https://www.cnypharmacy.com';
 const PLACEHOLDER = `${CNY_IMG}/uploads/product_photo/placeholder.jpg`;
-const PAGE_SIZE   = 100;
-const CONCURRENCY = 6;
+const PAGE_SIZE   = 25;
+const CONCURRENCY = 8;
 const TIMEOUT_MS  = 25000;
 
 function fetchJson(url) {
