@@ -77,3 +77,59 @@ Conditional logic: `payload.showPrivateLogistics === true` → render purple box
 - `.tmp/build-custom-broadcast.cjs` — generate flex JSON with conditional purple box
 - `.tmp/batch-submit.cjs start=YYYY-MM-DD end=YYYY-MM-DD` — bulk-create broadcasts for delivery-day range (skip Sundays, 11:00 BKK, 10 random promo SKUs each)
 - ใช้ Bangkok-correct dates via `toLocaleString('sv-SE', {timeZone:'Asia/Bangkok'})` — `Date.toISOString().slice(0,10)` คืน UTC date ผิด
+
+## LINE broadcast — price-change announcement template
+
+ถ้า user สั่งทำนอง `แจ้งปรับราคาสินค้า [กลุ่ม X] [+/-N%] [มีผล วันที่]` (เช่น "แจ้งปรับราคา ANB ขึ้น 20% มีผล 1 มิ.ย.") ให้ใช้ template นี้:
+
+### Script: `.tmp/build-price-change-flex.cjs`
+
+```
+node .tmp/build-price-change-flex.cjs <payload.json> > flex.json
+```
+
+**Payload:**
+```jsonc
+{
+  "brandName": "ANB",
+  "pricePctIncrease": 20,
+  "effectiveDate": "1 มิถุนายน 2569",
+  "title": "แจ้งปรับราคา ANB +20%",
+  "ctaLabel": "สอบถามเพิ่มเติม",
+  "actionUrl": "https://www.cnypharmacy.com",
+  "closingText": "📢 ปรับราคาสินค้ากลุ่ม ANB +20% มีผล 1 มิถุนายน 2569 — ทักแชทสอบถามได้เลยค่ะ 👇",
+  "products": [{ "sku": "...", "name": "...", "image": "https://...", "oldPrice": 1136, "unit": "ชิ้น", "stock": 12 }]
+}
+```
+
+### Design ที่ user approve แล้ว
+
+**Cover bubble:**
+1. 🔴 Red header — "📢 แจ้งปรับราคา / สินค้ากลุ่ม {BRAND}"
+2. 🟡 Yellow box — "ปรับราคา / **+N%** / ทุกรายการในกลุ่ม {BRAND}"
+3. 🟠 Orange pill — "🗓 มีผลตั้งแต่ / {DATE}"
+4. Body note — "รายการสินค้าและราคาก่อนปรับ ▼"
+5. 🟢 CTA "{ctaLabel}"
+
+**Product bubble (1 ต่อ 1 สินค้า):**
+1. Hero 4:3
+2. รหัส (เทาเล็ก)
+3. ชื่อสินค้า (bold)
+4. **ราคาปัจจุบัน** (ใหญ่ bold) `฿X / unit` — **ไม่ใส่ราคาใหม่**
+5. 🔴 Red note box (border แดง, bg #FEF2F2) — "📢 หมายเหตุ / ปรับขึ้น +N% มีผล {DATE}"
+6. 🟢 CTA
+
+### Filter pattern หาสินค้าตามกลุ่ม
+
+ค้นใน `name + nameEn + specName` (uppercase) แล้วเช็คว่ามี keyword หรือ `[KEYWORD]` (CNY ใส่ supplier tag ใน bracket ที่ท้ายชื่อ เช่น `[ANB]`, `[BJC]`, `[PAC]`):
+
+```js
+const matched = cache.products.filter(p => {
+  const t = (p.name + ' ' + (p.nameEn||'') + ' ' + (p.specName||'')).toUpperCase();
+  return (t.includes('ANB') || t.includes('[ANB]')) && p.stock > 0 && p.basePrice > 0 && p.image;
+});
+```
+
+### Preview ก่อน submit
+
+ใช้ `.tmp/render-preview-anb.cjs` (playwright + chromium ที่ `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`) render HTML mockup ของ cover + sample product bubble เป็น PNG ส่งให้ user ดูก่อน. **อย่า submit จริงจนกว่า user approve.**
