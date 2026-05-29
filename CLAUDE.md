@@ -133,3 +133,11 @@ const matched = cache.products.filter(p => {
 ### Preview ก่อน submit
 
 ใช้ `.tmp/render-preview-anb.cjs` (playwright + chromium ที่ `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`) render HTML mockup ของ cover + sample product bubble เป็น PNG ส่งให้ user ดูก่อน. **อย่า submit จริงจนกว่า user approve.**
+
+## LINE broadcast — post-submit deliverable
+
+**ทุกครั้งหลัง POST submit สำเร็จ ส่งไฟล์ flex JSON ที่ใช้กลับให้ user เลย** ผ่าน `SendUserFile`. ใช้ pretty-printed (`JSON.stringify(..., null, 2)`) เพื่อให้อ่านง่าย. ถ้า user ต้องการ paste ใน LINE Flex Simulator, ให้แยกเป็น 2 ไฟล์เพิ่ม:
+- `simulator-bubble.json` — `flex.contents.contents[0]` (cover bubble เดี่ยว, ใช้ Bubble template)
+- `simulator-carousel.json` — `flex.contents` (full carousel, ใช้ Carousel template)
+
+ไม่ต้องถามว่าจะส่งไหม — ทำเป็น default หลัง submit ทุกครั้ง
