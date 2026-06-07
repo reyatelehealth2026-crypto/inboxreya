@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Jimp } from 'jimp'
+import jsQR from 'jsqr'
 import { auth } from '@/lib/auth'
+
+// QR decoding needs the Node.js runtime (Buffer / jimp), not the edge runtime.
+export const runtime = 'nodejs'
 
 function normalizeAccountDigits(value: string) {
   return (value || '').replace(/\D/g, '')
@@ -87,46 +92,104 @@ async function readJsonResponse(response: Response) {
   }
 }
 
-function getPartyName(party: any) {
-  return party?.account?.name?.th || party?.account?.name?.en || ''
+// Map common Thai bank short names returned by GhostX to the numeric codes the
+// frontend BANK_MAP is keyed on. Falls back to the original value if unknown.
+const BANK_NAME_TO_CODE: Record<string, string> = {
+  SCB: '014',
+  KBANK: '004',
+  KBNK: '004',
+  BBL: '002',
+  KTB: '006',
+  BAY: '025',
+  KRUNGSRI: '025',
+  TTB: '011',
+  TMB: '011',
+  KKP: '069',
+  CIMB: '022',
+  TISCO: '067',
+  UOB: '024',
+  ICBC: '071',
+  LHFG: '073',
+  LHBANK: '073',
+  GSB: '030',
+  BAAC: '034',
+  GHB: '035',
 }
 
-function getPartyAccount(party: any) {
-  return party?.account?.bank?.account || party?.account?.proxy?.account || ''
+function resolveBankCode(bankName: string) {
+  if (!bankName) return ''
+  const key = bankName.trim().toUpperCase()
+  return BANK_NAME_TO_CODE[key] || ''
 }
 
-function normalizeThunderTransaction(data: any) {
-  const rawSlip = data?.rawSlip || {}
+/**
+ * Decode the PromptPay/slip QR string from a slip image URL.
+ * Downloads the image server-side (avoids browser CORS/canvas-taint issues with
+ * chat-hosted images) and runs jsQR over the raw pixels.
+ */
+async function decodeQrFromImageUrl(imageUrl: string): Promise<string | null> {
+  const res = await fetch(imageUrl, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (compatible; inboxreya/1.0; +https://inbox.re-ya.com)',
+    },
+  })
+  if (!res.ok) {
+    throw new Error(`ไม่สามารถดาวน์โหลดรูปสลิปได้ (${res.status})`)
+  }
 
-  return {
-    amount: rawSlip.amount?.amount ?? rawSlip.amount?.local?.amount ?? data?.amountInSlip,
-    refId: rawSlip.transRef || '',
-    date: rawSlip.date || '',
-    sender: {
-      name: getPartyName(rawSlip.sender),
-      bank: rawSlip.sender?.bank?.id || rawSlip.sender?.bank?.short || rawSlip.sender?.bank?.name || '',
-      bankName: rawSlip.sender?.bank?.name || rawSlip.sender?.bank?.short || rawSlip.sender?.bank?.id || '',
-      account: getPartyAccount(rawSlip.sender),
-    },
-    receiver: {
-      name: getPartyName(rawSlip.receiver),
-      bank: rawSlip.receiver?.bank?.id || rawSlip.receiver?.bank?.short || rawSlip.receiver?.bank?.name || '',
-      bankName: rawSlip.receiver?.bank?.name || rawSlip.receiver?.bank?.short || rawSlip.receiver?.bank?.id || '',
-      account: getPartyAccount(rawSlip.receiver),
-    },
-    currency: rawSlip.amount?.local?.currency || 'THB',
-    transFeeAmount: rawSlip.fee || 0,
+  const buffer = Buffer.from(await res.arrayBuffer())
+  const image = await Jimp.read(buffer)
+
+  const tryDecode = (img: typeof image): string | null => {
+    const { data, width, height } = img.bitmap
+    const pixels = new Uint8ClampedArray(data.buffer, data.byteOffset, data.length)
+    const code = jsQR(pixels, width, height)
+    return code?.data || null
+  }
+
+  // First pass: original image.
+  let qr = tryDecode(image)
+
+  // Second pass: upscale small images + boost contrast to help noisy slips.
+  if (!qr) {
+    const enhanced = image.clone()
+    if (enhanced.bitmap.width < 1000) {
+      const scale = 1000 / enhanced.bitmap.width
+      enhanced.resize({ w: 1000, h: Math.round(enhanced.bitmap.height * scale) })
+    }
+    enhanced.greyscale().contrast(0.3)
+    qr = tryDecode(enhanced)
+  }
+
+  return qr
+}
+
+interface GhostXTransfer {
+  transactionRef?: string
+  transactionDateTime?: string
+  fromBankName?: string
+  fromAccountNo?: string
+  fromAccountName?: string | null
+  toBankName?: string
+  toAccountNo?: string
+  toAccountName?: string | null
+  amount?: {
+    amount?: number
+    currency?: { code?: string; symbol?: string }
   }
 }
 
 /**
  * POST /api/inbox/verify-slip
  *
- * Verify a payment slip image via Thunder API.
- * Proxies the request server-side so the API key stays hidden.
+ * Verify a payment slip via the GhostX Verify-Slip API.
+ * The slip's QR code is decoded server-side and the raw QR data is sent to
+ * GhostX (https://externalauth.ghostxapi.xyz/qr/scan), which returns the
+ * underlying bank transfer record.
  *
- * Body (JSON):
- *   imageUrl  – public URL of the slip image (required)
+ * Body (JSON), one of:
+ *   imageUrl  – public URL of the slip image (QR decoded server-side)
+ *   qrData    – raw QR string already decoded by the caller
  */
 export async function POST(request: NextRequest) {
   try {
@@ -137,145 +200,153 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { imageUrl } = body
+    let { qrData } = body as { qrData?: string }
 
-    if (!imageUrl) {
+    if (!qrData && !imageUrl) {
       return NextResponse.json(
-        { error: 'imageUrl is required' },
+        { error: 'imageUrl or qrData is required' },
         { status: 400 }
       )
     }
 
-    const apiKey = process.env.THUNDER_API_KEY
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'Thunder API key not configured (THUNDER_API_KEY)' },
-        { status: 500 }
-      )
+    // Resolve the QR string. Prefer caller-supplied qrData, otherwise decode
+    // it from the slip image.
+    if (!qrData && imageUrl) {
+      try {
+        qrData = (await decodeQrFromImageUrl(imageUrl)) || undefined
+      } catch (err) {
+        return NextResponse.json(
+          {
+            success: false,
+            verified: false,
+            error: err instanceof Error ? err.message : 'อ่านรูปสลิปไม่สำเร็จ',
+          },
+          { status: 200 }
+        )
+      }
+
+      if (!qrData) {
+        return NextResponse.json(
+          {
+            success: false,
+            verified: false,
+            error: 'ไม่พบ QR Code ในรูปสลิป กรุณาใช้รูปที่ชัดเจนและเห็น QR ครบ',
+          },
+          { status: 200 }
+        )
+      }
     }
 
-    const apiBaseUrl = (process.env.THUNDER_API_BASE_URL || 'https://api.thunder.in.th/v2').replace(/\/$/, '')
-    const thunderRes = await fetch(`${apiBaseUrl}/verify/bank`, {
+    const apiBaseUrl = (process.env.GHOSTX_API_BASE_URL || 'https://externalauth.ghostxapi.xyz').replace(/\/$/, '')
+    const ghostRes = await fetch(`${apiBaseUrl}/qr/scan`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         Accept: 'application/json',
         'User-Agent': 'Mozilla/5.0 (compatible; inboxreya/1.0; +https://inbox.re-ya.com)',
       },
-      body: JSON.stringify({
-        url: imageUrl,
-        checkDuplicate: true,
-        remark: 'inboxreya-slip-verify',
-      }),
+      body: JSON.stringify({ qrData }),
     })
 
-    const thunderData = await readJsonResponse(thunderRes)
+    const ghostData = await readJsonResponse(ghostRes)
+    const transfer: GhostXTransfer = ghostData?.slipVerification?.transfer || {}
 
-    if (!thunderRes.ok) {
-      // Thunder returned an error. Keep 200 so the frontend can handle gracefully.
+    // A valid slip verification has a transfer block with a reference number.
+    const isVerified = ghostRes.ok && ghostData?.type === 'SLIP' && !!transfer?.transactionRef
+
+    if (!isVerified) {
+      // GhostX errors look like: { code, title, message, description }
+      const errorMessage =
+        ghostData?.message ||
+        ghostData?.title ||
+        ghostData?.error ||
+        `ตรวจสอบสลิปไม่สำเร็จ (${ghostRes.status})`
+
       return NextResponse.json(
         {
           success: false,
           verified: false,
-          error: thunderData?.error?.message || thunderData?.message || `Thunder API error (${thunderRes.status})`,
-          status: thunderData?.error?.code,
-          statusCode: thunderRes.status,
+          error: errorMessage,
+          status: ghostData?.code,
+          statusCode: ghostRes.status,
+          isAuthentic: false,
+          data: ghostData,
         },
         { status: 200 }
       )
     }
 
-    // Parse Thunder response format to match frontend expectations.
-    // Thunder: { success, data: { rawSlip: { transRef, date, amount, sender, receiver } } }
-    // Frontend expects: { success, verified, data: { amount, transRef, sender, receiver, ... } }
-    
-    const { data } = thunderData || {}
-    const tx = normalizeThunderTransaction(data)
-    
-    if (thunderData?.success === true && data?.rawSlip) {
-      // Build response compatible with the existing frontend contract.
-      const transDate = tx.date || ''
-      const transTime = transDate ? transDate.split('T')[1]?.replace(/\.\d+Z$/, '') || '' : ''
-      
-      // Validate receiver account
-      const EXPECTED_RECEIVER_ACCOUNT = process.env.EXPECTED_RECEIVER_ACCOUNT || '068-3-84622-8'
-      const EXPECTED_RECEIVER_NAME = process.env.EXPECTED_RECEIVER_NAME || 'บริษัท ซี เอ็น วาย เฮลท์แคร์ จำกัด'
-      
-      const warnings: Array<{ type: string; message: string }> = []
-      
-      const receiverAccount = tx.receiver?.account || ''
-      const receiverName = tx.receiver?.name || ''
-      const receiverAccountMatches = isReceiverAccountMatch(receiverAccount, EXPECTED_RECEIVER_ACCOUNT)
-      const receiverNameMatches = isReceiverNameMatch(receiverName, EXPECTED_RECEIVER_NAME)
-      
-      if (receiverAccount && !receiverAccountMatches) {
-        warnings.push({
-          type: 'receiver_account_mismatch',
-          message: `⚠️ บัญชีผู้รับอาจไม่ตรงกับบริษัท\nพบ: ${receiverAccount}\nคาดหวัง: ${EXPECTED_RECEIVER_ACCOUNT}`,
-        })
-      }
-      
-      if (receiverName && !receiverNameMatches) {
-        warnings.push({
-          type: 'receiver_name_mismatch',
-          message: `⚠️ ชื่อผู้รับอาจไม่ตรงกับบริษัท\nพบ: ${receiverName}\nคาดหวัง: ${EXPECTED_RECEIVER_NAME}`,
-        })
-      }
-      
-      return NextResponse.json({
-        success: true,
-        verified: true,
-        warnings, // คำเตือนถ้ามี
-        data: {
-          // Core fields (used by frontend)
-          amount: tx.amount,
-          transRef: tx.refId,
-          transDate: transDate.split('T')[0]?.replace(/-/g, '') || transDate.split('T')[0] || '', // YYYYMMDD or YYYY-MM-DD
-          transTime: transTime,
-          transDateTime: transDate,
-          date: transDate,
-          
-          // Sender info
-          sender: {
-            name: tx.sender?.name || '',
-            displayName: tx.sender?.name || '',
-            account: {
-              value: tx.sender?.account || '',
-            },
-          },
-          sendingBank: tx.sender?.bank || '',
-          sendingBankName: tx.sender?.bankName || tx.sender?.bank || '',
-          
-          // Receiver info
-          receiver: {
-            name: tx.receiver?.name || '',
-            displayName: tx.receiver?.name || '',
-            account: {
-              value: tx.receiver?.account || '',
-            },
-          },
-          receivingBank: tx.receiver?.bank || '',
-          receivingBankName: tx.receiver?.bankName || tx.receiver?.bank || '',
-          
-          // Additional fields
-          transFeeAmount: tx.transFeeAmount || 0,
-          currency: tx.currency || 'THB',
-          
-          // Keep raw data for debugging
-          _raw: data,
-        },
+    const transDate = transfer.transactionDateTime || ''
+    const transTime = transDate ? transDate.split('T')[1]?.replace(/[+\-]\d{2}:\d{2}$/, '').replace(/\.\d+Z?$/, '') || '' : ''
+    const amount = transfer.amount?.amount ?? 0
+    const currency = transfer.amount?.currency?.code || 'THB'
+
+    // Validate receiver against the company account.
+    const EXPECTED_RECEIVER_ACCOUNT = process.env.EXPECTED_RECEIVER_ACCOUNT || '068-3-84622-8'
+    const EXPECTED_RECEIVER_NAME = process.env.EXPECTED_RECEIVER_NAME || 'บริษัท ซี เอ็น วาย เฮลท์แคร์ จำกัด'
+
+    const warnings: Array<{ type: string; message: string }> = []
+
+    const receiverAccount = transfer.toAccountNo || ''
+    const receiverName = transfer.toAccountName || ''
+
+    if (receiverAccount && !isReceiverAccountMatch(receiverAccount, EXPECTED_RECEIVER_ACCOUNT)) {
+      warnings.push({
+        type: 'receiver_account_mismatch',
+        message: `⚠️ บัญชีผู้รับอาจไม่ตรงกับบริษัท\nพบ: ${receiverAccount}\nคาดหวัง: ${EXPECTED_RECEIVER_ACCOUNT}`,
       })
-    } else {
-      // Verification failed (not_found, fraud, amount_mismatch, etc.)
-      return NextResponse.json({
-        success: false,
-        verified: false,
-        error: thunderData?.error?.message || thunderData?.message || 'Verification failed',
-        status: thunderData?.error?.code,
-        isAuthentic: false,
-        data: data,
-      }, { status: 200 })
     }
+
+    if (receiverName && !isReceiverNameMatch(receiverName, EXPECTED_RECEIVER_NAME)) {
+      warnings.push({
+        type: 'receiver_name_mismatch',
+        message: `⚠️ ชื่อผู้รับอาจไม่ตรงกับบริษัท\nพบ: ${receiverName}\nคาดหวัง: ${EXPECTED_RECEIVER_NAME}`,
+      })
+    }
+
+    return NextResponse.json({
+      success: true,
+      verified: true,
+      warnings,
+      data: {
+        // Core fields (used by frontend)
+        amount,
+        transRef: transfer.transactionRef || '',
+        transDate: transDate.split('T')[0]?.replace(/-/g, '') || transDate.split('T')[0] || '',
+        transTime,
+        transDateTime: transDate,
+        date: transDate,
+
+        // Sender info
+        sender: {
+          name: transfer.fromAccountName || '',
+          displayName: transfer.fromAccountName || '',
+          account: {
+            value: transfer.fromAccountNo || '',
+          },
+        },
+        sendingBank: resolveBankCode(transfer.fromBankName || '') || transfer.fromBankName || '',
+        sendingBankName: transfer.fromBankName || '',
+
+        // Receiver info
+        receiver: {
+          name: transfer.toAccountName || '',
+          displayName: transfer.toAccountName || '',
+          account: {
+            value: transfer.toAccountNo || '',
+          },
+        },
+        receivingBank: resolveBankCode(transfer.toBankName || '') || transfer.toBankName || '',
+        receivingBankName: transfer.toBankName || '',
+
+        // Additional fields
+        transFeeAmount: 0,
+        currency,
+
+        // Keep raw data for debugging
+        _raw: ghostData,
+      },
+    })
   } catch (error) {
     console.error('[verify-slip] Error:', error)
     return NextResponse.json(
