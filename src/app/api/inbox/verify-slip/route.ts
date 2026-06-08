@@ -167,15 +167,17 @@ async function decodeQrFromImageUrl(imageUrl: string): Promise<string | null> {
 interface GhostXTransfer {
   transactionRef?: string
   transactionDateTime?: string
+  fromBankCode?: string
   fromBankName?: string
   fromAccountNo?: string
   fromAccountName?: string | null
+  toBankCode?: string
   toBankName?: string
   toAccountNo?: string
   toAccountName?: string | null
   amount?: {
     amount?: number
-    currency?: { code?: string; symbol?: string }
+    currency?: { code?: string; displayName?: string; symbol?: string }
   }
 }
 
@@ -252,7 +254,10 @@ export async function POST(request: NextRequest) {
     const transfer: GhostXTransfer = ghostData?.slipVerification?.transfer || {}
 
     // A valid slip verification has a transfer block with a reference number.
-    const isVerified = ghostRes.ok && ghostData?.type === 'SLIP' && !!transfer?.transactionRef
+    // (GhostX returns type "SLIP_VERIFICATION" on success and only includes the
+    // slipVerification.transfer block when the slip is genuine, so the presence
+    // of transactionRef is the reliable success signal.)
+    const isVerified = ghostRes.ok && !!transfer?.transactionRef
 
     if (!isVerified) {
       // GhostX errors look like: { code, title, message, description }
@@ -325,7 +330,7 @@ export async function POST(request: NextRequest) {
             value: transfer.fromAccountNo || '',
           },
         },
-        sendingBank: resolveBankCode(transfer.fromBankName || '') || transfer.fromBankName || '',
+        sendingBank: transfer.fromBankCode || resolveBankCode(transfer.fromBankName || '') || transfer.fromBankName || '',
         sendingBankName: transfer.fromBankName || '',
 
         // Receiver info
@@ -336,7 +341,7 @@ export async function POST(request: NextRequest) {
             value: transfer.toAccountNo || '',
           },
         },
-        receivingBank: resolveBankCode(transfer.toBankName || '') || transfer.toBankName || '',
+        receivingBank: transfer.toBankCode || resolveBankCode(transfer.toBankName || '') || transfer.toBankName || '',
         receivingBankName: transfer.toBankName || '',
 
         // Additional fields
