@@ -56,7 +56,9 @@ node -e "const d=require('$CACHE'); const age=(Date.now()-new Date(d.fetchedAt))
 - `promoFilter`: `all | discount | giveaway | buy_pack` (filter on `promos[]`)
   - keyword map: "ลด %"/"ลดเงิน" → discount, "แถม"/"ฟรี" → giveaway, "ยกแพ็ค" → buy_pack. default `all`
 - `keywords`: free-text (เช่น "วิตามินซี")
-- `productCount`: N (default 6, cap 12)
+- `productCount`: N (default 6, cap 12 สำหรับ 1up, cap 24 สำหรับ 2up — ถ้า user ระบุเกินให้เตือน)
+- `layout`: `1up | 2up` (1 product/bubble หรือ 2 products/bubble) — default `1up` ถ้า intent ไม่ระบุ
+  - keyword map: "1ต่อ"/"1 ต่อใบ"/"single"/"1up" → 1up; "2ต่อ"/"2 ต่อใบ"/"คู่"/"2up"/"คู่ละ" → 2up
 - `target`: `{mode:'all'}` | `{mode:'tags', tagNames:[...]}` | `{mode:'segment', id}`
 - `scheduledAt`: ISO 8601 Asia/Bangkok (+07:00)
 
@@ -123,7 +125,7 @@ const cnyShape = pick.map(p => ({
 }));
 fs.writeFileSync('.tmp/flex-payload.json', JSON.stringify({
   cny: { product: cnyShape },
-  theme: THEME, limit: N,
+  theme: THEME, layout: '<Q3>', limit: N,
   title:'<Q1>', intro:'<theme-intro>',
   ctaLabel:'<Q2>', badgeText:'SPECIAL OFFER',
   actionUrl:'https://www.cnypharmacy.com',
@@ -134,28 +136,36 @@ console.log('picked', pick.length, 'products');
 "
 ```
 
-### Phase 4 — ถาม user 2 คำถาม (Title + CTA)
+### Phase 4 — ถาม user 3 คำถาม (Title + CTA + Layout) — **MANDATORY**
 
-ส่ง 2 questions ใน 1 `AskUserQuestion`:
+ส่ง 3 questions ใน 1 `AskUserQuestion` (ห้ามข้าม phase นี้ แม้ intent จะดูชัดเจน):
 - **Q1 "Title"** ตาม theme:
   - promotion → "โปรโมชันพิเศษ" / "โปรโมชั่นประจำวัน" / "ดีลพิเศษวันนี้"
   - flash_sale → "Flash Sale" / "ลดล้างสต็อก" / "นาทีทอง"
   - bestseller → "สินค้าขายดี" / "ขายดีประจำสัปดาห์"
   - new_arrival → "สินค้าใหม่" / "มาใหม่!"
 - **Q2 "CTA"**: "ซื้อเลย" / "สั่งทันที" / "ดูรายละเอียด" / "ทักแชทเลย"
+- **Q3 "Layout"**:
+  - `1up` — 1 สินค้า/bubble (mega card, เห็นรายละเอียดเต็ม) — เหมาะกับ 6–12 สินค้า
+  - `2up` — 2 สินค้า/bubble (compact, เห็นได้เยอะกว่า) — เหมาะกับ 12–24 สินค้า
+  - ถ้า intent ระบุ layout มาแล้ว default ตัวนั้น แต่ยัง confirm กับ user
 
-อัพเดท `.tmp/flex-payload.json` ด้วย Q1/Q2 answers ก่อนไป Phase 5.
+อัพเดท `.tmp/flex-payload.json` ด้วย Q1/Q2/Q3 answers ก่อนไป Phase 5.
 
-### Phase 5 — Build Flex (2-up bubbles)
+### Phase 5 — Build Flex
 
 ```bash
 node "$CLAUDE_PLUGIN_ROOT/scripts/build-flex-2up.cjs" .tmp/flex-payload.json > .tmp/flex.json
 ```
 
-- 1 cover bubble + N product bubbles (1 สินค้า/bubble — รวม SPECIAL OFFER box, promo terms, price, CTA)
-- 12 products → 13 bubbles → 2 carousels (12 + 1) — แต่ละ carousel เต็มที่ 12 bubble
-- + closing text = 3 LINE messages (within quota 5)
-- การ์ดแต่ละใบมี: hero 4:3 → SPECIAL OFFER box (red border + start/end date) → SKU → name → sub-text → promo terms box (red border) → price → CTA
+**Quota math (LINE จำกัด 5 messages/broadcast):**
+- `1up`: 12 bubbles/carousel × 4 carousels = **48 bubble max** → 1 cover + 47 product bubbles ≈ 4 flex msg + 1 text = **5 msg**
+  - cap ปลอดภัย: ≤47 สินค้า (cover + products = 48 bubbles = 4 carousels)
+- `2up`: 12 bubbles/carousel × 4 carousels = 48 bubbles × 2 สินค้า/bubble = **94 สินค้า max** (cover + 47 product-pair bubbles)
+  - cap ปลอดภัย: ≤94 สินค้า
+- ถ้า build script error `too many messages` → ลด `productCount` หรือเปลี่ยน layout
+
+การ์ดแต่ละใบมี: hero 4:3 → SPECIAL OFFER box (red border + start/end date) → SKU → name → sub-text → promo terms box (red border) → price → CTA
 
 ### Phase 6 — Render preview
 
@@ -166,7 +176,7 @@ node "$CLAUDE_PLUGIN_ROOT/scripts/build-flex-2up.cjs" .tmp/flex-payload.json > .
 ⏰ Send at:   <display> Asia/Bangkok (อีก ~<delta>)
 🧾 Flex msgs: <n> (<carousels> carousel × <bubbles> bubbles + 1 closing text)
 
-📐 Layout: 1 bubble = 1 สินค้า (mega, SPECIAL OFFER + promo terms + price)
+📐 Layout: <layout> — <1 bubble = 1 สินค้า | 1 bubble = 2 สินค้า (compact)>
 
 📦 Bubbles (<N>):
    B1: [SKU] name — โปร: "<promo line>" — ฿X / unit
@@ -181,6 +191,7 @@ node "$CLAUDE_PLUGIN_ROOT/scripts/build-flex-2up.cjs" .tmp/flex-payload.json > .
 ### Phase 7 — รอ approve
 - `approve`/`ตกลง`/`ส่งเลย` → ไป Phase 8
 - `แก้ title <ใหม่>` / `แก้ ปุ่ม <ใหม่>` → กลับ Phase 4
+- `แก้ layout 1up|2up` → กลับ Phase 5 ด้วย layout ใหม่
 - `แก้ สินค้า <kw>` → กลับ Phase 3 ด้วย keyword ใหม่
 - `cancel`/`ยกเลิก` → จบ
 
@@ -231,6 +242,8 @@ node -e "const r=require('./.tmp/submit-result.json'); if(!r.success){console.er
 8. **ห้าม POST ก่อน approve ชัดเจน** — "ดี"/"น่าสนใจ" ไม่นับ
 9. **ห้าม curl LINE API ตรง** — submit ผ่าน inbox.re-ya.com แล้ว cron pipeline ส่งเอง
 10. Cache > 24h → เตือน + แนะนำ `/update-products` (ไม่ refresh อัตโนมัติ)
+11. **ห้าม skip Phase 4** — Title / CTA / Layout ต้องมาจาก `AskUserQuestion` ทุกครั้ง แม้ intent จะดูชัดเจน (user เลือก layout ผิด = card ดูแย่)
+12. **Layout quota** — `1up` cap ≤47 สินค้า, `2up` cap ≤94 สินค้า. ถ้า build script error `too many messages` → ลดจำนวน หรือเปลี่ยน layout
 
 ## Arguments
 `$ARGUMENTS` = natural-language intent (ไทย/อังกฤษผสมได้). ถ้าว่าง:

@@ -1,15 +1,20 @@
-// build-flex-2up.cjs — 1 cover bubble + N product bubbles (1 product per bubble),
-// rendered to match the CNY storefront card style:
-//   hero image → SPECIAL OFFER box (red border + date range)
-//   → SKU label → product name → sub-text → promo terms box (red border)
-//   → price → CTA button. Reads promos[] attached by reshapeForFlex.
+// build-flex-2up.cjs — cover bubble + product bubbles, with selectable layout:
+//   layout='1up' (default): 1 product per bubble, full-size cards (hero 4:3,
+//     SPECIAL OFFER box, in-stock pill, SKU label, name, subline, promo terms,
+//     price, CTA — matches the CNY storefront card style).
+//   layout='2up': 2 products per bubble, vertically stacked compact cards
+//     (smaller hero 16:9 + SKU + name + promo line + price/CTA row), separated
+//     by a divider. Last unpaired product shows as a single mini-card.
+//
+// Carousels are auto-split at 12 bubbles each, capped at 5 LINE messages total
+// (LINE broadcast quota per push). Reads promos[] attached by reshapeForFlex.
 //
 // Usage:
 //   echo '<payload>' | node build-flex-2up.cjs > flex.json
 //   node build-flex-2up.cjs path/to/payload.json > flex.json
 //
-// Payload: { cny:{product:[...]}, theme, title, intro, ctaLabel, badgeText,
-//            actionUrl, footerText, closingText }
+// Payload: { cny:{product:[...]}, theme, layout, title, intro, ctaLabel,
+//            badgeText, actionUrl, footerText, closingText }
 //
 // Each product in cny.product may carry a `promos[]` field (from refresh-cache
 // snapshot). When present, the promo terms box + date range are rendered from
@@ -40,6 +45,7 @@ const THEME = {
 const theme       = payload.theme || 'promotion';
 const themeColor  = (THEME[theme] || THEME.promotion).color;
 const themeIcon   = (THEME[theme] || THEME.promotion).icon;
+const layout      = payload.layout === '2up' ? '2up' : '1up';
 const title       = payload.title || 'โปรโมชันพิเศษ';
 const intro       = payload.intro || '';
 const ctaLabel    = payload.ctaLabel || 'ซื้อเลย';
@@ -244,7 +250,84 @@ function buildProductBubble(p) {
   };
 }
 
-const productBubbles = products.map(buildProductBubble);
+function buildMiniCard(p) {
+  const contents = [];
+  contents.push({
+    type: 'image', url: p.image, size: 'full',
+    aspectRatio: '16:9', aspectMode: 'cover',
+    action: { type: 'uri', uri: p.url },
+  });
+
+  const first = (p.promos || [])[0];
+  if (first && (first.startPro || first.endPro)) {
+    const datePart = [
+      first.startPro ? `เริ่ม ${formatDate(first.startPro)}` : '',
+      first.endPro ? `ถึง ${formatDate(first.endPro)}` : '',
+    ].filter(Boolean).join(' · ');
+    contents.push({
+      type: 'text', text: `${badgeText} · ${datePart}`,
+      size: 'xxs', color: '#FFFFFF', align: 'center', weight: 'bold', wrap: false,
+      margin: 'sm', backgroundColor: themeColor,
+    });
+  }
+
+  contents.push({
+    type: 'text', text: `รหัสสินค้า ${p.sku}`,
+    size: 'xxs', color: '#64748B', margin: 'sm',
+  });
+  contents.push({
+    type: 'text', text: p.name,
+    size: 'sm', weight: 'bold', color: '#0F172A',
+    wrap: true, maxLines: 2,
+  });
+
+  if (first) {
+    contents.push({
+      type: 'text', text: formatPromoLine(first),
+      size: 'xxs', color: themeColor, weight: 'bold', wrap: true, maxLines: 1, margin: 'xs',
+    });
+  }
+
+  contents.push({
+    type: 'box', layout: 'horizontal', margin: 'sm', alignItems: 'center', spacing: 'sm',
+    contents: [
+      { type: 'text', text: `฿${p.basePrice.toFixed(0)}/${p.unit || '-'}`,
+        size: 'sm', weight: 'bold', color: '#0F172A', flex: 5, wrap: false },
+      { type: 'button', style: 'primary', color: themeColor, height: 'sm', flex: 4,
+        action: { type: 'uri', label: ctaLabel, uri: p.url } },
+    ],
+  });
+
+  return {
+    type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px',
+    contents,
+  };
+}
+
+function buildProductPairBubble(p1, p2) {
+  const body = [buildMiniCard(p1)];
+  if (p2) {
+    body.push({ type: 'separator', margin: 'md', color: '#E2E8F0' });
+    body.push(buildMiniCard(p2));
+  }
+  return {
+    type: 'bubble', size: 'mega',
+    body: {
+      type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '8px',
+      contents: body,
+    },
+  };
+}
+
+let productBubbles;
+if (layout === '2up') {
+  productBubbles = [];
+  for (let i = 0; i < products.length; i += 2) {
+    productBubbles.push(buildProductPairBubble(products[i], products[i + 1]));
+  }
+} else {
+  productBubbles = products.map(buildProductBubble);
+}
 const bubbles = [buildCover(), ...productBubbles];
 
 const MAX_BUBBLES = 12;
@@ -257,8 +340,13 @@ const messages = carousels.map(b => ({
 
 if (closingText.trim()) messages.push({ type: 'text', text: closingText.trim() });
 
-if (messages.length > 5) {
-  console.error('build-flex-2up: too many messages:', messages.length);
+const MAX_MESSAGES = 5;
+if (messages.length > MAX_MESSAGES) {
+  const productsPerBubble = layout === '2up' ? 2 : 1;
+  const closingSlots = closingText.trim() ? 1 : 0;
+  const maxCarousels = MAX_MESSAGES - closingSlots;
+  const maxProducts = (maxCarousels * MAX_BUBBLES - 1) * productsPerBubble; // -1 bubble reserved for cover
+  console.error(`build-flex-2up: too many messages: ${messages.length} (layout=${layout}, products=${products.length}). LINE quota=${MAX_MESSAGES}; for layout=${layout} reduce products to ≤${maxProducts}.`);
   process.exit(1);
 }
 
