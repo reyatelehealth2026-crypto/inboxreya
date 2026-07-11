@@ -1,0 +1,2 @@
+# Husky hooks must stay LF or git spawn fails on Windows (repo has core.autocrlf=true)
+.husky/** text eol=lf
