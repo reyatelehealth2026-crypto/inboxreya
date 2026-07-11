@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process'
 import { logger } from './logger'
 
 type GeminiPart =
@@ -12,7 +13,132 @@ interface GeminiRequestOptions {
   model?: string
 }
 
+type AiProvider = 'gemini' | 'claude-code'
+
 const DEFAULT_GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest'
+
+function resolveAiProvider(): AiProvider {
+  const configured = (process.env.AI_PROVIDER || 'gemini').toLowerCase().trim()
+  if (configured === 'claude-code' || configured === 'claude_code' || configured === 'claude') {
+    return 'claude-code'
+  }
+  return 'gemini'
+}
+
+function partsToText(parts: GeminiPart[]) {
+  const unsupported = parts.filter((part) => 'inline_data' in part).length
+  const text = parts
+    .map((part) => ('text' in part ? part.text : ''))
+    .filter(Boolean)
+    .join('\n\n')
+    .trim()
+
+  return { text, unsupported }
+}
+
+function parseClaudeCodeOutput(stdout: string): string {
+  const raw = stdout.trim()
+  if (!raw) throw new Error('Claude Code response was empty')
+
+  let parsed: any
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return raw
+  }
+
+  if (parsed?.is_error) {
+    throw new Error(typeof parsed.result === 'string' ? parsed.result : 'Claude Code returned an error')
+  }
+  if (typeof parsed === 'string') return parsed.trim()
+  if (typeof parsed?.result === 'string') return parsed.result.trim()
+  if (typeof parsed?.content === 'string') return parsed.content.trim()
+  if (Array.isArray(parsed?.content)) {
+    const text = parsed.content
+      .map((part: { text?: string }) => part?.text || '')
+      .join('')
+      .trim()
+    if (text) return text
+  }
+  const messageContent = parsed?.message?.content
+  if (typeof messageContent === 'string') return messageContent.trim()
+  if (Array.isArray(messageContent)) {
+    const text = messageContent
+      .map((part: { text?: string }) => part?.text || '')
+      .join('')
+      .trim()
+    if (text) return text
+  }
+
+  throw new Error('Claude Code response did not contain text')
+}
+
+async function callClaudeCode({
+  parts,
+  systemPrompt,
+  maxTokens,
+}: {
+  parts: GeminiPart[]
+  systemPrompt?: string
+  maxTokens: number
+}): Promise<string> {
+  const { text, unsupported } = partsToText(parts)
+  if (unsupported > 0) {
+    throw new Error('Claude Code provider does not support inline image input in this integration')
+  }
+  if (!text) {
+    throw new Error('Claude Code request has no text input')
+  }
+
+  const bin = process.env.CLAUDE_CODE_BIN || 'claude'
+  const timeoutMs = Number(process.env.AI_CLAUDE_CODE_TIMEOUT_MS || 90_000)
+  const prompt = [
+    systemPrompt ? `<system>\n${systemPrompt}\n</system>` : '',
+    text,
+    '',
+    `Output budget: keep the response within about ${maxTokens} tokens.`,
+  ].filter(Boolean).join('\n\n')
+
+  try {
+    const { stdout, stderr } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+      const child = execFile(
+        bin,
+        ['-p', prompt, '--output-format', 'json'],
+        {
+          timeout: Number.isFinite(timeoutMs) ? timeoutMs : 90_000,
+          maxBuffer: 1024 * 1024 * 4,
+          windowsHide: true,
+          env: {
+            ...process.env,
+            CLAUDE_CODE_SKIP_PROMPT_HISTORY: process.env.CLAUDE_CODE_SKIP_PROMPT_HISTORY || '1',
+          },
+        },
+        (error, stdout, stderr) => {
+          if (error) {
+            reject(error)
+            return
+          }
+          resolve({ stdout: String(stdout || ''), stderr: String(stderr || '') })
+        }
+      )
+      child.stdin?.end()
+    })
+
+    if (stderr?.trim()) {
+      logger.warn('Claude Code stderr', {
+        scope: 'ai:claude-code',
+        stderr: stderr.slice(0, 500),
+      })
+    }
+
+    const output = parseClaudeCodeOutput(stdout)
+    if (!output) throw new Error('Claude Code response was empty')
+    return output
+  } catch (error) {
+    logger.error(error, { scope: 'ai:claude-code' })
+    throw error
+  }
+}
 
 /**
  * Gemini v1beta generateContent call.
@@ -93,6 +219,18 @@ export async function generateAiText({
   maxTokens = 512,
   model,
 }: GeminiRequestOptions) {
+  const provider = resolveAiProvider()
+  if (provider === 'claude-code') {
+    logger.info('AI request', {
+      scope: 'ai:claude-code',
+      provider,
+      partsCount: parts.length,
+      hasSystemPrompt: !!systemPrompt,
+      maxTokens,
+    })
+    return callClaudeCode({ parts, systemPrompt, maxTokens })
+  }
+
   const resolvedModel = model || DEFAULT_GEMINI_MODEL
 
   logger.info('AI request', {
@@ -165,6 +303,24 @@ export async function streamAiText({
 }: GeminiRequestOptions & {
   onFinish?: (full: string, usage: GeminiStreamUsage) => void | Promise<void>
 }): Promise<ReadableStream<Uint8Array>> {
+  if (resolveAiProvider() === 'claude-code') {
+    const encoder = new TextEncoder()
+    return new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          const text = await callClaudeCode({ parts, systemPrompt, maxTokens })
+          controller.enqueue(encoder.encode(text))
+          if (onFinish) {
+            await onFinish(text, { promptTokens: 0, outputTokens: 0, totalTokens: 0 })
+          }
+          controller.close()
+        } catch (error) {
+          controller.error(error)
+        }
+      },
+    })
+  }
+
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     throw new Error('AI service not configured: Missing GEMINI_API_KEY')

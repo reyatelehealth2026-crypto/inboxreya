@@ -298,6 +298,12 @@ export function useSendBroadcast() {
           } else if (event.type === 'complete') {
             result = event
             setProgress({ sent: event.totalRecipients, total: event.totalRecipients, success: event.successCount, failed: event.failedCount })
+            if (event.status === 'failed') {
+              const details = Array.isArray(event.errors) && event.errors.length > 0
+                ? `: ${event.errors.join('; ')}`
+                : ''
+              throw new Error(`Broadcast failed${details}`)
+            }
           } else if (event.type === 'error') {
             throw new Error(event.error || 'Failed to send broadcast')
           }
@@ -305,6 +311,7 @@ export function useSendBroadcast() {
       }
 
       queryClient.invalidateQueries({ queryKey: ['broadcasts'] })
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] })
       return result
     } finally {
       setIsPending(false)

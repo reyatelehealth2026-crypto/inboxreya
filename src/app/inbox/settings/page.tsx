@@ -15,7 +15,7 @@ const VALID_TABS = ['general', 'notifications', 'shortcuts', 'expansion', 'acces
 
 export default function SettingsPage() {
   const searchParams = useSearchParams()
-  const tabParam = searchParams.get('tab')
+  const tabParam = searchParams?.get('tab')
   const defaultTab = tabParam && VALID_TABS.includes(tabParam) ? tabParam : 'general'
 
   return (

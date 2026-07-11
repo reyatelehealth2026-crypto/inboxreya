@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { Jimp } from 'jimp'
+import jsQR from 'jsqr'
 
 function normalizeAccountDigits(value: string) {
   return (value || '').replace(/\D/g, '')
@@ -87,43 +89,60 @@ async function readJsonResponse(response: Response) {
   }
 }
 
-function getPartyName(party: any) {
-  return party?.account?.name?.th || party?.account?.name?.en || ''
+/**
+ * Decode the bank-transfer / PromptPay QR embedded in a slip image.
+ * GhostX verifies from the QR payload (not the image), so we read it here
+ * server-side (mirrors what the GhostX web UI does client-side with jsQR).
+ */
+async function decodeQrFromImageUrl(imageUrl: string): Promise<string | null> {
+  const res = await fetch(imageUrl)
+  if (!res.ok) return null
+
+  const buf = Buffer.from(await res.arrayBuffer())
+  const image = await Jimp.read(buf)
+  const { data, width, height } = image.bitmap
+  const pixels = new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength)
+  const code = jsQR(pixels, width, height)
+  return code?.data ?? null
 }
 
-function getPartyAccount(party: any) {
-  return party?.account?.bank?.account || party?.account?.proxy?.account || ''
-}
-
-function normalizeThunderTransaction(data: any) {
-  const rawSlip = data?.rawSlip || {}
+/**
+ * Map a GhostX /qr/scan success payload to the internal transaction shape
+ * (same fields the Thunder path produced, so the frontend contract is unchanged).
+ * GhostX: { type, slipVerification: { transfer: { transactionRef, transactionDateTime,
+ *          fromBankName, fromAccountNo, fromAccountName, toBankName, toAccountNo,
+ *          toAccountName, amount: { amount, currency: { code, symbol } } } } }
+ */
+function normalizeGhostxTransaction(payload: any) {
+  const t = payload?.slipVerification?.transfer || {}
 
   return {
-    amount: rawSlip.amount?.amount ?? rawSlip.amount?.local?.amount ?? data?.amountInSlip,
-    refId: rawSlip.transRef || '',
-    date: rawSlip.date || '',
+    amount: t.amount?.amount,
+    refId: t.transactionRef || '',
+    date: t.transactionDateTime || '',
     sender: {
-      name: getPartyName(rawSlip.sender),
-      bank: rawSlip.sender?.bank?.id || rawSlip.sender?.bank?.short || rawSlip.sender?.bank?.name || '',
-      bankName: rawSlip.sender?.bank?.name || rawSlip.sender?.bank?.short || rawSlip.sender?.bank?.id || '',
-      account: getPartyAccount(rawSlip.sender),
+      name: t.fromAccountName || '',
+      bank: t.fromBankName || '',
+      bankName: t.fromBankName || '',
+      account: t.fromAccountNo || '',
     },
     receiver: {
-      name: getPartyName(rawSlip.receiver),
-      bank: rawSlip.receiver?.bank?.id || rawSlip.receiver?.bank?.short || rawSlip.receiver?.bank?.name || '',
-      bankName: rawSlip.receiver?.bank?.name || rawSlip.receiver?.bank?.short || rawSlip.receiver?.bank?.id || '',
-      account: getPartyAccount(rawSlip.receiver),
+      name: t.toAccountName || '',
+      bank: t.toBankName || '',
+      bankName: t.toBankName || '',
+      account: t.toAccountNo || '',
     },
-    currency: rawSlip.amount?.local?.currency || 'THB',
-    transFeeAmount: rawSlip.fee || 0,
+    currency: t.amount?.currency?.code || 'THB',
+    transFeeAmount: 0,
   }
 }
 
 /**
  * POST /api/inbox/verify-slip
  *
- * Verify a payment slip image via Thunder API.
- * Proxies the request server-side so the API key stays hidden.
+ * Verify a payment slip image via GhostX API (QR-based, IP-whitelisted, no token).
+ * Flow: read the QR from the slip image → POST { qrData } to GhostX → map the result
+ * back to the existing frontend contract. Proxied server-side.
  *
  * Body (JSON):
  *   imageUrl  – public URL of the slip image (required)
@@ -145,137 +164,133 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const apiKey = process.env.THUNDER_API_KEY
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'Thunder API key not configured (THUNDER_API_KEY)' },
-        { status: 500 }
-      )
+    // 1) Read the QR payload from the slip image (GhostX needs the QR, not the image).
+    let qrData: string | null = null
+    try {
+      qrData = await decodeQrFromImageUrl(imageUrl)
+    } catch {
+      qrData = null
     }
 
-    const apiBaseUrl = (process.env.THUNDER_API_BASE_URL || 'https://api.thunder.in.th/v2').replace(/\/$/, '')
-    const thunderRes = await fetch(`${apiBaseUrl}/verify/bank`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        'User-Agent': 'Mozilla/5.0 (compatible; inboxreya/1.0; +https://inbox.re-ya.com)',
-      },
-      body: JSON.stringify({
-        url: imageUrl,
-        checkDuplicate: true,
-        remark: 'inboxreya-slip-verify',
-      }),
-    })
-
-    const thunderData = await readJsonResponse(thunderRes)
-
-    if (!thunderRes.ok) {
-      // Thunder returned an error. Keep 200 so the frontend can handle gracefully.
+    if (!qrData) {
       return NextResponse.json(
         {
           success: false,
           verified: false,
-          error: thunderData?.error?.message || thunderData?.message || `Thunder API error (${thunderRes.status})`,
-          status: thunderData?.error?.code,
-          statusCode: thunderRes.status,
+          error: 'อ่าน QR จากสลิปไม่สำเร็จ กรุณาส่งรูปสลิปที่ชัดและเห็น QR เต็ม',
         },
         { status: 200 }
       )
     }
 
-    // Parse Thunder response format to match frontend expectations.
-    // Thunder: { success, data: { rawSlip: { transRef, date, amount, sender, receiver } } }
-    // Frontend expects: { success, verified, data: { amount, transRef, sender, receiver, ... } }
-    
-    const { data } = thunderData || {}
-    const tx = normalizeThunderTransaction(data)
-    
-    if (thunderData?.success === true && data?.rawSlip) {
-      // Build response compatible with the existing frontend contract.
-      const transDate = tx.date || ''
-      const transTime = transDate ? transDate.split('T')[1]?.replace(/\.\d+Z$/, '') || '' : ''
-      
-      // Validate receiver account
-      const EXPECTED_RECEIVER_ACCOUNT = process.env.EXPECTED_RECEIVER_ACCOUNT || '068-3-84622-8'
-      const EXPECTED_RECEIVER_NAME = process.env.EXPECTED_RECEIVER_NAME || 'บริษัท ซี เอ็น วาย เฮลท์แคร์ จำกัด'
-      
-      const warnings: Array<{ type: string; message: string }> = []
-      
-      const receiverAccount = tx.receiver?.account || ''
-      const receiverName = tx.receiver?.name || ''
-      const receiverAccountMatches = isReceiverAccountMatch(receiverAccount, EXPECTED_RECEIVER_ACCOUNT)
-      const receiverNameMatches = isReceiverNameMatch(receiverName, EXPECTED_RECEIVER_NAME)
-      
-      if (receiverAccount && !receiverAccountMatches) {
-        warnings.push({
-          type: 'receiver_account_mismatch',
-          message: `⚠️ บัญชีผู้รับอาจไม่ตรงกับบริษัท\nพบ: ${receiverAccount}\nคาดหวัง: ${EXPECTED_RECEIVER_ACCOUNT}`,
-        })
-      }
-      
-      if (receiverName && !receiverNameMatches) {
-        warnings.push({
-          type: 'receiver_name_mismatch',
-          message: `⚠️ ชื่อผู้รับอาจไม่ตรงกับบริษัท\nพบ: ${receiverName}\nคาดหวัง: ${EXPECTED_RECEIVER_NAME}`,
-        })
-      }
-      
-      return NextResponse.json({
-        success: true,
-        verified: true,
-        warnings, // คำเตือนถ้ามี
-        data: {
-          // Core fields (used by frontend)
-          amount: tx.amount,
-          transRef: tx.refId,
-          transDate: transDate.split('T')[0]?.replace(/-/g, '') || transDate.split('T')[0] || '', // YYYYMMDD or YYYY-MM-DD
-          transTime: transTime,
-          transDateTime: transDate,
-          date: transDate,
-          
-          // Sender info
-          sender: {
-            name: tx.sender?.name || '',
-            displayName: tx.sender?.name || '',
-            account: {
-              value: tx.sender?.account || '',
-            },
-          },
-          sendingBank: tx.sender?.bank || '',
-          sendingBankName: tx.sender?.bankName || tx.sender?.bank || '',
-          
-          // Receiver info
-          receiver: {
-            name: tx.receiver?.name || '',
-            displayName: tx.receiver?.name || '',
-            account: {
-              value: tx.receiver?.account || '',
-            },
-          },
-          receivingBank: tx.receiver?.bank || '',
-          receivingBankName: tx.receiver?.bankName || tx.receiver?.bank || '',
-          
-          // Additional fields
-          transFeeAmount: tx.transFeeAmount || 0,
-          currency: tx.currency || 'THB',
-          
-          // Keep raw data for debugging
-          _raw: data,
+    // 2) Verify via GhostX (IP-whitelisted, no token required).
+    const apiBaseUrl = (process.env.GHOSTX_API_BASE_URL || 'https://externalauth.ghostxapi.xyz').replace(/\/$/, '')
+    const ghostxRes = await fetch(`${apiBaseUrl}/qr/scan`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ qrData }),
+    })
+
+    const ghostxData = await readJsonResponse(ghostxRes)
+    const transfer = ghostxData?.slipVerification?.transfer
+
+    if (!ghostxRes.ok || !transfer) {
+      // GhostX returned an error (invalid QR, no permission, etc.).
+      // Keep 200 so the frontend can handle it gracefully.
+      return NextResponse.json(
+        {
+          success: false,
+          verified: false,
+          error: ghostxData?.message || ghostxData?.title || `GhostX API error (${ghostxRes.status})`,
+          status: ghostxData?.code,
+          statusCode: ghostxRes.status,
         },
-      })
-    } else {
-      // Verification failed (not_found, fraud, amount_mismatch, etc.)
-      return NextResponse.json({
-        success: false,
-        verified: false,
-        error: thunderData?.error?.message || thunderData?.message || 'Verification failed',
-        status: thunderData?.error?.code,
-        isAuthentic: false,
-        data: data,
-      }, { status: 200 })
+        { status: 200 }
+      )
     }
+
+    // 3) Map GhostX → the existing frontend contract (unchanged shape).
+    const tx = normalizeGhostxTransaction(ghostxData)
+    const transDate = tx.date || ''
+    const transTime = transDate
+      ? transDate.split('T')[1]?.replace(/(\+\d{2}:\d{2}|Z)$/, '').replace(/\.\d+$/, '') || ''
+      : ''
+
+    // Validate receiver account / name against the company account.
+    const EXPECTED_RECEIVER_ACCOUNT = process.env.EXPECTED_RECEIVER_ACCOUNT || '068-3-84622-8'
+    const EXPECTED_RECEIVER_NAME = process.env.EXPECTED_RECEIVER_NAME || 'บริษัท ซี เอ็น วาย เฮลท์แคร์ จำกัด'
+
+    const warnings: Array<{ type: string; message: string }> = []
+
+    const receiverAccount = tx.receiver?.account || ''
+    const receiverName = tx.receiver?.name || ''
+    const receiverAccountMatches = isReceiverAccountMatch(receiverAccount, EXPECTED_RECEIVER_ACCOUNT)
+    const receiverNameMatches = isReceiverNameMatch(receiverName, EXPECTED_RECEIVER_NAME)
+
+    if (receiverAccount && !receiverAccountMatches) {
+      warnings.push({
+        type: 'receiver_account_mismatch',
+        message: `⚠️ บัญชีผู้รับอาจไม่ตรงกับบริษัท\nพบ: ${receiverAccount}\nคาดหวัง: ${EXPECTED_RECEIVER_ACCOUNT}`,
+      })
+    }
+
+    if (receiverName && !receiverNameMatches) {
+      warnings.push({
+        type: 'receiver_name_mismatch',
+        message: `⚠️ ชื่อผู้รับอาจไม่ตรงกับบริษัท\nพบ: ${receiverName}\nคาดหวัง: ${EXPECTED_RECEIVER_NAME}`,
+      })
+    }
+
+    // Strip the GhostX contact block from the debug payload.
+    const rawForDebug: Record<string, unknown> = { ...ghostxData }
+    delete rawForDebug.contact
+
+    return NextResponse.json({
+      success: true,
+      verified: true,
+      warnings, // คำเตือนถ้ามี
+      data: {
+        // Core fields (used by frontend)
+        amount: tx.amount,
+        transRef: tx.refId,
+        transDate: transDate.split('T')[0]?.replace(/-/g, '') || transDate.split('T')[0] || '', // YYYYMMDD or YYYY-MM-DD
+        transTime: transTime,
+        transDateTime: transDate,
+        date: transDate,
+
+        // Sender info
+        sender: {
+          name: tx.sender?.name || '',
+          displayName: tx.sender?.name || '',
+          account: {
+            value: tx.sender?.account || '',
+          },
+        },
+        sendingBank: tx.sender?.bank || '',
+        sendingBankName: tx.sender?.bankName || tx.sender?.bank || '',
+
+        // Receiver info
+        receiver: {
+          name: tx.receiver?.name || '',
+          displayName: tx.receiver?.name || '',
+          account: {
+            value: tx.receiver?.account || '',
+          },
+        },
+        receivingBank: tx.receiver?.bank || '',
+        receivingBankName: tx.receiver?.bankName || tx.receiver?.bank || '',
+
+        // Additional fields
+        transFeeAmount: tx.transFeeAmount || 0,
+        currency: tx.currency || 'THB',
+
+        // Keep raw data for debugging (contact stripped)
+        _raw: rawForDebug,
+      },
+    })
   } catch (error) {
     console.error('[verify-slip] Error:', error)
     return NextResponse.json(

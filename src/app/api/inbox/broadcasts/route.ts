@@ -2,24 +2,43 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-middleware'
 import { buildBroadcastEnvelope, summarizeBroadcastForList } from '@/lib/broadcast-runtime'
+import { toBroadcastCreatedAtIso } from '@/lib/broadcast-time'
 import { countBroadcastRecipients } from '@/lib/broadcast-recipient-estimate'
 import { z } from 'zod'
 import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
+const positiveInt = z.coerce.number().int().positive()
+const optionalPositiveInt = z.preprocess((value) => value === '' || value === null ? undefined : value, positiveInt.optional())
+const optionalUrl = z.preprocess((value) => typeof value === 'string' && !value.trim() ? undefined : value, z.string().url().optional())
+const optionalIsoDateTime = z.preprocess((value) => {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  const date = new Date(trimmed)
+  return Number.isFinite(date.getTime()) ? date.toISOString() : trimmed
+}, z.string().datetime().optional())
+const isoDateTime = z.preprocess((value) => {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  const date = new Date(trimmed)
+  return Number.isFinite(date.getTime()) ? date.toISOString() : trimmed
+}, z.string().datetime())
+const positiveIntArray = z.array(positiveInt).transform((ids) => [...new Set(ids)])
+
 const createBroadcastSchema = z.object({
   content: z.string().max(5000).optional(),
-  mediaUrl: z.string().url().optional(),
+  mediaUrl: optionalUrl,
   messageType: z.enum(['text', 'image', 'video', 'flex']).optional(),
   flexContent: z.any().optional(),
   flexContents: z.array(z.any()).max(5).optional(),
-  templateId: z.number().int().positive().optional(),
-  templateIds: z.array(z.number().int().positive()).max(5).optional(),
+  templateId: optionalPositiveInt,
+  templateIds: z.array(positiveInt).max(5).transform((ids) => [...new Set(ids)]).optional(),
   templateSourceTable: z.enum(['templates', 'flex_templates', 'quick_reply_templates']).optional(),
-  targetSegmentId: z.number().int().positive().optional(),
-  targetCustomerIds: z.array(z.number().int().positive()).optional(),
-  targetTagIds: z.array(z.number().int().positive()).optional(),
-  scheduledAt: z.string().datetime().optional(),
-  scheduledDates: z.array(z.string().datetime()).max(31).optional(),
+  targetSegmentId: optionalPositiveInt,
+  targetCustomerIds: positiveIntArray.optional(),
+  targetTagIds: positiveIntArray.optional(),
+  scheduledAt: optionalIsoDateTime,
+  scheduledDates: z.array(isoDateTime).max(31).optional(),
 })
 
 // GET /api/inbox/broadcasts - List all broadcasts
@@ -72,6 +91,7 @@ export async function GET(req: NextRequest) {
               content: summary.summaryText,
               mediaUrl: summary.mediaUrl,
               messageType: summary.messageType,
+              createdAt: toBroadcastCreatedAtIso(broadcast.createdAt),
             }
           }),
           pagination: {
@@ -177,14 +197,24 @@ export async function POST(req: NextRequest) {
       data: created.length > 1 ? { ...primary, broadcasts: created } : primary,
     })
   } catch (error: any) {
-    console.error('Error creating broadcast:', error)
-
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { success: false, error: 'Validation failed', details: (error as any).errors || (error as any).issues },
         { status: 400 }
       )
     }
+    if (error instanceof Error && (
+      error.message.startsWith('Invalid flexContent payload')
+      || error.message.includes('broadcast requires')
+      || error.message.includes('Cannot send more than 5 flex messages')
+    )) {
+      return NextResponse.json(
+        { success: false, error: error.message },
+        { status: 400 }
+      )
+    }
+
+    console.error('Error creating broadcast:', error)
 
     return NextResponse.json(
       { success: false, error: error.message || 'Failed to create broadcast' },

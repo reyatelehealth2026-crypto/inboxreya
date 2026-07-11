@@ -35,6 +35,7 @@ import {
   Receipt,
   CalendarDays,
   Sparkles,
+  Bot,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -75,6 +76,7 @@ const menuGroups: MenuGroup[] = [
       { title: 'กล่องข้อความ', icon: <MessageSquare className="h-4 w-4" />, href: '/inbox' },
       { title: 'แชทกลุ่ม', icon: <MessagesSquare className="h-4 w-4" />, href: '/inbox/groups' },
       { title: 'Broadcast', icon: <Send className="h-4 w-4" />, href: '/inbox/broadcasts' },
+      { title: 'AI Agent', icon: <Bot className="h-4 w-4" />, href: '/ai-agent' },
       { title: 'แคตตาล็อค & โปรโมชัน', icon: <ShoppingBag className="h-4 w-4" />, href: '/inbox/promotions' },
       { title: 'ปฏิทินการส่ง', icon: <CalendarDays className="h-4 w-4" />, href: '/inbox/calendar' },
       { title: 'Slip Center', icon: <Receipt className="h-4 w-4" />, href: '/dashboard/slip-center' },
@@ -132,7 +134,7 @@ export function Sidebar({ className }: SidebarProps) {
   };
 
   const isActive = (href: string) => {
-    return pathname === href || pathname.startsWith(href + '/');
+    return pathname === href || Boolean(pathname?.startsWith(href + '/'));
   };
 
   // Store collapsed state in localStorage

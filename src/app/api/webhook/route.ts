@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
+import { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { createAutoTagManager } from '@/lib/services/auto-tag-manager'
 import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
@@ -130,6 +131,7 @@ async function handleEvent(event: any) {
     select: {
       id: true,
       lineAccountId: true,
+      lineUserId: true,
       displayName: true,
       pictureUrl: true,
     },
@@ -147,6 +149,7 @@ async function handleEvent(event: any) {
       select: {
         id: true,
         lineAccountId: true,
+        lineUserId: true,
         displayName: true,
         pictureUrl: true,
       },
@@ -336,8 +339,48 @@ async function handleUnfollow(user: any) {
 }
 
 async function handlePostback(user: any, postback: any) {
-  // Handle postback data (e.g., from rich menu, flex message buttons)
-  console.log('Postback data:', postback.data)
-  
-  // You can implement custom logic here based on postback.data
+  const raw = typeof postback?.data === 'string' ? postback.data : ''
+  if (!raw) return
+
+  // Postback data convention: querystring with bcid (broadcast id) + act (action) + arbitrary keys.
+  // Example: "bcid=123&act=interested&pid=456&variant=A"
+  let parsed: URLSearchParams
+  try {
+    parsed = new URLSearchParams(raw)
+  } catch {
+    return
+  }
+
+  const broadcastIdStr = parsed.get('bcid')
+  if (!broadcastIdStr) return
+
+  const broadcastId = Number.parseInt(broadcastIdStr, 10)
+  if (!Number.isFinite(broadcastId) || broadcastId <= 0) return
+
+  const action = parsed.get('act')?.slice(0, 80) || null
+
+  const payload: Record<string, string> = {}
+  for (const [key, value] of parsed.entries()) {
+    if (key === 'bcid' || key === 'act') continue
+    payload[key] = value
+  }
+
+  try {
+    await prisma.broadcastEngagement.create({
+      data: {
+        broadcastId,
+        lineUserId: user.lineUserId,
+        lineUserPkId: user.id,
+        eventType: 'postback',
+        action,
+        ...(Object.keys(payload).length > 0
+          ? { payload: payload as Prisma.InputJsonValue }
+          : {}),
+        source: 'postback',
+      },
+      select: { id: true },
+    })
+  } catch (error) {
+    console.error('[handlePostback] failed to log engagement', error)
+  }
 }
