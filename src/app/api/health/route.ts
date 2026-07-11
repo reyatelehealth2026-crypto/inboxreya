@@ -6,7 +6,7 @@ import { logger } from '@/lib/logger'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-type DepResult = { ok: boolean; latencyMs: number; error?: string }
+type DepResult = { ok: boolean; latencyMs: number; error?: string; skipped?: boolean }
 
 async function timed(fn: () => Promise<unknown>): Promise<DepResult> {
   const start = Date.now()
@@ -35,17 +35,21 @@ export async function GET() {
   const phpBase =
     process.env.PHP_API_URL ||
     process.env.NEXT_PUBLIC_PHP_API_URL ||
-    process.env.NEXT_PUBLIC_BASE_URL ||
     ''
+  const phpHealthCheckEnabled = process.env.PHP_HEALTH_CHECK_ENABLED !== 'false'
+  const redisEnabled = Boolean(process.env.REDIS_URL)
 
   const [dbResult, redisResult, phpResult] = await Promise.all([
     timed(() => prisma.$queryRaw`SELECT 1`),
+    redisEnabled
+      ? timed(async () => {
+          const ok = await redisHealthCheck()
+          if (!ok) throw new Error('Redis ping failed')
+        })
+      : Promise.resolve<DepResult>({ ok: true, latencyMs: 0, skipped: true }),
     timed(async () => {
-      const ok = await redisHealthCheck()
-      if (!ok) throw new Error('Redis ping failed')
-    }),
-    timed(async () => {
-      if (!phpBase) throw new Error('PHP_API_URL not configured')
+      if (!phpHealthCheckEnabled) return
+      if (!phpBase) return
       const res = await fetch(`${phpBase.replace(/\/$/, '')}/api/health.php`, {
         signal: AbortSignal.timeout(2000),
         headers: { 'X-Internal-Request': 'true' },
@@ -60,7 +64,7 @@ export async function GET() {
     php: phpResult,
   }
 
-  const coreOk = dbResult.ok && redisResult.ok
+  const coreOk = dbResult.ok && (!redisEnabled || redisResult.ok)
   const allOk = coreOk && phpResult.ok
   const status = allOk ? 'ok' : 'degraded'
 

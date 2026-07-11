@@ -58,6 +58,33 @@ function capFlexCarouselBubbles<T>(node: T): T {
   return result as unknown as T
 }
 
+function sanitizeLineMessagePayload<T>(node: T): T {
+  const capped = capFlexCarouselBubbles(node)
+  return stripUnsupportedFlexFields(capped)
+}
+
+function stripUnsupportedFlexFields<T>(node: T): T {
+  if (!node || typeof node !== 'object') return node
+  if (Array.isArray(node)) {
+    return node.map((item) => stripUnsupportedFlexFields(item)) as unknown as T
+  }
+
+  const obj = node as Record<string, any>
+  const result: Record<string, any> = {}
+  for (const key in obj) {
+    if (!Object.prototype.hasOwnProperty.call(obj, key)) continue
+    if (key === 'opacity' || key === 'cornerRadius') {
+      logger.warn('Flex payload contained unsupported style field; removing before LINE push', {
+        scope: 'line-api',
+        field: key,
+      })
+      continue
+    }
+    result[key] = stripUnsupportedFlexFields(obj[key])
+  }
+  return result as unknown as T
+}
+
 /**
  * ดึง LINE Channel Access Token จากฐานข้อมูล
  */
@@ -117,7 +144,7 @@ export async function pushLineMessage(
     //   "must not be more than 12 items" errors on user/DB-built flex payloads
     const requestBody: any = {
       to: lineUserId,
-      messages: messages.slice(0, 5).map((m) => capFlexCarouselBubbles(m)),
+      messages: messages.slice(0, 5).map((m) => sanitizeLineMessagePayload(m)),
     }
 
     // Add quoteToken for quote reply if provided
