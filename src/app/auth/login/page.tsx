@@ -1,67 +1,71 @@
-/* Hallmark · pre-emit critique: P5 H5 E4 S4 R5 V5
- * genre: modern-minimal · macrostructure: Split Studio · theme: project palette
- * (slate ink + LINE green accent) · enrichment: none · scope: app/auth
- * design-system: src/app/globals.css shadcn tokens · designed-as-app
+/* Hallmark · pre-emit critique: P4 H5 E4 S4 R3 V4
+ * genre: modern-minimal · macrostructure: Split Studio (glass shell variant)
+ * theme: parity port of wholesale.re-ya.com/admin — navy diagonal + cobalt accent
+ * source: cny-wholesale-nuxt/pages/admin/login.vue (user-directed parity port)
  * states: default · hover · focus · active · disabled · loading · error · success
- * contrast: pass (40-41) · honest: pass (46) · chrome: pass (47) · tokens: pass (48)
- * responsive: pass (49-53) · icons: pass (30) · mobile: pass (34 page-local, 49, 50-57)
- * known deviation: display face is Inter/Noto Sans Thai, preserved from pre-flight
- * (gate 1 waived - the project's font stack is not a Hallmark pick)
+ * contrast: pass (40-41) · icons: lucide only (30) · tokens: pass (48)
+ * copy: adapted to this product (LINE CRM inbox), not copied from wholesale
  */
 "use client"
 
 import { useState, Suspense } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Loader2 } from 'lucide-react'
+import {
+  AlertCircle,
+  ArrowUpRight,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Loader2,
+  LockKeyhole,
+  Plus,
+  ShieldCheck,
+  User,
+} from 'lucide-react'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import styles from './login.module.css'
 
-const MODULES = ['กล่องข้อความ', 'ลูกค้า', 'ศูนย์สลิป'] as const
-
-function SystemRail() {
+function StoryRail() {
   return (
-    <aside className="flex shrink-0 flex-col justify-between bg-primary px-6 py-8 text-primary-foreground lg:w-[380px] lg:px-10 lg:py-12">
+    <aside className={styles.story}>
+      <span className={styles.brand}>
+        <span className={styles.brandMark} aria-hidden="true">
+          <Plus size={16} strokeWidth={2.5} />
+        </span>
+        <strong>CNY Pharmacy</strong>
+      </span>
+
       <div>
-        <div className="flex items-center gap-2.5">
-          <span
-            aria-hidden="true"
-            className="h-2 w-2 shrink-0 rounded-full bg-line"
-          />
-          <span className="text-sm font-semibold tracking-[0.18em]">INBOX</span>
-        </div>
-
-        <p className="mt-6 min-w-0 max-w-[22ch] text-balance text-xl font-semibold leading-snug tracking-tight [overflow-wrap:anywhere] lg:mt-10 lg:text-3xl">
-          ระบบกล่องข้อความ LINE สำหรับร้านยา
-        </p>
-
-        <p className="mt-3 text-sm text-primary-foreground/60">
-          LINE CRM Pharmacy Inbox System
+        <span className={styles.kicker}>LINE CRM Inbox</span>
+        <h1 className={styles.storyTitle}>
+          ทุกแชทลูกค้า
+          <br />
+          <span className={styles.storyTitleAccent}>รวมอยู่ที่เดียว</span>
+        </h1>
+        <p className={styles.storyBody}>
+          พื้นที่ทำงานสำหรับตอบแชทลูกค้า ดูแลข้อมูลลูกค้า และตรวจสลิปของ CNY
         </p>
       </div>
 
-      <ul className="mt-8 hidden border-t border-primary-foreground/15 lg:block">
-        {MODULES.map((name) => (
-          <li
-            key={name}
-            className="border-b border-primary-foreground/15 py-3 text-sm text-primary-foreground/75"
-          >
-            {name}
-          </li>
-        ))}
-      </ul>
+      <div className={styles.trust}>
+        <span className={styles.trustIcon} aria-hidden="true">
+          <ShieldCheck size={15} />
+        </span>
+        <span>เข้าถึงเฉพาะผู้ที่ได้รับสิทธิ์เท่านั้น</span>
+      </div>
     </aside>
   )
 }
 
-function LoginForm() {
+function LoginCard() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const callbackUrl = searchParams?.get('callbackUrl') || '/dashboard'
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
@@ -98,127 +102,139 @@ function LoginForm() {
     }
   }
 
-  const fieldClass =
-    // 44px is pinned, not h-11: the rem-based scale resolves differently for the
-    // input and the button, and a form whose field is shorter than its submit
-    // button reads untuned. 44px is also the touch-target floor.
-    'h-[44px] rounded-md text-base transition-colors motion-reduce:transition-none hover:bg-muted/50 focus-visible:bg-background aria-[invalid=true]:border-destructive'
+  const wrapClass = error
+    ? `${styles.inputWrap} ${styles.inputWrapError}`
+    : styles.inputWrap
 
   return (
-    <main className="flex min-w-0 flex-1 items-center px-6 py-10 lg:px-14 lg:py-12">
-      <div className="w-full max-w-sm">
-        <h1 className="min-w-0 text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]">
-          เข้าสู่ระบบ
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          ใช้บัญชีพนักงานที่ได้รับจากผู้ดูแลระบบ
-        </p>
+    <section className={styles.cardWrap}>
+      <div className={styles.card}>
+        <div className={styles.cardHead}>
+          <span className={styles.cardIcon} aria-hidden="true">
+            <LockKeyhole size={19} />
+          </span>
+          <span className={`${styles.kicker} ${styles.kickerDark}`}>Secure sign in</span>
+          <h2 id="login-title" className={styles.cardTitle}>
+            เข้าสู่ระบบ
+          </h2>
+          <p className={styles.cardLede}>ใช้บัญชีพนักงานที่ได้รับจากผู้ดูแลระบบ</p>
+        </div>
 
-        <form onSubmit={handleSubmit} className="mt-4" noValidate>
-          {/* Reserved slot: the alert appears in place, without pushing the fields down. */}
-          <div className="min-h-[52px] pt-2" aria-live="polite">
-            {/* Message text stays ink, not destructive-red: red-on-tinted-red
-                measures 3.85:1, under the 4.5:1 floor. The border and tint carry
-                the colour signal; role/aria carry it non-visually. */}
-            {error && (
-              <p
-                id="login-error"
-                role="alert"
-                className="rounded-md border border-destructive/60 bg-destructive/10 px-3 py-2.5 text-sm text-foreground"
+        <form className={styles.form} onSubmit={handleSubmit} noValidate>
+          <div className={styles.field}>
+            <label htmlFor="username">ชื่อผู้ใช้</label>
+            <div className={wrapClass}>
+              <User size={16} className={styles.fieldIcon} aria-hidden="true" />
+              <input
+                id="username"
+                name="username"
+                type="text"
+                autoComplete="username"
+                autoFocus
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="กรอกชื่อผู้ใช้"
+                required
+                aria-required="true"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? 'login-error' : undefined}
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+
+          <div className={styles.field}>
+            <label htmlFor="password">รหัสผ่าน</label>
+            <div className={wrapClass}>
+              <KeyRound size={16} className={styles.fieldIcon} aria-hidden="true" />
+              <input
+                id="password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="กรอกรหัสผ่าน"
+                required
+                aria-required="true"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? 'login-error' : undefined}
+                disabled={isLoading}
+              />
+              <button
+                type="button"
+                className={styles.passwordToggle}
+                aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                aria-pressed={showPassword}
+                disabled={isLoading}
+                onClick={() => setShowPassword((v) => !v)}
               >
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
+          </div>
+
+          {/* Reserved slot: the alert appears in place, without pushing the button down. */}
+          <div className={styles.errorSlot} aria-live="polite">
+            {error && (
+              <p id="login-error" role="alert" className={styles.error}>
+                <AlertCircle size={15} className={styles.errorIcon} aria-hidden="true" />
                 {error}
               </p>
             )}
           </div>
 
-          <div className="space-y-1.5">
-            <label htmlFor="username" className="block text-sm font-medium">
-              ชื่อผู้ใช้
-            </label>
-            <Input
-              id="username"
-              name="username"
-              type="text"
-              autoComplete="username"
-              autoFocus
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              aria-required="true"
-              aria-invalid={error ? true : undefined}
-              aria-describedby={error ? 'login-error' : undefined}
-              disabled={isLoading}
-              className={fieldClass}
-            />
-          </div>
-
-          <div className="mt-4 space-y-1.5">
-            <label htmlFor="password" className="block text-sm font-medium">
-              รหัสผ่าน
-            </label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              aria-required="true"
-              aria-invalid={error ? true : undefined}
-              aria-describedby={error ? 'login-error' : undefined}
-              disabled={isLoading}
-              className={fieldClass}
-            />
-          </div>
-
-          <Button
+          <button
             type="submit"
+            className={styles.submit}
             disabled={isLoading}
             aria-busy={isLoading}
-            className="mt-6 h-[44px] w-full text-base active:translate-y-px motion-reduce:transition-none"
           >
             {isLoading ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                กำลังเข้าสู่ระบบ...
+                <Loader2 size={15} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                <span>กำลังเข้าสู่ระบบ...</span>
               </>
             ) : (
-              'เข้าสู่ระบบ'
+              <>
+                <span>เข้าสู่ระบบ</span>
+                <span className={styles.submitArrow} aria-hidden="true">
+                  <ArrowUpRight size={14} />
+                </span>
+              </>
             )}
-          </Button>
+          </button>
         </form>
 
-        <p className="mt-8 border-t pt-5 text-sm text-muted-foreground">
+        <p className={styles.help}>
           ยังไม่มีบัญชี?{' '}
-          <Link
-            href="/auth/register"
-            className="whitespace-nowrap font-medium text-foreground underline underline-offset-4 hover:decoration-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
+          <Link href="/auth/register" className={styles.helpLink}>
             สมัครสมาชิก
           </Link>
         </p>
       </div>
-    </main>
+    </section>
   )
 }
 
 export default function LoginPage() {
   return (
-    // Flex, not an arbitrary grid template: this app lets users change the root
-    // font size, so rem-based track sizing drifts. Fixed px rail + flexible main.
-    <div className="flex min-h-dvh flex-col lg:flex-row">
-      <SystemRail />
-      <Suspense
-        fallback={
-          <div className="flex min-w-0 flex-1 items-center justify-center py-20">
-            <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
-            <span className="sr-only">กำลังโหลด</span>
-          </div>
-        }
-      >
-        <LoginForm />
-      </Suspense>
-    </div>
+    <main className={styles.page} aria-labelledby="login-title">
+      <div className={`${styles.orb} ${styles.orbOne}`} aria-hidden="true" />
+      <div className={`${styles.orb} ${styles.orbTwo}`} aria-hidden="true" />
+      <div className={styles.shell}>
+        <StoryRail />
+        <Suspense
+          fallback={
+            <section className={styles.cardWrap}>
+              <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none" />
+              <span className="sr-only">กำลังโหลด</span>
+            </section>
+          }
+        >
+          <LoginCard />
+        </Suspense>
+      </div>
+    </main>
   )
 }
