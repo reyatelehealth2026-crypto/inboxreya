@@ -66,8 +66,12 @@
   background: linear-gradient(
     132deg,
     var(--ink-deep) 0%,
-    var(--ink-mid) 47%,
-    var(--paper-2) 47%,
+    /* 53%, not the source's 47%: at 47% the seam cuts through the rail's body
+       copy and trust line, and the tails render pale-on-pale (the source has
+       this bug live). Pushing it 6% right keeps every rail line on navy and
+       still reads as the same diagonal. */
+    var(--ink-mid) 53%,
+    var(--paper-2) 53%,
     var(--paper) 100%
   );
 }
@@ -188,32 +192,19 @@
   font-style: normal;
 }
 
-/* 340px, not the reference's 390px: the 132deg backdrop flips to the light
-   ramp at 47% of the viewport, and anything past ~400px of rail text crosses
-   the seam and turns pale-on-pale. Keeping the measure short holds every line
-   inside the navy. */
 .storyBody {
-  max-width: 340px;
+  max-width: 390px;
   margin: 0;
   color: var(--rail-text-2);
   font-size: 0.9rem;
   line-height: 1.75;
 }
 
-/* Sits on its own dark pill. At the foot of the rail the 132deg seam has moved
-   well to the left, so bare text here runs off the navy and onto the pale ramp
-   mid-sentence — the reference has this bug too. The pill pins the contrast
-   without changing the vocabulary (the kickers are already translucent pills). */
 .trust {
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
-  width: fit-content;
-  max-width: 340px;
-  padding: 0.35rem 0.75rem 0.35rem 0.35rem;
   color: var(--rail-text-3);
-  background: rgba(9, 30, 58, 0.62);
-  border-radius: 999px;
   font-size: 0.75rem;
 }
 
@@ -468,6 +459,25 @@
   cursor: wait;
 }
 
+/* Bootstrap's .spinner-border.spinner-border-sm, reproduced so the loading
+   state matches the source app exactly. */
+.spinner {
+  display: inline-block;
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
+  border: 0.15em solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spinnerBorder 0.75s linear infinite;
+}
+
+@keyframes spinnerBorder {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .submitArrow {
   display: grid;
   place-items: center;
@@ -548,12 +558,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Transitions only — the loading spinner keeps turning, because freezing it
+     leaves a stalled ring that reads as a hung request. The source app draws
+     the same line. */
   .page *,
   .page *::before,
   .page *::after {
     transition-duration: 0.01ms !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
   }
 
   .submit:not(:disabled):hover {
