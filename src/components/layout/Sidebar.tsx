@@ -35,6 +35,7 @@ import {
   Receipt,
   CalendarDays,
   Sparkles,
+  Compass,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -42,6 +43,8 @@ interface MenuItem {
   icon: React.ReactNode;
   href: string;
   badge?: number;
+  /** ลิงก์ออกนอกแอปนี้ — เปิดแท็บใหม่ เพื่อไม่ให้เสียตำแหน่งงานที่ค้างอยู่ */
+  external?: boolean;
 }
 
 interface MenuGroup {
@@ -62,6 +65,8 @@ const menuGroups: MenuGroup[] = [
     groupIcon: '📊',
     menus: [
       { title: 'หน้าแรก', icon: <Home className="h-4 w-4" />, href: '/dashboard' },
+      // ฮับส่วนตัวเป็นแอปแยก (hub.re-ya.com) ที่ล็อกอินด้วย admin_users ชุดเดียวกัน
+      { title: 'ฮับของฉัน', icon: <Compass className="h-4 w-4" />, href: 'https://hub.re-ya.com', external: true },
       { title: 'งานของฉัน', icon: <Briefcase className="h-4 w-4" />, href: '/dashboard/my-work' },
       { title: 'Admin Dashboard', icon: <UserCog className="h-4 w-4" />, href: '/dashboard/admin' },
       { title: 'Customer Dashboard', icon: <Users className="h-4 w-4" />, href: '/dashboard/customers' },
@@ -132,6 +137,8 @@ export function Sidebar({ className }: SidebarProps) {
   };
 
   const isActive = (href: string) => {
+    // ลิงก์ออกนอกแอปไม่มีวันเป็นหน้าปัจจุบัน และ startsWith กับ URL เต็มก็ไม่มีความหมาย
+    if (href.startsWith('http')) return false;
     return pathname === href || pathname.startsWith(href + '/');
   };
 
@@ -214,6 +221,8 @@ export function Sidebar({ className }: SidebarProps) {
                     <Link
                       key={menu.href}
                       href={menu.href}
+                      target={menu.external ? '_blank' : undefined}
+                      rel={menu.external ? 'noopener noreferrer' : undefined}
                       className={cn(
                         'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
                         isActive(menu.href)
@@ -240,6 +249,8 @@ export function Sidebar({ className }: SidebarProps) {
                     <Link
                       key={menu.href}
                       href={menu.href}
+                      target={menu.external ? '_blank' : undefined}
+                      rel={menu.external ? 'noopener noreferrer' : undefined}
                       className={cn(
                         'flex items-center justify-center rounded-lg p-2 transition-colors',
                         isActive(menu.href)
