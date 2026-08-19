@@ -1,0 +1,129 @@
+From d727ae8272fa2d88c36429260cbf74b7a5792239 Mon Sep 17 00:00:00 2001
+From: CNY Healthcare <cnyhealthymall@gmail.com>
+Date: Wed, 19 Aug 2026 16:45:54 +0000
+Subject: [PATCH 4/6] fix(config): never echo the config file back in a JSON
+ parse error
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+`readJson()` forwarded `err.message` verbatim. V8 quotes the source text
+around the failure point inside SyntaxError messages:
+
+  $ node -e 'JSON.parse("{\"channel_access_token\": aBcDeF...}")'
+  Unexpected token 'a', ..."s_token": aBcDeFgHiJ"... is not valid JSON
+
+For a LINE config the first value is a channel access token, so that quoted
+snippet is roughly ten characters of live credential — and this string reaches
+MCP replies and logs. `redactSecrets()` cannot help: `registerSecret()` only
+runs in `_setConfig()`, which a parse failure never reaches.
+
+The error now names the path and the failure kind (malformed JSON vs.
+unreadable file) and stops there. Both remain actionable without quoting a
+single byte of the file.
+
+Tests: a config whose token sits at the parse failure point — asserting the
+token, its leading fragment, the surrounding key name, and V8's own phrasing
+are all absent from the thrown message, while the path and the reason survive.
+---
+ src/config/multi-oa.ts            | 13 +++++--
+ tests/guardrails/multi-oa.test.ts | 56 ++++++++++++++++++++++++++++++-
+ 2 files changed, 66 insertions(+), 3 deletions(-)
+
+diff --git a/src/config/multi-oa.ts b/src/config/multi-oa.ts
+index 9826a17..0fe3e86 100644
+--- a/src/config/multi-oa.ts
++++ b/src/config/multi-oa.ts
+@@ -206,7 +206,16 @@ function readJson(path: string): MultiOaConfig {
+   try {
+     return JSON.parse(readFileSync(path, "utf-8")) as MultiOaConfig;
+   } catch (err) {
+-    const msg = err instanceof Error ? err.message : String(err);
+-    throw new Error(`Failed to read config at ${path}: ${msg}`);
++    // NEVER forward err.message here. V8 quotes the source text around the
++    // failure point inside SyntaxError messages — for a config whose very
++    // first value is a channel access token, that quoted snippet IS the token.
++    // registerSecret() has not run at this point in the load, so redactSecrets()
++    // cannot mask it either, and this string flows into MCP replies and logs.
++    // The path plus the failure kind is everything the operator needs.
++    const kind =
++      err instanceof SyntaxError
++        ? "ไฟล์ไม่ใช่ JSON ที่ถูกต้อง (ตรวจ comma / วงเล็บ / เครื่องหมายคำพูดที่ขาดหาย) — ตัดรายละเอียดออกเพราะอาจมี token ปนอยู่"
++        : "เปิดไฟล์ไม่สำเร็จ — ตรวจว่ามีไฟล์อยู่จริงและมีสิทธิ์อ่าน";
++    throw new Error(`Failed to read config at ${path}: ${kind}`);
+   }
+ }
+diff --git a/tests/guardrails/multi-oa.test.ts b/tests/guardrails/multi-oa.test.ts
+index a9d2756..7dc0301 100644
+--- a/tests/guardrails/multi-oa.test.ts
++++ b/tests/guardrails/multi-oa.test.ts
+@@ -8,7 +8,7 @@
+  * Bearer token subsequent line_send_message calls carry.
+  */
+ 
+-import { mkdtempSync } from "node:fs";
++import { mkdtempSync, writeFileSync } from "node:fs";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ 
+@@ -194,6 +194,60 @@ describe("invalid config shapes", () => {
+     resetConfigCache();
+     expect(() => loadConfig()).toThrow(/Failed to read config at \/nonexistent\/line-mcp-config\.json/);
+   });
++
++  // v2.2.3 — malformed JSON must not echo the file back.
++  //
++  // V8 quotes the source text around the failure point inside SyntaxError
++  // messages ("...s_token\": aBcDeFgHiJ\"... is not valid JSON"). For a LINE
++  // config the very first value IS a channel access token, and this error
++  // reaches MCP replies and logs. redactSecrets() cannot save us here:
++  // registerSecret() only runs in _setConfig(), which a parse failure never
++  // reaches.
++  describe("malformed JSON does not leak file contents", () => {
++    const SECRET = "aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcdefghijklmnop=";
++
++    /** Write a config file whose token is present but whose JSON is broken. */
++    function writeBrokenConfig(): string {
++      const dir = mkdtempSync(join(tmpdir(), "line-mcp-broken-"));
++      const path = join(dir, "config.json");
++      // Unquoted value → SyntaxError pointing straight at the token.
++      writeFileSync(path, `{"default_oa":"main","oas":{"main":{"channel_access_token": ${SECRET}}}}`, {
++        mode: 0o600,
++      });
++      process.env.LINE_MCP_CONFIG = path;
++      resetConfigCache();
++      return path;
++    }
++
++    it("the raw token never appears in the thrown message", () => {
++      writeBrokenConfig();
++      let message = "";
++      try {
++        loadConfig();
++      } catch (err) {
++        message = err instanceof Error ? err.message : String(err);
++      }
++
++      expect(message).not.toBe("");
++      expect(message).not.toContain(SECRET);
++      // Not even the leading fragment V8 would have quoted.
++      expect(message).not.toContain(SECRET.slice(0, 10));
++      expect(message).not.toContain("channel_access_token");
++      expect(message).not.toContain("is not valid JSON");
++    });
++
++    it("still tells the operator which file failed and why", () => {
++      const path = writeBrokenConfig();
++      expect(() => loadConfig()).toThrow(new RegExp(`Failed to read config at ${path}`));
++      expect(() => loadConfig()).toThrow(/JSON/); // "ไฟล์ไม่ใช่ JSON ที่ถูกต้อง"
++    });
++
++    it("a missing file reports a different (non-syntax) reason", () => {
++      process.env.LINE_MCP_CONFIG = "/nonexistent/line-mcp-config.json";
++      resetConfigCache();
++      expect(() => loadConfig()).toThrow(/เปิดไฟล์ไม่สำเร็จ/);
++    });
++  });
+ });
+ 
+ describe("cross-instance — active OA is module state, not server state", () => {

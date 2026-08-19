@@ -1,0 +1,563 @@
+From b5ff55b716a04bfdcf86553a283697b65578ce8a Mon Sep 17 00:00:00 2001
+From: CNY Healthcare <cnyhealthymall@gmail.com>
+Date: Wed, 19 Aug 2026 16:44:04 +0000
+Subject: [PATCH 1/6] fix(send): require confirm for every uncountable fan-out,
+ not just broadcast
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+`estimateRecipients()` returned 0 for narrowcast and broadcast — the two
+transports LINE gives no pre-send recipient count for. That 0 flowed into
+`checkQuota()`, where it can neither exceed `remaining` nor cross the 95%
+threshold, so the Quota Guardian returned ok unconditionally. The only real
+gate left was `"everyone" in params.target`, which covers `{ everyone: true }`
+and nothing else.
+
+Net effect: `target: { filter: {...} }` and `target: { audience: "..." }`
+reached the whole matching audience with no confirmation and no quota check —
+in one tool call, from a model interpreting a sentence like "ส่งโปรให้ลูกค้า
+ผู้หญิงกรุงเทพ". The file's own comment already says a broadcast cannot be
+unsent; the same is true of a narrowcast.
+
+Fixed at the root rather than by extending the target-key list:
+
+- `estimateRecipients()` now returns `number | "unknown"`.
+- `checkQuota()` accepts `ProjectedMessages = number | "unknown"` and treats
+  "unknown" as always requiring confirm — evaluated BEFORE the unlimited-plan
+  shortcut, because the gate exists for irreversibility, not for quota.
+- `line_send_message` refuses an unconfirmed "unknown" send before the quota
+  round-trip, so a refused send costs zero further LINE API calls. The gate
+  reads the transport, not a hand-listed set of target keys, so a target shape
+  added later inherits it. `checkQuota` still enforces the rule as a backstop.
+- Outputs stop inventing a count: `recipient_count_estimated` /
+  `projected_recipients` are omitted for these transports and a new
+  `recipients_unknown: true` flag is set. v2.2.2 reported 0 recipients on a
+  successful broadcast.
+- dry_run surfaces the confirm requirement up front, where it costs nothing.
+
+Tests: 22 added across the e2e suite and the Quota Guardian guardrails —
+both narrowcast shapes refused unconfirmed with zero /narrowcast and zero
+/quota traffic, both sending under confirm, the unlimited-plan path, dry_run
+and draft behaviour, and multicast proven unaffected.
+---
+ src/i18n/th.ts                          |  15 +++
+ src/line/quota-guardian.ts              |  32 +++++-
+ src/tools/send-message.ts               |  63 +++++++----
+ src/types.ts                            |   6 ++
+ tests/guardrails/quota-guardian.test.ts |  82 +++++++++++++-
+ tests/send-message.e2e.test.ts          | 135 +++++++++++++++++++++++-
+ 6 files changed, 305 insertions(+), 28 deletions(-)
+
+diff --git a/src/i18n/th.ts b/src/i18n/th.ts
+index a85a95c..8fa74da 100644
+--- a/src/i18n/th.ts
++++ b/src/i18n/th.ts
+@@ -14,6 +14,21 @@ export const TH = {
+   quotaExceeded: (projected: number, remaining: number) =>
+     `🛑 ส่งไม่ได้: คาดว่าจะใช้ ${projected.toLocaleString()} ข้อความ แต่เหลือ quota แค่ ${remaining.toLocaleString()}. ปรับ audience ให้เล็กลงหรือรอ quota รอบใหม่`,
+ 
++  // ---- Unbounded fan-out (broadcast / narrowcast) ----
++  // LINE exposes no pre-send recipient count for these transports, so no quota
++  // arithmetic can protect the caller — and neither transport can be unsent.
++  unboundedFanoutNeedsConfirm: (transport?: string) =>
++    `${
++      transport === "broadcast"
++        ? "⚠️ Broadcast ถึงทุกคนใน OA"
++        : transport === "narrowcast"
++          ? "⚠️ Narrowcast (audience / filter) ถึงคนจำนวนมาก"
++          : "⚠️ การส่งแบบ broadcast/narrowcast"
++    } — ประเมินจำนวนผู้รับล่วงหน้าไม่ได้ และยกเลิกหลังส่งไม่ได้ ต้องระบุ confirm=true\n→ แนะนำ: รัน mode='dry_run' ก่อน เพื่อ validate + ดู quota ที่เหลือ`,
++
++  unboundedFanoutConfirmed: (transport: string) =>
++    `🟡 ส่งแบบ ${transport} — จำนวนผู้รับจริงและ quota ที่ใช้ ทราบได้หลังส่งเท่านั้น. ตรวจ quota ที่ใช้จริงด้วย line_get_oa_status`,
++
+   // ---- Quiet hours ----
+   quietHoursWarning: (bkkHour: number) =>
+     `🌙 ตอนนี้ ${bkkHour}:00 BKK — เป็นช่วง quiet hours (22:00-08:00) ลูกค้าไทยส่วนใหญ่ไม่ชอบถูกปลุก. ตั้งค่า force=true เพื่อส่งต่อ หรือใช้ mode='draft' เพื่อ schedule ใน LINE OA Manager UI`,
+diff --git a/src/line/quota-guardian.ts b/src/line/quota-guardian.ts
+index f1d29fd..daaf836 100644
+--- a/src/line/quota-guardian.ts
++++ b/src/line/quota-guardian.ts
+@@ -5,17 +5,29 @@
+  * per message above the included allotment. We refuse sends that would consume
+  * more than QUOTA_WARN_THRESHOLD of remaining quota unless the caller passes
+  * `confirm: true`.
++ *
++ * `projectedMessages` is deliberately `number | "unknown"`. Broadcast and
++ * narrowcast have no pre-send recipient count, and v2.2.2 passed 0 for them —
++ * which made every arithmetic branch below a no-op and let an unbounded,
++ * un-unsendable fan-out through unguarded. "unknown" is now its own case that
++ * always requires `confirm`, so a target shape added later inherits the gate
++ * instead of silently costing nothing.
+  */
+ 
+ import { QUOTA_WARN_THRESHOLD } from "../constants.js";
+ import { TH } from "../i18n/th.js";
+ import type { LineClient } from "./client.js";
+-import type { QuotaSnapshot } from "../types.js";
++import type { QuotaSnapshot, SendTransport } from "../types.js";
++
++/** Recipient count a send is expected to cost, or "unknown" when LINE cannot tell us before the send. */
++export type ProjectedMessages = number | "unknown";
+ 
+ export interface QuotaGuardInput {
+   client: LineClient;
+-  projectedMessages: number;
++  projectedMessages: ProjectedMessages;
+   confirm: boolean;
++  /** Transport, used only to word the "unknown" refusal. */
++  transport?: SendTransport;
+ }
+ 
+ export interface QuotaGuardOk {
+@@ -37,6 +49,22 @@ export async function checkQuota(input: QuotaGuardInput): Promise<QuotaGuardResu
+   const snapshot = await snapshotQuota(input.client);
+   const warnings: string[] = [];
+ 
++  // Uncountable fan-out — checked BEFORE the unlimited-plan shortcut on
++  // purpose: the gate exists because the send cannot be recalled, which is
++  // true no matter how much quota the plan carries.
++  if (input.projectedMessages === "unknown") {
++    if (!input.confirm) {
++      return {
++        ok: false,
++        reason: "needs_confirmation",
++        snapshot,
++        message: TH.unboundedFanoutNeedsConfirm(input.transport),
++      };
++    }
++    warnings.push(TH.unboundedFanoutConfirmed(input.transport ?? "narrowcast"));
++    return { ok: true, snapshot, warnings };
++  }
++
+   if (snapshot.total === "unlimited") {
+     return { ok: true, snapshot, warnings };
+   }
+diff --git a/src/tools/send-message.ts b/src/tools/send-message.ts
+index 2c6e4d5..fc71ce1 100644
+--- a/src/tools/send-message.ts
++++ b/src/tools/send-message.ts
+@@ -21,7 +21,7 @@ import { ImageHostError } from "../imagehost/types.js";
+ import { LineApiError, LineClient } from "../line/client.js";
+ import { redactSecrets } from "../line/redact.js";
+ import { FLEX_TEMPLATE_NAMES, renderTemplate } from "../line/flex-templates.js";
+-import { checkQuota } from "../line/quota-guardian.js";
++import { checkQuota, type ProjectedMessages } from "../line/quota-guardian.js";
+ import { quietHoursCheck } from "../line/quiet-hours.js";
+ import { pickTransport } from "../line/transports.js";
+ import { TH } from "../i18n/th.js";
+@@ -169,7 +169,7 @@ const InputSchema = z
+       .boolean()
+       .default(false)
+       .describe(
+-        "Required to be true when projected cost > 95% of remaining quota, or when target.everyone === true.",
++        "Required to be true when projected cost > 95% of remaining quota, or for any send whose recipient count LINE cannot report ahead of time: target.everyone (broadcast), target.audience and target.filter (narrowcast).",
+       ),
+     force: z
+       .boolean()
+@@ -268,14 +268,19 @@ function buildLineMessages(message: Input["message"]): LineMessage[] {
+   return [flex];
+ }
+ 
+-function estimateRecipients(target: SendTarget, estimatedFromTransport?: number): number {
++function estimateRecipients(
++  target: SendTarget,
++  estimatedFromTransport?: number,
++): ProjectedMessages {
+   if ("user_id" in target) return 1;
+   if ("user_ids" in target) return target.user_ids.length;
+   if ("reply_to" in target) return 1;
+   if (estimatedFromTransport !== undefined) return estimatedFromTransport;
+-  // Narrowcast / broadcast — unknown, use 0 so the Quota Guardian doesn't false-block.
+-  // The user must `confirm: true` for `everyone: true` per schema.
+-  return 0;
++  // Narrowcast / broadcast — LINE publishes no pre-send recipient count.
++  // v2.2.2 returned 0 here, which quietly disarmed the Quota Guardian (0 can
++  // never exceed anything) and reported "sent to 0 people" after a real
++  // broadcast. "unknown" is the honest answer and is confirm-gated downstream.
++  return "unknown";
+ }
+ 
+ // ---- registration ----
+@@ -289,7 +294,7 @@ export function registerSendMessageTool(server: McpServer): void {
+ 
+ mode: send_now (default) sends immediately; draft returns a LINE OA Manager handoff package (URL + Flex JSON + steps) — use when the user wants to SCHEDULE, since the Messaging API can't schedule but the OA Manager UI can; dry_run validates + estimates cost without sending.
+ 
+-Safety: pre-flight /validate before spending quota; Quota Guardian blocks if projected cost >95% of remaining quota unless confirm=true; broadcast { everyone:true } requires confirm=true; quiet-hours 22:00–08:00 BKK warns unless force=true; quiet_push silences the recipient device; reply tokens expire ~1 min (falls back to a push hint).
++Safety: pre-flight /validate before spending quota; Quota Guardian blocks if projected cost >95% of remaining quota unless confirm=true; every uncountable fan-out — broadcast { everyone:true } AND narrowcast ({ audience } or { filter }) — requires confirm=true because LINE reports no recipient count before the send and nothing can be unsent; quiet-hours 22:00–08:00 BKK warns unless force=true; quiet_push silences the recipient device; reply tokens expire ~1 min (falls back to a push hint).
+ 
+ Returns send_now → { success, transport, request_id?, recipient_count_estimated, quota, warnings[] }; draft and dry_run return their own shapes. Narrowcast needs ~24h before line_get_message_stats shows engagement.
+ 
+@@ -340,14 +345,22 @@ Example: "ส่งโปรให้ผู้หญิง 25-44 กรุงเ
+         // ----- mode: dry_run -----
+         if (params.mode === "dry_run") {
+           const quota = await snapshotQuota(client);
++          const known = typeof projected === "number" ? projected : undefined;
+           const out: DryRunOutput = {
+             dry_run: true,
+             transport: picked.transport,
+             validated: true,
+-            projected_recipients: picked.estimatedRecipients ?? projected,
+-            projected_cost_messages: picked.estimatedRecipients ?? projected,
++            projected_recipients: known,
++            projected_cost_messages: known,
++            ...(known === undefined ? { recipients_unknown: true as const } : {}),
+             quota,
+             warnings: [
++              // Surface the confirm requirement HERE, where it costs nothing —
++              // dry_run exists precisely so the caller learns this before the
++              // real attempt refuses.
++              ...(known === undefined
++                ? [TH.unboundedFanoutNeedsConfirm(picked.transport)]
++                : []),
+               ...(quiet.warning ? [quiet.warning] : []),
+             ],
+           };
+@@ -367,11 +380,26 @@ Example: "ส่งโปรให้ผู้หญิง 25-44 กรุงเ
+         }
+ 
+         // ----- mode: send_now -----
++        // Uncountable fan-out (broadcast AND both narrowcast shapes). Derived
++        // from the transport, not from a hand-listed set of target keys, so a
++        // new uncountable target shape is covered the day it is added.
++        // Runs BEFORE the quota round-trip so a refused send costs zero further
++        // LINE API calls; checkQuota() enforces the same rule as a backstop.
++        if (projected === "unknown" && !params.confirm) {
++          return {
++            isError: true,
++            content: [
++              { type: "text", text: TH.unboundedFanoutNeedsConfirm(picked.transport) },
++            ],
++          };
++        }
++
+         // Quota guardian
+         const guard = await checkQuota({
+           client,
+           projectedMessages: projected,
+           confirm: params.confirm,
++          transport: picked.transport,
+         });
+         if (!guard.ok) {
+           return {
+@@ -380,26 +408,15 @@ Example: "ส่งโปรให้ผู้หญิง 25-44 กรุงเ
+           };
+         }
+ 
+-        // Confirm explicitly for broadcast-all
+-        if ("everyone" in params.target && !params.confirm) {
+-          return {
+-            isError: true,
+-            content: [
+-              {
+-                type: "text",
+-                text: "⚠️ Broadcast ถึงทุกคนใน OA ต้องระบุ confirm=true",
+-              },
+-            ],
+-          };
+-        }
+-
+         const result = await picked.send(messages, { retryKey: client.retryKey() });
+ 
++        const sentCount = typeof projected === "number" ? projected : undefined;
+         const output: SendResultOutput = {
+           success: true,
+           transport: picked.transport,
+           request_id: result.request_id,
+-          recipient_count_estimated: picked.estimatedRecipients ?? projected,
++          recipient_count_estimated: sentCount,
++          ...(sentCount === undefined ? { recipients_unknown: true as const } : {}),
+           quota: guard.snapshot,
+           warnings: [
+             ...guard.warnings,
+diff --git a/src/types.ts b/src/types.ts
+index 2195ebb..b905a3e 100644
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -161,7 +161,10 @@ export interface SendResultOutput {
+   success: boolean;
+   transport: SendTransport;
+   request_id?: string;
++  /** Omitted for broadcast/narrowcast — see `recipients_unknown`. */
+   recipient_count_estimated?: number;
++  /** True when LINE gives no pre-send recipient count (broadcast / narrowcast). */
++  recipients_unknown?: true;
+   recipient_count_actual?: number;
+   quota?: QuotaSnapshot;
+   warnings: string[];
+@@ -184,8 +187,11 @@ export interface DryRunOutput {
+   dry_run: true;
+   transport: SendTransport;
+   validated: boolean;
++  /** Omitted for broadcast/narrowcast — see `recipients_unknown`. */
+   projected_recipients?: number;
+   projected_cost_messages?: number;
++  /** True when LINE gives no pre-send recipient count (broadcast / narrowcast). */
++  recipients_unknown?: true;
+   quota: QuotaSnapshot;
+   warnings: string[];
+ }
+diff --git a/tests/guardrails/quota-guardian.test.ts b/tests/guardrails/quota-guardian.test.ts
+index 56841f0..d3e8bf8 100644
+--- a/tests/guardrails/quota-guardian.test.ts
++++ b/tests/guardrails/quota-guardian.test.ts
+@@ -4,7 +4,8 @@
+  * Exercises checkQuota + snapshotQuota through a REAL LineClient against the
+  * shared fetch mock: hard block (over_quota), soft block (needs_confirmation
+  * at >95% of remaining), confirm override, >50% advisory warning, unlimited
+- * passthrough, and snapshot arithmetic incl. rounding.
++ * passthrough, the "unknown" (uncountable fan-out) case, and snapshot
++ * arithmetic incl. rounding.
+  *
+  * NOTE on route order: the fetch mock matches by pathname SUBSTRING, and
+  * "/v2/bot/message/quota" is a prefix of "/v2/bot/message/quota/consumption" —
+@@ -41,6 +42,85 @@ function mockQuota(opts: { value?: number; used: number; type?: "limited" | "non
+   );
+ }
+ 
++describe('checkQuota — projectedMessages: "unknown" (broadcast / narrowcast)', () => {
++  // v2.2.2 passed 0 for these transports, which made every branch below a
++  // no-op: 0 can never exceed `remaining`, and 0/remaining can never cross the
++  // 95% threshold. The Guardian returned ok for an unbounded, un-unsendable
++  // send. "unknown" is now its own confirm-gated case.
++  it("without confirm → needs_confirmation, naming the transport", async () => {
++    mockQuota({ value: 1000, used: 0 });
++
++    const res = await checkQuota({
++      client,
++      projectedMessages: "unknown",
++      confirm: false,
++      transport: "narrowcast",
++    });
++
++    expect(res.ok).toBe(false);
++    if (res.ok) return;
++    expect(res.reason).toBe("needs_confirmation");
++    expect(res.message).toBe(TH.unboundedFanoutNeedsConfirm("narrowcast"));
++    expect(res.message).toContain("confirm=true");
++    expect(res.snapshot).toEqual({ used: 0, total: 1000, remaining: 1000, percentage_used: 0 });
++  });
++
++  it("blocks on an UNLIMITED plan too — the gate is irreversibility, not quota", async () => {
++    // The unlimited shortcut returns ok for any numeric projection; "unknown"
++    // must be evaluated BEFORE it, or the whole gate evaporates on the plans
++    // most likely to fan out widely.
++    mockQuota({ used: 12_345, type: "none" });
++
++    const res = await checkQuota({
++      client,
++      projectedMessages: "unknown",
++      confirm: false,
++      transport: "broadcast",
++    });
++
++    expect(res.ok).toBe(false);
++    if (res.ok) return;
++    expect(res.reason).toBe("needs_confirmation");
++    expect(res.message).toContain("Broadcast ถึงทุกคน");
++    expect(res.snapshot.total).toBe("unlimited");
++  });
++
++  it("with confirm → ok, plus a warning that the real count is only knowable after the send", async () => {
++    mockQuota({ value: 1000, used: 0 });
++
++    const res = await checkQuota({
++      client,
++      projectedMessages: "unknown",
++      confirm: true,
++      transport: "broadcast",
++    });
++
++    expect(res.ok).toBe(true);
++    if (!res.ok) return;
++    expect(res.warnings).toEqual([TH.unboundedFanoutConfirmed("broadcast")]);
++  });
++
++  it("omitting `transport` still refuses — it only changes the wording", async () => {
++    mockQuota({ value: 1000, used: 0 });
++
++    const res = await checkQuota({ client, projectedMessages: "unknown", confirm: false });
++
++    expect(res.ok).toBe(false);
++    if (res.ok) return;
++    expect(res.message).toContain("confirm=true");
++    expect(res.message).toContain("broadcast/narrowcast");
++  });
++
++  it("a hard over-quota numeric projection still outranks nothing here — 0 stays a normal count", async () => {
++    // Regression guard: `0` must keep meaning "zero messages", not "unknown".
++    mockQuota({ value: 1000, used: 0 });
++    const res = await checkQuota({ client, projectedMessages: 0, confirm: false });
++    expect(res.ok).toBe(true);
++    if (!res.ok) return;
++    expect(res.warnings).toEqual([]);
++  });
++});
++
+ describe("checkQuota — hard block (over_quota)", () => {
+   it("blocks when projected > remaining, with the exact Thai message", async () => {
+     mockQuota({ value: 1000, used: 900 }); // remaining 100
+diff --git a/tests/send-message.e2e.test.ts b/tests/send-message.e2e.test.ts
+index 26404cd..6e445a6 100644
+--- a/tests/send-message.e2e.test.ts
++++ b/tests/send-message.e2e.test.ts
+@@ -3,8 +3,9 @@
+  * with all LINE traffic intercepted by the fetch mock.
+  *
+  * Proves the guardrail pipeline end-to-end: validate-before-send ordering,
+- * retry-key header, dry_run isolation, draft zero-send guarantee, broadcast
+- * confirm gate, quota soft-block + confirm override, quiet-hours warning
++ * retry-key header, dry_run isolation, draft zero-send guarantee, the
++ * uncountable-fan-out confirm gate (broadcast AND both narrowcast shapes),
++ * quota soft-block + confirm override, quiet-hours warning
+  * (fake Date, timers stay real), LINE error surfacing (400 details / 401 /
+  * 429 in Thai), schema rejection with zero network calls, quiet_push, and
+  * the reply_to no-fallback gap (pinned as current behavior).
+@@ -211,6 +212,11 @@ describe("broadcast confirm gate (everyone: true)", () => {
+     expect(firstText(result)).toContain("confirm=true");
+     expect(firstText(result)).toContain("Broadcast ถึงทุกคน");
+     expect(api.callsTo("/v2/bot/message/broadcast")).toHaveLength(0);
++    // The gate runs BEFORE the quota round-trip: a refused send costs no
++    // further LINE calls beyond the pre-flight /validate.
++    expect(api.callsTo("/v2/bot/message/quota")).toHaveLength(0);
++    expect(api.calls).toHaveLength(1);
++    expect(api.calls[0]!.url.pathname).toBe("/v2/bot/message/validate/broadcast");
+   });
+ 
+   it("with confirm + quota ok → /broadcast called with retry key", async () => {
+@@ -228,9 +234,134 @@ describe("broadcast confirm gate (everyone: true)", () => {
+     expect(casts).toHaveLength(1);
+     expect(casts[0]!.headers["x-line-retry-key"]).toBeTruthy();
+     expect(api.callsTo("/v2/bot/message/validate/broadcast")).toHaveLength(1);
++
++    // v2.2.3: no invented recipient count. v2.2.2 reported 0 here — i.e.
++    // "this broadcast reached nobody" right after it reached the whole OA.
++    const sc = result.structuredContent!;
++    expect(sc.recipient_count_estimated).toBeUndefined();
++    expect(sc.recipients_unknown).toBe(true);
++  });
++});
++
++describe("narrowcast confirm gate — the v2.2.2 hole", () => {
++  // v2.2.2 gated only `"everyone" in target`. Both narrowcast shapes
++  // (`{ audience }`, `{ filter }`) fell through with projected = 0, which also
++  // made every Quota Guardian branch a no-op: an LLM could fan out to the
++  // whole OA by demographic filter in a single turn, unconfirmed and unmetered.
++  const NARROWCAST_TARGETS: { label: string; target: Record<string, unknown> }[] = [
++    { label: "{ audience }", target: { audience: "7777" } },
++    {
++      label: "{ filter } (demographic)",
++      target: { filter: { genders: ["female"], areas: ["bangkok"] } },
++    },
++  ];
++
++  it.each(NARROWCAST_TARGETS)(
++    "$label without confirm → isError, zero /narrowcast, zero quota round-trip",
++    async ({ target }) => {
++      mockQuota(1000, 0);
++
++      const result = await mcp.callTool("line_send_message", { target, message: { text: "โปรลับ" } });
++
++      expect(result.isError).toBe(true);
++      const text = firstText(result);
++      expect(text).toBe(TH.unboundedFanoutNeedsConfirm("narrowcast"));
++      expect(text).toContain("confirm=true");
++      expect(text).toContain("dry_run"); // points at the safe way to look first
++      expect(api.callsTo("/v2/bot/message/narrowcast")).toHaveLength(0);
++      expect(api.callsTo("/v2/bot/message/quota")).toHaveLength(0);
++      // Only the pre-flight validate left the process.
++      expect(api.calls).toHaveLength(1);
++      expect(api.calls[0]!.url.pathname).toBe("/v2/bot/message/validate/narrowcast");
++    },
++  );
++
++  it.each(NARROWCAST_TARGETS)(
++    "$label with confirm:true → sends, reports recipients_unknown, warns that the count is post-hoc",
++    async ({ target }) => {
++      mockQuota(1000, 0);
++      api.on("/v2/bot/message/narrowcast", { body: { requestId: "req-123" } });
++
++      const result = await mcp.callTool("line_send_message", {
++        target,
++        message: { text: "โปรลับ" },
++        confirm: true,
++      });
++
++      expect(result.isError).toBeFalsy();
++      const sc = result.structuredContent!;
++      expect(sc).toMatchObject({ success: true, transport: "narrowcast", recipients_unknown: true });
++      expect(sc.recipient_count_estimated).toBeUndefined();
++      expect(sc.warnings as string[]).toContain(TH.unboundedFanoutConfirmed("narrowcast"));
++      expect(api.callsTo("/v2/bot/message/narrowcast")).toHaveLength(1);
++    },
++  );
++
++  it("the gate is derived from the transport, so an UNLIMITED plan is gated too", async () => {
++    // Quota Guardian short-circuits on unlimited plans; the confirm requirement
++    // here is about irreversibility, not quota, so it must survive that path.
++    api.on("/v2/bot/message/quota/consumption", { body: { totalUsage: 0 } });
++    api.on("/v2/bot/message/quota", { body: { type: "none" } }, { method: "GET" });
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { audience: "7777" },
++      message: { text: "โปรลับ" },
++    });
++
++    expect(result.isError).toBe(true);
++    expect(firstText(result)).toContain("confirm=true");
++    expect(api.callsTo("/v2/bot/message/narrowcast")).toHaveLength(0);
++  });
++
++  it("dry_run surfaces the confirm requirement up-front and marks the count unknown", async () => {
++    mockQuota(1000, 0);
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { filter: { genders: ["female"] } },
++      message: { text: "โปรลับ" },
++      mode: "dry_run",
++    });
++
++    expect(result.isError).toBeFalsy();
++    const sc = result.structuredContent!;
++    expect(sc).toMatchObject({ dry_run: true, transport: "narrowcast", recipients_unknown: true });
++    expect(sc.projected_recipients).toBeUndefined();
++    expect(sc.projected_cost_messages).toBeUndefined();
++    expect(sc.warnings as string[]).toContain(TH.unboundedFanoutNeedsConfirm("narrowcast"));
++    expect(api.callsTo("/v2/bot/message/narrowcast")).toHaveLength(0);
++  });
++
++  it("draft needs no confirm — it delivers nothing", async () => {
++    const result = await mcp.callTool("line_send_message", {
++      target: { filter: { ages: ["age_25"] } },
++      message: { text: "โปรลับ" },
++      mode: "draft",
++    });
++
++    expect(result.isError).toBeFalsy();
++    expect(result.structuredContent!.draft).toBe(true);
++    expect(api.callsTo("/v2/bot/message/narrowcast")).toHaveLength(0);
++  });
++
++  it("countable targets are untouched by the gate — user_ids still sends without confirm", async () => {
++    mockQuota(1000, 0);
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { user_ids: ["U1", "U2", "U3"] },
++      message: { text: "ถึงสามคน" },
++    });
++
++    expect(result.isError).toBeFalsy();
++    expect(result.structuredContent).toMatchObject({
++      success: true,
++      transport: "multicast",
++      recipient_count_estimated: 3,
++    });
++    expect(result.structuredContent!.recipients_unknown).toBeUndefined();
+   });
+ });
+ 
++
+ describe("quota soft-block (Quota Guardian through the tool)", () => {
+   it("99 recipients against remaining 100 → needs-confirmation error, zero multicast calls", async () => {
+     mockQuota(1000, 900); // remaining 100

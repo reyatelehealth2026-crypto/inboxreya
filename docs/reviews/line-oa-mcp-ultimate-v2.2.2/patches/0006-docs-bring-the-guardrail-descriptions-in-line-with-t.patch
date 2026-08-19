@@ -1,0 +1,114 @@
+From 5de4a63fd42908daab55215b60bcce8af608d116 Mon Sep 17 00:00:00 2001
+From: CNY Healthcare <cnyhealthymall@gmail.com>
+Date: Wed, 19 Aug 2026 16:48:57 +0000
+Subject: [PATCH 6/6] docs: bring the guardrail descriptions in line with the
+ code
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+SECURITY.md still advertised the quiet-hours warning and "explicit confirm for
+broadcast-to-everyone" — the two claims the preceding commits changed. It also
+listed the Quota Guardian as a blast-radius limiter without noting that the
+limit was arithmetic on a projected count that broadcast and narrowcast never
+supplied.
+
+Updates SECURITY.md, the README feature table, and the three Thai guides so
+each states what the code now does: quiet hours refuse a live send, every
+uncountable fan-out needs confirm, irreversible tools carry destructiveHint,
+and every LINE call runs under a deadline.
+---
+ README.md                  |  2 +-
+ SECURITY.md                | 17 +++++++++++++++--
+ docs/clients-setup-th.md   |  4 ++--
+ docs/messaging-guide-th.md |  2 +-
+ docs/quickstart-th.md      |  3 ++-
+ 5 files changed, 21 insertions(+), 7 deletions(-)
+
+diff --git a/README.md b/README.md
+index c1a2db5..8574f16 100644
+--- a/README.md
++++ b/README.md
+@@ -66,7 +66,7 @@ LY Corporation publishes an official [LINE Bot MCP server](https://github.com/li
+ | LINE Shopping (MyShop) | ✅ 14 opt-in tools — products, stock, orders, parcel labels, settlements, checkout links | ❌ |
+ | Rich Message images | ✅ zero-setup (v2.2) — attach a picture, everything else is automatic and **verified delivered-able before "success"** | ❌ bring your own hosted URLs |
+ | Multi-OA | ✅ one config file for all client OAs + runtime switch (`line_use_oa`) + fan-out (`line_run_on_many_oas`) | ❌ one OA per server instance |
+-| Quota / quiet-hours guardrails | ✅ pre-flight Quota Guardian, 22:00–08:00 quiet-hours warnings, `dry_run` cost estimates | ➖ quota *read* tool (`get_message_quota`); no pre-flight guardrails |
++| Quota / quiet-hours guardrails | ✅ pre-flight Quota Guardian, 22:00–08:00 quiet hours that block a live send (`force: true` to override), `confirm` on every uncountable fan-out, `dry_run` cost estimates | ➖ quota *read* tool (`get_message_quota`); no pre-flight guardrails |
+ | Thai i18n | ✅ every user-facing error/warning in Thai, plus full Thai guides | ❌ English (Japanese README available) |
+ | Rich-menu image generation | ✅ pure-JS satori + resvg (~10 MB, no browser), with a **preview-before-deploy** loop | ✅ Marp + Puppeteer (downloads headless Chromium), generate-and-upload in one shot |
+ | Transports | stdio + Streamable HTTP with bearer-token auth (`MCP_HTTP_TOKEN`) | stdio (npx / Docker) |
+diff --git a/SECURITY.md b/SECURITY.md
+index e53f423..7dc9a9c 100644
+--- a/SECURITY.md
++++ b/SECURITY.md
+@@ -70,8 +70,21 @@ bugs (report to LINE), and social engineering.
+ - **Config-file permission check** — a group/other-readable
+   `~/.line-mcp/config.json` triggers a `chmod 600` warning at startup.
+ - **Blast-radius limiters** — Quota Guardian (blocks sends projected over 95%
+-  of remaining quota without `confirm: true`), quiet-hours warning
+-  (22:00–08:00 Asia/Bangkok), and explicit `confirm` for broadcast-to-everyone.
++  of remaining quota without `confirm: true`), quiet hours (22:00–08:00
++  Asia/Bangkok) which **refuse** a `send_now` unless `force: true`, and an
++  explicit `confirm` for every send whose recipient count LINE cannot report
++  ahead of time: broadcast `{ everyone: true }` and both narrowcast shapes
++  (`{ audience }`, `{ filter }`). The projected cost of those transports is
++  reported as `"unknown"` rather than 0, so they can never pass the Quota
++  Guardian by arithmetic.
++- **Destructive-action hints** — every tool whose effect cannot be undone from
++  this server (`line_send_message`, `line_set_webhook_endpoint`,
++  `line_set_default_rich_menu`, the `delete_*` tools, and the `manage_*` tools
++  carrying a delete/discontinue mode) declares `destructiveHint: true`, so an
++  MCP host can prompt the operator before the call runs.
++- **Request deadlines** — every LINE API call runs under an AbortController
++  deadline that covers the response body, not just the headers, so a stalled
++  peer cannot hang a tool call.
+ 
+ ## Known limitations
+ 
+diff --git a/docs/clients-setup-th.md b/docs/clients-setup-th.md
+index aff5c09..9e2a224 100644
+--- a/docs/clients-setup-th.md
++++ b/docs/clients-setup-th.md
+@@ -144,12 +144,12 @@ LINE_CHANNEL_ACCESS_TOKEN = "YOUR_TOKEN"
+ | **คนเรียก** | โค้ดที่คุณเขียนเอง | **AI agent เรียกเองด้วยภาษาธรรมชาติ** |
+ | **ต้องรู้ API spec ไหม** | ต้องอ่าน LINE API doc เอง | ไม่ต้อง — tool description บอก AI เอง |
+ | **เขียนโค้ด** | ต้องเขียน HTTP request, parse, handle error | ไม่ต้องเขียนโค้ดเลย |
+-| **Validation / quota / quiet-hours** | ต้องทำเอง | server ทำให้ (pre-flight validate, Quota Guardian, quiet-hours warning) |
++| **Validation / quota / quiet-hours** | ต้องทำเอง | server ทำให้ (pre-flight validate, Quota Guardian, quiet-hours block, confirm gate สำหรับ broadcast/narrowcast) |
+ | **Thai templates / sticker / festival** | สร้างเอง | มีให้พร้อม (Flex templates, sticker index, ปฏิทินเทศกาลไทย) |
+ | **เปลี่ยน host** | ผูกกับโค้ดที่เขียน | ย้าย config ก็ใช้ได้ทุก host (Cowork/Code/Cursor/Codex) |
+ | **เหมาะกับ** | ระบบ production ที่ flow ตายตัว | งานที่สั่งด้วย "เจตนา" + เปลี่ยนแปลงบ่อย + ให้ AI ตัดสินใจ |
+ 
+-**สรุปสั้นๆ:** REST API คือ "ท่อ" ที่โปรแกรมเมอร์ต่อเอง — MCP คือ "ท่อที่ AI ใช้เป็น" เพราะมาพร้อม schema + คำอธิบายให้ LLM เลือก tool และกรอก argument ได้เอง คุณเลยสั่งงานด้วยภาษาคนแทนการเขียนโค้ด และ logic ความปลอดภัย (validate, quota, quiet-hours) ถูกฝังใน server ครั้งเดียว ใช้ซ้ำได้ทุก host
++**สรุปสั้นๆ:** REST API คือ "ท่อ" ที่โปรแกรมเมอร์ต่อเอง — MCP คือ "ท่อที่ AI ใช้เป็น" เพราะมาพร้อม schema + คำอธิบายให้ LLM เลือก tool และกรอก argument ได้เอง คุณเลยสั่งงานด้วยภาษาคนแทนการเขียนโค้ด และ logic ความปลอดภัย (validate, quota, quiet-hours, confirm gate) ถูกฝังใน server ครั้งเดียว ใช้ซ้ำได้ทุก host
+ 
+ > MCP **ไม่ได้มาแทน** REST API — ข้างใน MCP server ตัวนี้ก็เรียก LINE REST API นั่นแหละ แต่มันห่อด้วยชั้นที่ "AI เข้าใจและใช้เองได้" ทำให้คุณข้ามขั้นเขียน integration code ไปเลย
+ 
+diff --git a/docs/messaging-guide-th.md b/docs/messaging-guide-th.md
+index 80732ba..907ae8e 100644
+--- a/docs/messaging-guide-th.md
++++ b/docs/messaging-guide-th.md
+@@ -35,7 +35,7 @@
+ 
+ ### เรื่องที่ 2 — "ส่งจริง / ซ้อม / ร่าง" มี 3 โหมด
+ 
+-- **`send_now`** — ส่งจริงทันที (ผ่านระบบเช็ก quota + quiet hours)
++- **`send_now`** — ส่งจริงทันที (ผ่านระบบเช็ก quota + quiet hours ซึ่ง **บล็อก** การส่งในช่วง 22:00–08:00 BKK เว้นแต่ `force: true`; broadcast/narrowcast ต้อง `confirm: true`)
+ - **`dry_run`** — "ซ้อมส่ง" ตรวจว่าข้อความถูกไหม + บอกว่าจะส่งกี่คน เปลือง quota เท่าไหร่ **แต่ยังไม่ส่งจริง** (แนะนำทำก่อน broadcast ใหญ่ทุกครั้ง)
+ - **`draft`** — เตรียมแบบร่าง แล้วเอาไปตั้งเวลาส่งในหน้า LINE OA Manager (LINE delivery เสถียรกว่า + มี audit log)
+ 
+diff --git a/docs/quickstart-th.md b/docs/quickstart-th.md
+index c1792e1..55ecf32 100644
+--- a/docs/quickstart-th.md
++++ b/docs/quickstart-th.md
+@@ -127,7 +127,8 @@
+ - **ก่อน broadcast ใหญ่ ให้ "ซ้อมส่ง" ก่อน** — บอก AI ว่า _"ลองส่งแบบ dry run ก่อน"_ (`mode: "dry_run"`) = **ยังไม่ส่งจริง** แต่ระบบจะตรวจให้ว่าข้อความถูกต้องไหม + บอกว่าจะส่งถึงกี่คน และใช้ quota กี่ข้อความ ดูให้ชัวร์ก่อนค่อยสั่งส่งจริง — กันยิงผิดกลุ่มหรือเปลือง quota
+ - **Schedule ใน LINE OA Manager** ดีกว่า build เอง — LINE delivery reliability สูงกว่า + audit log อยู่ใน OA Manager
+ - **Quota Guardian** จะเตือนเองถ้าจะส่งเกิน 95% ของ quota — ใช้ `confirm: true` ถ้ายืนยัน
+-- **Quiet hours (22:00–08:00 BKK)** ถ้าจำเป็นต้องส่ง ใช้ `force: true` หรือ `quiet_push: true`
++- **Quiet hours (22:00–08:00 BKK)** `mode: "send_now"` จะถูก **ปฏิเสธ** ในช่วงนี้ — ถ้าจำเป็นต้องส่งจริง ใช้ `force: true` (หรือ `quiet_push: true` เพื่อส่งแบบไม่เด้ง noti) ส่วน `dry_run` / `draft` ไม่ถูกบล็อก
++- **Broadcast / narrowcast ต้อง `confirm: true`** เพราะ LINE ไม่บอกจำนวนผู้รับล่วงหน้า และยกเลิกหลังส่งไม่ได้ — รัน `mode: "dry_run"` ก่อนเพื่อดู quota
+ 
+ ### ⚠️ ระวัง
+ 
