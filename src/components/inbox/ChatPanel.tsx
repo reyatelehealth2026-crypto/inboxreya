@@ -234,7 +234,25 @@ function MessageBubble({
   const isOutgoing = message.direction === 'outgoing'
   const { setReplyToMessage, setLightboxImage } = useChatStore()
   const { toast } = useToast()
-  const [slipForwardState, setSlipForwardState] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle')
+  // A slip that was verified and matched to a BDO is recorded on the message
+  // itself, so "done" survives a refresh or another rep opening the same chat —
+  // before this it lived only in this component's state.
+  const savedSlip = (message.metadata as any)?.slip as
+    | {
+        verified?: boolean
+        bdoId?: number | null
+        bdoName?: string | null
+        amount?: number | null
+        ref?: string | null
+        points?: number
+        at?: string
+      }
+    | undefined
+  const isSlipDone = Boolean(savedSlip?.verified)
+
+  const [slipForwardState, setSlipForwardState] = useState<'idle' | 'loading' | 'sent' | 'error'>(
+    isSlipDone ? 'sent' : 'idle'
+  )
   const [showSlipModal, setShowSlipModal] = useState(false)
   const [slipAmount, setSlipAmount] = useState('')
   const [slipDate, setSlipDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -462,6 +480,19 @@ function MessageBubble({
                 </button>
               )
             })()}
+            {isSlipDone && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-[11px] leading-tight text-green-800">
+                <span className="font-semibold">✓ แนบสลิปแล้ว</span>
+                {savedSlip?.bdoName && <span className="font-mono">{savedSlip.bdoName}</span>}
+                {typeof savedSlip?.amount === 'number' && savedSlip.amount > 0 && (
+                  <span>฿{savedSlip.amount.toLocaleString()}</span>
+                )}
+                {typeof savedSlip?.points === 'number' && savedSlip.points > 0 && (
+                  <span className="text-green-700">+{savedSlip.points} แต้ม</span>
+                )}
+              </div>
+            )}
+
             {!isOutgoing && (
               <div className="mt-1.5">
                 <Button
@@ -672,6 +703,9 @@ function MessageBubble({
                               const body: Record<string, any> = {
                                 messageId: message.id,
                                 userId: message.userId,
+                                // This quick path never notified the customer;
+                                // keep it that way. Points are still awarded.
+                                notifyCustomer: false,
                               }
                               if (slipAmount) body.amount = parseFloat(slipAmount)
                               if (slipDate) body.transferDate = slipDate
