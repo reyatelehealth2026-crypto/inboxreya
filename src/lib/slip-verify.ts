@@ -164,13 +164,15 @@ const ERROR_MESSAGES: Record<string, string> = {
  * fallback down to its 1s floor and the admin waited 100s only to be told
  * "ตรวจสอบไม่สำเร็จ". Measured round trips: QR 0.2–18s, OCR ~56s.
  */
-const QR_TIMEOUT_MS = 20_000
 /**
- * 50s, down from 60s. Production logs show successful OCR replies landing at
- * 16–53s; past that slip-c was not going to answer at all, and the rep was left
- * watching a spinner for a full minute before being told nothing was found.
+ * Both cut to the shortest window that still covers what slip-c actually answers
+ * in. Production logs: the QR path replies in 0.2–16s, OCR in 16–53s but
+ * overwhelmingly either well under 30s or never — a sweep of 21 slips saw 22 of
+ * 24 calls run the full 50s clock out without a reply. Waiting longer buys almost
+ * no extra answers and costs the rep a minute of staring at a spinner.
  */
-const OCR_TIMEOUT_MS = 50_000
+const QR_TIMEOUT_MS = 18_000
+const OCR_TIMEOUT_MS = 35_000
 
 /**
  * The OCR call no longer waits for the QR call to fail. QR answers in 0.2–18s

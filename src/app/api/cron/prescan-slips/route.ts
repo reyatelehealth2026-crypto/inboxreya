@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { redisGet, redisSet } from '@/lib/redis'
 import { decodeSlipQr, fetchSlipImage, verifySlip } from '@/lib/slip-verify'
-import { getPendingBdos, pickBdoForAmount } from '@/lib/slip-auto-match'
+import { bdoPayable, getPendingBdos, pickBdoForAmount } from '@/lib/slip-auto-match'
 import { attachSlip } from '@/lib/slip-attach'
 
 /**
@@ -38,6 +38,13 @@ const LOOKBACK_MINUTES = 180
  * minutes; anything still failing after this was never going to verify.
  */
 const MAX_ATTEMPTS = 3
+
+/**
+ * How many of a customer's outstanding amounts to try on the fast QR path before
+ * giving up and letting slip-c OCR the image. Someone with a long list of unpaid
+ * bills would otherwise cost one call per bill.
+ */
+const MAX_AMOUNT_TRIES = 3
 
 function scannedKey(messageId: number) {
   return `slip:prescan:${messageId}`
@@ -161,10 +168,40 @@ export async function GET(request: Request) {
           continue
         }
 
-        // No amount is passed on purpose. Nobody is waiting on this run, so the
-        // slower OCR path is fine and it avoids guessing which pending BDO the
-        // customer meant to pay.
-        const result = await verifySlip({ imageUrl, image })
+        // Second free gate: a customer with nothing outstanding has nothing to
+        // match, so there is no reason to pay slip-c to read their slip.
+        const bdos = message.userId ? await getPendingBdos(message.userId) : []
+        if (bdos.length === 0) {
+          noBdoMatch += 1
+          if (!dryRun) await redisSet(scannedKey(message.id), '1', SCANNED_TTL_SECONDS)
+          continue
+        }
+
+        // Check the way a rep does: hand slip-c the amount we expect, which lets
+        // it answer straight from the QR instead of running OCR. Measured on
+        // production, the QR path replies in ~16s where OCR times out at 50s on
+        // more than nine attempts in ten. The amounts to try are exactly the
+        // customer's outstanding bills.
+        const candidateAmounts = Array.from(
+          new Set(
+            bdos
+              .map((b) => bdoPayable(b))
+              .filter((n): n is number => n !== null)
+          )
+        ).slice(0, MAX_AMOUNT_TRIES)
+
+        let result: Awaited<ReturnType<typeof verifySlip>> | null = null
+        for (const candidate of candidateAmounts) {
+          result = await verifySlip({ imageUrl, image, amount: candidate })
+          if (result.verified) break
+        }
+
+        // Nothing matched an outstanding amount — fall back to letting slip-c
+        // read the figure itself, in case the customer paid something else.
+        if (!result?.verified) {
+          result = await verifySlip({ imageUrl, image })
+        }
+
         if (result.verified) {
           verified += 1
           // verifySlip already stored the result under the key the modal reads.
@@ -175,7 +212,6 @@ export async function GET(request: Request) {
           // decide — file it now so the order stops looking unpaid.
           const paidAmount = Number(result.data?.amount)
           if (message.userId && Number.isFinite(paidAmount) && paidAmount > 0) {
-            const bdos = await getPendingBdos(message.userId)
             const outcome = pickBdoForAmount(bdos, paidAmount)
 
             if (outcome.status === 'matched' && dryRun) {
