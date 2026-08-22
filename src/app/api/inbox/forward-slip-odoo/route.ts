@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { callPhpApi } from '@/lib/php-bridge'
+import { mergeSlipMetadata } from '@/lib/slip-mark'
 
 /** 1,000 ฿ = 1 point. Same rate the slip modal shows the rep. */
 const POINTS_RATE = 1000
@@ -203,35 +204,18 @@ export async function POST(request: NextRequest) {
         : 0
 
     if (message && slip_verified) {
-      // Merge, never overwrite: metadata already carries quotedMessageId,
-      // lineMessageId and flex payloads that the chat view renders.
-      let existingMetadata: Record<string, unknown> = {}
-      if (message.metadata) {
-        try {
-          const parsed = JSON.parse(message.metadata)
-          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-            existingMetadata = parsed as Record<string, unknown>
-          }
-        } catch {
-          // Unparseable metadata is left behind rather than destroyed.
-        }
-      }
-
       await prisma.message
         .update({
           where: { id: message.id },
           data: {
-            metadata: JSON.stringify({
-              ...existingMetadata,
-              slip: {
-                verified: true,
-                bdoId: bdoId ? Number(bdoId) : null,
-                bdoName: typeof bdoName === 'string' && bdoName ? bdoName : null,
-                amount: Number.isFinite(verifiedAmount) ? verifiedAmount : null,
-                ref: slip_verify_ref || null,
-                points: earnedPoints,
-                at: new Date().toISOString(),
-              },
+            metadata: mergeSlipMetadata(message.metadata, {
+              verified: true,
+              bdoId: bdoId ? Number(bdoId) : null,
+              bdoName: typeof bdoName === 'string' && bdoName ? bdoName : null,
+              amount: Number.isFinite(verifiedAmount) ? verifiedAmount : null,
+              ref: slip_verify_ref || null,
+              points: earnedPoints,
+              at: new Date().toISOString(),
             }),
           },
         })
