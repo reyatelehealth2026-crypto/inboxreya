@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { redisGet, redisSet } from '@/lib/redis'
 import { decodeSlipQr, fetchSlipImage, verifySlip } from '@/lib/slip-verify'
+import { getPendingBdos, pickBdoForAmount } from '@/lib/slip-auto-match'
+import { attachSlip } from '@/lib/slip-attach'
 
 /**
  * GET /api/cron/prescan-slips
@@ -88,7 +90,8 @@ export async function GET(request: Request) {
       // Generous because the lookback can be widened for a catch-up run; the
       // rows are four small columns and everything already scanned is skipped.
       take: 500,
-      select: { id: true, content: true, mediaUrl: true, createdAt: true },
+      // userId is needed to look up that customer's outstanding BDOs.
+      select: { id: true, userId: true, content: true, mediaUrl: true, createdAt: true },
     })
 
     const messages = recent.filter((m) => m.createdAt && m.createdAt >= since)
@@ -103,6 +106,14 @@ export async function GET(request: Request) {
     let failed = 0
     /** Failed images that hit MAX_ATTEMPTS and will not be retried again. */
     let exhausted = 0
+    /** Verified slips filed against the one BDO that matched their amount. */
+    let autoMatched = 0
+    /** Verified, but several outstanding BDOs share the amount — left for a rep. */
+    let ambiguous = 0
+    /** Verified, but no outstanding BDO has that amount. */
+    let noBdoMatch = 0
+    /** The BDO matched but Odoo refused the attachment. */
+    let attachFailed = 0
 
     for (const message of messages) {
       if (verified + failed >= maxVerify) break
@@ -142,6 +153,49 @@ export async function GET(request: Request) {
           verified += 1
           // verifySlip already stored the result under the key the modal reads.
           await redisSet(scannedKey(message.id), '1', SCANNED_TTL_SECONDS)
+
+          // The bank confirmed this transfer. If the customer has exactly one
+          // outstanding BDO for that same amount, there is nothing for a rep to
+          // decide — file it now so the order stops looking unpaid.
+          const paidAmount = Number(result.data?.amount)
+          if (message.userId && Number.isFinite(paidAmount) && paidAmount > 0) {
+            const bdos = await getPendingBdos(message.userId)
+            const outcome = pickBdoForAmount(bdos, paidAmount)
+
+            if (outcome.status === 'matched') {
+              const attached = await attachSlip({
+                userId: message.userId,
+                messageId: message.id,
+                amount: paidAmount,
+                transferDate: result.data?.transDate
+                  ? String(result.data.transDate).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')
+                  : undefined,
+                bdoId: outcome.bdo.bdo_id,
+                bdoName: outcome.bdo.bdo_name ?? null,
+                notifyCustomer: true,
+                slipVerified: true,
+                slipVerifyRef: result.data?.transRef ?? null,
+                slipVerifyAmount: paidAmount,
+                slipVerifyData: result.data,
+                uploadedBy: 'auto-match',
+              })
+
+              if (attached.success) {
+                autoMatched += 1
+                console.log(
+                  `[prescan-slips] auto-matched message ${message.id} -> BDO ${outcome.bdo.bdo_id} (฿${paidAmount})`
+                )
+              } else {
+                attachFailed += 1
+                console.error('[prescan-slips] attach failed for message', message.id, attached.error)
+              }
+            } else if (outcome.status === 'ambiguous') {
+              // Several BDOs share this amount; a rep has to say which one.
+              ambiguous += 1
+            } else {
+              noBdoMatch += 1
+            }
+          }
         } else {
           // A slip the bank has not registered yet ("slip-not-found") shows up
           // minutes later, so it is worth retrying — but not forever. Each failed
@@ -168,6 +222,10 @@ export async function GET(request: Request) {
       scanned,
       noQr,
       verified,
+      autoMatched,
+      ambiguous,
+      noBdoMatch,
+      attachFailed,
       failed,
       exhausted,
       tookMs: Date.now() - startedAt,
