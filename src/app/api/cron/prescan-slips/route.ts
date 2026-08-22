@@ -30,8 +30,19 @@ const MAX_VERIFY_PER_RUN = 20
 /** Only look at images recent enough that a rep may still open them. */
 const LOOKBACK_MINUTES = 180
 
+/**
+ * How many times an image may fail verification before we stop paying to retry
+ * it. A slip the bank has not posted yet usually appears within a couple of
+ * minutes; anything still failing after this was never going to verify.
+ */
+const MAX_ATTEMPTS = 3
+
 function scannedKey(messageId: number) {
   return `slip:prescan:${messageId}`
+}
+
+function attemptsKey(messageId: number) {
+  return `slip:prescan:attempts:${messageId}`
 }
 
 export async function GET(request: Request) {
@@ -75,6 +86,8 @@ export async function GET(request: Request) {
     let noQr = 0
     let verified = 0
     let failed = 0
+    /** Failed images that hit MAX_ATTEMPTS and will not be retried again. */
+    let exhausted = 0
 
     for (const message of messages) {
       if (verified + failed >= MAX_VERIFY_PER_RUN) break
@@ -116,8 +129,16 @@ export async function GET(request: Request) {
           await redisSet(scannedKey(message.id), '1', SCANNED_TTL_SECONDS)
         } else {
           // A slip the bank has not registered yet ("slip-not-found") shows up
-          // minutes later, so leave it unmarked and let the next run retry.
+          // minutes later, so it is worth retrying — but not forever. Each failed
+          // attempt costs a full OCR round trip (~60s and one slip-c call), so an
+          // image that will never verify would burn quota on every run.
           failed += 1
+          const attempts = Number((await redisGet(attemptsKey(message.id))) || 0) + 1
+          await redisSet(attemptsKey(message.id), String(attempts), SCANNED_TTL_SECONDS)
+          if (attempts >= MAX_ATTEMPTS) {
+            exhausted += 1
+            await redisSet(scannedKey(message.id), '1', SCANNED_TTL_SECONDS)
+          }
         }
       } catch (error) {
         failed += 1
@@ -132,6 +153,7 @@ export async function GET(request: Request) {
       noQr,
       verified,
       failed,
+      exhausted,
       tookMs: Date.now() - startedAt,
       timestamp: new Date().toISOString(),
     }
