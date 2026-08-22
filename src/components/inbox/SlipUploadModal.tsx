@@ -321,45 +321,39 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
         }
       }
 
-      // Points recording (if slip is verified)
-      let earnedPoints = 0
-      if (verifyResult?.verified && verifyResult?.data?.amount) {
-        earnedPoints = Math.floor(verifyResult.data.amount / POINTS_RATE)
-        if (earnedPoints > 0) {
-          try {
-            await fetch(`/api/customers/${userId}/points/adjust`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                points: earnedPoints,
-                reason: `แต้มจากสลิป ${bdo.bdo_name || 'BDO-' + bdo.bdo_id} (฿${verifyResult.data.amount.toLocaleString()})`,
-                type: 'earn',
-              }),
-            })
-          } catch {
-            // Points recording failure should not block slip save
-            console.error('Failed to record points')
-          }
-        }
+      // The slip is saved at this point. Points and the LINE notification are
+      // side effects that already tolerated their own failure, so awaiting them
+      // only kept the rep watching a spinner for another 1–3s.
+      const earnedPoints =
+        verifyResult?.verified && verifyResult?.data?.amount
+          ? Math.floor(verifyResult.data.amount / POINTS_RATE)
+          : 0
+
+      if (earnedPoints > 0 && verifyResult?.data?.amount) {
+        void fetch(`/api/customers/${userId}/points/adjust`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            points: earnedPoints,
+            reason: `แต้มจากสลิป ${bdo.bdo_name || 'BDO-' + bdo.bdo_id} (฿${verifyResult.data.amount.toLocaleString()})`,
+            type: 'earn',
+          }),
+        }).catch(() => console.error('Failed to record points'))
       }
 
       // Send Flex notification to LINE (if checkbox enabled + slip verified)
       if (sendToCustomer && verifyResult?.verified && verifyResult?.data) {
-        try {
-          await fetch('/api/inbox/slip-verify-notify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: Number(userId),
-              verifyData: verifyResult.data,
-              points: earnedPoints,
-              bdoName: bdo.bdo_name || 'BDO-' + bdo.bdo_id,
-              customerName: customerName || null,
-            }),
-          })
-        } catch {
-          console.error('Failed to send LINE notification')
-        }
+        void fetch('/api/inbox/slip-verify-notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: Number(userId),
+            verifyData: verifyResult.data,
+            points: earnedPoints,
+            bdoName: bdo.bdo_name || 'BDO-' + bdo.bdo_id,
+            customerName: customerName || null,
+          }),
+        }).catch(() => console.error('Failed to send LINE notification'))
       }
 
       const pointsMsg = earnedPoints > 0 ? ` (+${earnedPoints} แต้ม)` : ''
