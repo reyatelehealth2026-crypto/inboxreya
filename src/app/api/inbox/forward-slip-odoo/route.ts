@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { callPhpApi } from '@/lib/php-bridge'
 import { mergeSlipMetadata } from '@/lib/slip-mark'
+import { adjustPoints } from '@/lib/loyalty'
 
 /** 1,000 ฿ = 1 point. Same rate the slip modal shows the rep. */
 const POINTS_RATE = 1000
@@ -233,15 +234,14 @@ export async function POST(request: NextRequest) {
     const cookie = request.headers.get('cookie') || ''
     const selfBase = `http://127.0.0.1:${process.env.PORT || 3000}`
 
+    // Points go straight to the database, not back out through the points
+    // endpoint. Money must not depend on a session cookie surviving a loopback
+    // hop — a 401 there would drop the customer's points with no visible error.
     if (earnedPoints > 0) {
-      void fetch(`${selfBase}/api/customers/${parsedUserId}/points/adjust`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', cookie },
-        body: JSON.stringify({
-          points: earnedPoints,
-          reason: `แต้มจากสลิป ${bdoName || (bdoId ? `BDO-${bdoId}` : 'สลิป')} (฿${verifiedAmount.toLocaleString()})`,
-          type: 'earn',
-        }),
+      void adjustPoints({
+        userId: parsedUserId,
+        points: earnedPoints,
+        reason: `แต้มจากสลิป ${bdoName || (bdoId ? `BDO-${bdoId}` : 'สลิป')} (฿${verifiedAmount.toLocaleString()})`,
       }).catch((error) => console.error('[forward-slip-odoo] points failed', error))
     }
 
