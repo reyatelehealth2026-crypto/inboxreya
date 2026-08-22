@@ -72,6 +72,14 @@ export async function GET(request: Request) {
     const maxVerify =
       Number.isFinite(maxParam) && maxParam > 0 ? Math.min(maxParam, 200) : MAX_VERIFY_PER_RUN
 
+    /**
+     * Rehearsal mode: re-evaluate a window and report what would happen without
+     * changing anything. It ignores the scanned markers — so a window that has
+     * already been processed can still be inspected — and writes none of them
+     * back, attaches nothing, awards no points and sends no LINE message.
+     */
+    const dryRun = url.searchParams.get('dryRun') === '1'
+
     const since = new Date(Date.now() - lookbackMinutes * 60 * 1000)
 
     // The lookback is applied in JS, not as `createdAt: { gte: since }`.
@@ -114,11 +122,19 @@ export async function GET(request: Request) {
     let noBdoMatch = 0
     /** The BDO matched but Odoo refused the attachment. */
     let attachFailed = 0
+    /** Dry-run only: what a real run would have filed. */
+    const wouldAttach: Array<{
+      messageId: number
+      userId: number | null
+      amount: number
+      bdoId: number
+      bdoName: string | null
+    }> = []
 
     for (const message of messages) {
       if (verified + failed >= maxVerify) break
 
-      if (await redisGet(scannedKey(message.id))) continue
+      if (!dryRun && (await redisGet(scannedKey(message.id)))) continue
 
       const directUrl = message.content && /^https?:\/\//.test(message.content) ? message.content : null
       const proxyUrl =
@@ -141,7 +157,7 @@ export async function GET(request: Request) {
         if (!qr) {
           // Not a transfer slip. Mark it so we never pay to look again.
           noQr += 1
-          await redisSet(scannedKey(message.id), '1', SCANNED_TTL_SECONDS)
+          if (!dryRun) await redisSet(scannedKey(message.id), '1', SCANNED_TTL_SECONDS)
           continue
         }
 
@@ -152,7 +168,7 @@ export async function GET(request: Request) {
         if (result.verified) {
           verified += 1
           // verifySlip already stored the result under the key the modal reads.
-          await redisSet(scannedKey(message.id), '1', SCANNED_TTL_SECONDS)
+          if (!dryRun) await redisSet(scannedKey(message.id), '1', SCANNED_TTL_SECONDS)
 
           // The bank confirmed this transfer. If the customer has exactly one
           // outstanding BDO for that same amount, there is nothing for a rep to
@@ -162,7 +178,17 @@ export async function GET(request: Request) {
             const bdos = await getPendingBdos(message.userId)
             const outcome = pickBdoForAmount(bdos, paidAmount)
 
-            if (outcome.status === 'matched') {
+            if (outcome.status === 'matched' && dryRun) {
+              // Rehearsal: say what would be filed, touch nothing.
+              autoMatched += 1
+              wouldAttach.push({
+                messageId: message.id,
+                userId: message.userId,
+                amount: paidAmount,
+                bdoId: outcome.bdo.bdo_id,
+                bdoName: outcome.bdo.bdo_name ?? null,
+              })
+            } else if (outcome.status === 'matched') {
               const attached = await attachSlip({
                 userId: message.userId,
                 messageId: message.id,
@@ -202,11 +228,13 @@ export async function GET(request: Request) {
           // attempt costs a full OCR round trip (~60s and one slip-c call), so an
           // image that will never verify would burn quota on every run.
           failed += 1
-          const attempts = Number((await redisGet(attemptsKey(message.id))) || 0) + 1
-          await redisSet(attemptsKey(message.id), String(attempts), SCANNED_TTL_SECONDS)
-          if (attempts >= MAX_ATTEMPTS) {
-            exhausted += 1
-            await redisSet(scannedKey(message.id), '1', SCANNED_TTL_SECONDS)
+          if (!dryRun) {
+            const attempts = Number((await redisGet(attemptsKey(message.id))) || 0) + 1
+            await redisSet(attemptsKey(message.id), String(attempts), SCANNED_TTL_SECONDS)
+            if (attempts >= MAX_ATTEMPTS) {
+              exhausted += 1
+              await redisSet(scannedKey(message.id), '1', SCANNED_TTL_SECONDS)
+            }
           }
         }
       } catch (error) {
@@ -217,6 +245,7 @@ export async function GET(request: Request) {
 
     const summary = {
       success: true,
+      ...(dryRun ? { dryRun: true, wouldAttach } : {}),
       lookbackMinutes,
       candidates: messages.length,
       scanned,
