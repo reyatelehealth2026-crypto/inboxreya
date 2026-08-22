@@ -94,4 +94,32 @@ describe('pickBdoForAmount', () => {
   it('returns none when the customer has no outstanding BDOs', () => {
     expect(pickBdoForAmount([], 1500).status).toBe('none')
   })
+
+  it('treats the same BDO repeated by the feed as one bill', () => {
+    // Real shape from customer PC210345: pending_bdo_orders returned bdo_id
+    // 49648 twice, which used to read as two competing bills.
+    const result = pickBdoForAmount(
+      [
+        bdo({ bdo_id: 49648, amount_total: 2577, amount_net_to_pay: null }),
+        bdo({ bdo_id: 49648, amount_total: 2577, amount_net_to_pay: null }),
+        bdo({ bdo_id: 56505, amount_total: 2501.26, amount_net_to_pay: null }),
+      ],
+      2577
+    )
+
+    expect(result.status).toBe('matched')
+    expect(result.status === 'matched' && result.bdo.bdo_id).toBe(49648)
+  })
+
+  it('still refuses when two genuinely different BDOs share an amount', () => {
+    const result = pickBdoForAmount(
+      [
+        bdo({ bdo_id: 49648, amount_total: 2577, amount_net_to_pay: null }),
+        bdo({ bdo_id: 49649, amount_total: 2577, amount_net_to_pay: null }),
+      ],
+      2577
+    )
+
+    expect(result.status).toBe('ambiguous')
+  })
 })

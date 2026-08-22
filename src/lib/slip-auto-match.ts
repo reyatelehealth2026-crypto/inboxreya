@@ -41,7 +41,18 @@ const SATANG_EPSILON = 0.005
 export function pickBdoForAmount(bdos: PendingBdo[], amount: number): MatchOutcome {
   if (!Number.isFinite(amount) || amount <= 0) return { status: 'none' }
 
-  const candidates = bdos.filter((bdo) => {
+  // The PHP `pending_bdo_orders` feed repeats the same order — customer PC210345
+  // came back with bdo_id 49648 twice. Without this, one duplicated bill looks
+  // like two competing bills and nothing is ever matched automatically.
+  const seen = new Set<number>()
+  const unique = bdos.filter((bdo) => {
+    const id = Number(bdo.bdo_id)
+    if (!Number.isFinite(id) || seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+
+  const candidates = unique.filter((bdo) => {
     const payable = bdoPayable(bdo)
     if (payable === null) return false
 
