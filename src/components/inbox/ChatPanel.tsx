@@ -703,9 +703,11 @@ function MessageBubble({
                               const body: Record<string, any> = {
                                 messageId: message.id,
                                 userId: message.userId,
-                                // This quick path never notified the customer;
-                                // keep it that way. Points are still awarded.
-                                notifyCustomer: false,
+                                // Tell the customer their slip cleared, the same
+                                // way the BDO screen does — same endpoint, same
+                                // flex, with the transfer details and the points.
+                                notifyCustomer: true,
+                                customerName: user?.displayName || null,
                               }
                               if (slipAmount) body.amount = parseFloat(slipAmount)
                               if (slipDate) body.transferDate = slipDate

@@ -57,7 +57,20 @@ export async function GET(request: Request) {
       }
     }
 
-    const since = new Date(Date.now() - LOOKBACK_MINUTES * 60 * 1000)
+    // Both are overridable so a catch-up run can sweep further back than the
+    // regular window — e.g. ?minutes=780&max=60 to cover everything since this
+    // morning. Capped so a stray value cannot ask for the whole message history.
+    const url = new URL(request.url)
+    const minutesParam = Number(url.searchParams.get('minutes'))
+    const maxParam = Number(url.searchParams.get('max'))
+    const lookbackMinutes =
+      Number.isFinite(minutesParam) && minutesParam > 0
+        ? Math.min(minutesParam, 10_080) // 7 days
+        : LOOKBACK_MINUTES
+    const maxVerify =
+      Number.isFinite(maxParam) && maxParam > 0 ? Math.min(maxParam, 200) : MAX_VERIFY_PER_RUN
+
+    const since = new Date(Date.now() - lookbackMinutes * 60 * 1000)
 
     // The lookback is applied in JS, not as `createdAt: { gte: since }`.
     // The client in @/lib/prisma shifts every Date in a query by +7h unless the
@@ -72,7 +85,9 @@ export async function GET(request: Request) {
         direction: 'incoming',
       },
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      // Generous because the lookback can be widened for a catch-up run; the
+      // rows are four small columns and everything already scanned is skipped.
+      take: 500,
       select: { id: true, content: true, mediaUrl: true, createdAt: true },
     })
 
@@ -90,7 +105,7 @@ export async function GET(request: Request) {
     let exhausted = 0
 
     for (const message of messages) {
-      if (verified + failed >= MAX_VERIFY_PER_RUN) break
+      if (verified + failed >= maxVerify) break
 
       if (await redisGet(scannedKey(message.id))) continue
 
@@ -148,6 +163,7 @@ export async function GET(request: Request) {
 
     const summary = {
       success: true,
+      lookbackMinutes,
       candidates: messages.length,
       scanned,
       noQr,
