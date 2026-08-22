@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/hooks/use-toast'
+import { SlipCheckTips } from '@/components/inbox/SlipCheckTips'
 import { cn } from '@/lib/utils'
 
 interface SlipVerifyResult {
@@ -197,7 +198,9 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
       const res = await fetch('/api/inbox/verify-slip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrl: imageUrlToVerify }),
+        // Sending the amount lets slip-c skip OCR (~3x faster).
+        // It falls back on its own when the amount does not match.
+        body: JSON.stringify({ imageUrl: imageUrlToVerify, amount: parseFloat(amount) || undefined }),
       })
       const json: SlipVerifyResult = await res.json()
       setVerifyResult(json)
@@ -557,6 +560,8 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
                 />
               </div>
             </div>
+
+            <SlipCheckTips />
 
             {/* Verify Result Panel */}
             {verifyResult && (

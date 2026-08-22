@@ -18,6 +18,7 @@ import { TemplatePickerModal } from '@/components/inbox/TemplatePickerModal'
 import { SummaryModal } from '@/components/inbox/SummaryModal'
 import { OrderDraftModal } from '@/components/inbox/OrderDraftModal'
 import { ActionSuggestCard } from '@/components/inbox/ActionSuggestCard'
+import { SlipCheckTips } from '@/components/inbox/SlipCheckTips'
 import { useInboxStore } from '@/stores/inbox'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
@@ -501,14 +502,30 @@ function MessageBubble({
                     </DialogHeader>
 
                     <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-600 mb-1">วันที่โอน</label>
-                          <input
-                            type="date"
-                            value={slipDate}
-                            onChange={(e) => setSlipDate(e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                          />
+                        <SlipCheckTips />
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-600 mb-1">จำนวนเงิน</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={slipAmount}
+                              onChange={(e) => setSlipAmount(e.target.value)}
+                              placeholder="ใส่ก่อนตรวจ = เร็วขึ้น"
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-600 mb-1">วันที่โอน</label>
+                            <input
+                              type="date"
+                              value={slipDate}
+                              onChange={(e) => setSlipDate(e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            />
+                          </div>
                         </div>
 
                         {/* Verification Result Panel */}
@@ -611,7 +628,9 @@ function MessageBubble({
                               const res = await fetch('/api/inbox/verify-slip', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ imageUrl: imgUrl }),
+                                // Sending the amount lets slip-c skip OCR (~3x faster).
+                                // It falls back on its own when the amount does not match.
+                                body: JSON.stringify({ imageUrl: imgUrl, amount: parseFloat(slipAmount) || undefined }),
                               })
                               const result = await res.json()
                               setSlipVerifyResult(result)
