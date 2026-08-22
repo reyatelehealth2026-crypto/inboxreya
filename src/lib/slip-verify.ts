@@ -165,7 +165,12 @@ const ERROR_MESSAGES: Record<string, string> = {
  * "ตรวจสอบไม่สำเร็จ". Measured round trips: QR 0.2–18s, OCR ~56s.
  */
 const QR_TIMEOUT_MS = 20_000
-const OCR_TIMEOUT_MS = 60_000
+/**
+ * 50s, down from 60s. Production logs show successful OCR replies landing at
+ * 16–53s; past that slip-c was not going to answer at all, and the rep was left
+ * watching a spinner for a full minute before being told nothing was found.
+ */
+const OCR_TIMEOUT_MS = 50_000
 
 /**
  * The OCR call no longer waits for the QR call to fail. QR answers in 0.2–18s

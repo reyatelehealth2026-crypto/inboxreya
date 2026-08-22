@@ -258,6 +258,17 @@ function MessageBubble({
   const [slipDate, setSlipDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [slipVerifying, setSlipVerifying] = useState(false)
   const [slipVerifyResult, setSlipVerifyResult] = useState<any>(null)
+  // slip-c can take the better part of a minute. Without a visible counter the
+  // rep cannot tell a slow check from a frozen one, and gives up on a request
+  // that was about to answer.
+  const [slipVerifySeconds, setSlipVerifySeconds] = useState(0)
+
+  useEffect(() => {
+    if (!slipVerifying) return
+    setSlipVerifySeconds(0)
+    const timer = setInterval(() => setSlipVerifySeconds((s) => s + 1), 1000)
+    return () => clearInterval(timer)
+  }, [slipVerifying])
 
   // Check if this message is a quote reply (has replyTo relation)
   const isQuoteReply = !!message.replyTo
@@ -628,6 +639,18 @@ function MessageBubble({
                               <span className="text-sm font-semibold text-red-600">ตรวจสอบสลิปไม่ผ่าน</span>
                             </div>
                             <p className="text-xs text-red-500 mt-1">{slipVerifyResult.error || 'กรุณาตรวจสอบสลิปอีกครั้ง'}</p>
+                            {/* The bank only keeps recent transfers, so an older slip
+                                cannot be verified at all — the rep still has to be
+                                able to file it. */}
+                            {slipVerifyResult.status === 'slip-not-found' && (
+                              <p className="mt-2 text-xs text-red-500">
+                                ถ้าสลิปโอนมาหลายวันแล้ว ระบบธนาคารมักไม่มีข้อมูลให้ตรวจ — กรณีนี้ตรวจไม่ผ่านถือว่าปกติ
+                              </p>
+                            )}
+                            <p className="mt-2 rounded-lg bg-white/70 px-2 py-1.5 text-xs font-medium text-gray-700">
+                              กด &quot;บันทึกสลิป&quot; ต่อได้เลย ระบบจะบันทึกให้โดยไม่ต้องผ่านการตรวจ
+                              (แต่จะไม่ให้แต้มและไม่แจ้งลูกค้า)
+                            </p>
                           </div>
                         )}
                       </div>
@@ -689,7 +712,7 @@ function MessageBubble({
                           }}
                         >
                           {slipVerifying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-                          {slipVerifying ? 'กำลังตรวจ...' : 'ตรวจสอบสลิป'}
+                          {slipVerifying ? `กำลังตรวจ... ${slipVerifySeconds} วิ` : 'ตรวจสอบสลิป'}
                         </button>
 
                         <button
