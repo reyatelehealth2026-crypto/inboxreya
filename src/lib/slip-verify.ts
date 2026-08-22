@@ -226,17 +226,32 @@ export async function fetchSlipImage(imageUrl: string): Promise<SlipImage | null
   const original = Buffer.from(await res.arrayBuffer())
   if (!original.length) return null
 
+  const asIs = (): SlipImage => ({
+    buffer: original,
+    dataUri: `data:${contentType.split(';')[0]};base64,${original.toString('base64')}`,
+  })
+
   try {
     const image = await Jimp.read(original)
     const longestEdge = Math.max(image.bitmap.width, image.bitmap.height)
 
-    // Only ever shrink. Upscaling a small slip adds no detail for jsQR and would
-    // make the payload bigger than the file we started with.
-    if (longestEdge > MAX_IMAGE_EDGE_PX) {
+    const oversized = longestEdge > MAX_IMAGE_EDGE_PX
+    if (oversized) {
       image.scaleToFit({ w: MAX_IMAGE_EDGE_PX, h: MAX_IMAGE_EDGE_PX })
     }
 
     const jpeg = await image.getBuffer('image/jpeg', { quality: JPEG_QUALITY })
+
+    // Re-encoding is not automatically a win. Measured on real slips: a 1074x1320
+    // one shrank 302KB→222KB, while an already-tight 720x1280 GREW 61KB→95KB and
+    // cost 55% more upload. So when we did not drop any pixels, keep whichever
+    // buffer is actually smaller. Once the image was oversized the resized copy
+    // always wins regardless of bytes — fewer pixels is the point there, since
+    // jsQR and Jimp both scale with pixel count and that decode blocks the loop.
+    if (!oversized && jpeg.length >= original.length) {
+      return asIs()
+    }
+
     return {
       buffer: jpeg,
       dataUri: `data:image/jpeg;base64,${jpeg.toString('base64')}`,
@@ -244,10 +259,7 @@ export async function fetchSlipImage(imageUrl: string): Promise<SlipImage | null
   } catch {
     // An exotic or corrupt encoding Jimp cannot open is still worth sending to
     // slip-c as-is — its OCR may well read what we could not.
-    return {
-      buffer: original,
-      dataUri: `data:${contentType.split(';')[0]};base64,${original.toString('base64')}`,
-    }
+    return asIs()
   }
 }
 

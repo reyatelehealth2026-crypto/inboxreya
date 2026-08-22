@@ -48,16 +48,24 @@ export async function GET(request: Request) {
 
     const since = new Date(Date.now() - LOOKBACK_MINUTES * 60 * 1000)
 
-    const messages = await prisma.message.findMany({
+    // The lookback is applied in JS, not as `createdAt: { gte: since }`.
+    // The client in @/lib/prisma shifts every Date in a query by +7h unless the
+    // field is a real TIMESTAMP column, but it decides that from the innermost
+    // key — inside a range filter that key is `gte`, not `createdAt`, so the
+    // exemption misses and the bound lands 7 hours in the future. This route
+    // then found zero rows on every run. Taking the newest rows and filtering
+    // here is correct whatever the extension does to Dates.
+    const recent = await prisma.message.findMany({
       where: {
         messageType: 'image',
         direction: 'incoming',
-        createdAt: { gte: since },
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
-      select: { id: true, content: true, mediaUrl: true },
+      select: { id: true, content: true, mediaUrl: true, createdAt: true },
     })
+
+    const messages = recent.filter((m) => m.createdAt && m.createdAt >= since)
 
     // Same URL shape the modal sends to /api/inbox/verify-slip — the Redis key is
     // derived from it, so any difference here would silently miss the cache.
