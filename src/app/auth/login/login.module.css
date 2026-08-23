@@ -1,0 +1,573 @@
+/* Hallmark · pre-emit critique: P4 H5 E4 S4 R3 V4
+ * genre: modern-minimal · macrostructure: Split Studio (glass shell variant)
+ * theme: ported from wholesale.re-ya.com/admin — navy diagonal + cobalt accent
+ * source: cny-wholesale-nuxt/pages/admin/login.vue (user-directed parity port)
+ * states: default · hover · focus · active · disabled · loading · error · success
+ * contrast: pass (40-41) · icons: lucide only (30) · tokens: pass (48)
+ * NOTE: the orbs, diagonal gradient, glass shell, and gradient CTA are carried
+ * over deliberately so this page matches its sibling admin app. Hallmark would
+ * not pick them on a greenfield build; parity with wholesale is the brief.
+ */
+
+.page {
+  /* --- tokens (ported 1:1 from the wholesale admin login) --- */
+  --ink: #19304f;
+  --ink-deep: #10305d;
+  --ink-mid: #173e74;
+  --paper: #eff5fb;
+  --paper-2: #e9f1fa;
+  --paper-card: rgba(248, 251, 255, 0.86);
+  --rail-text: #ffffff;
+  --rail-text-2: #c3dcf4;
+  --rail-text-3: #d1e7fb;
+  --kicker-ink: #dbedff;
+  --kicker-dark-ink: #4075aa;
+  --kicker-dark-bg: #ebf4ff;
+  --accent: #1666c7;
+  --accent-2: #2987df;
+  --accent-soft: #e6f2ff;
+  --accent-light: #91ceff;
+  --gold: #ffd976;
+  --gold-2: #fff1b4;
+  --field-ink: #1c304b;
+  --field-icon: #7890aa;
+  --field-placeholder: #a4b2c0;
+  --label-ink: #38526f;
+  --muted: #71839a;
+  --muted-2: #8596ab;
+  --error-ink: #a9363d;
+  --error-bg: #fff0f1;
+  --heading-ink: #162c49;
+
+  --radius-shell: 1.7rem;
+  --radius-card: 1.45rem;
+  --radius-field: 0.78rem;
+  --control-h: 48px;
+
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur: 0.24s;
+
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.page::before {
+  content: '';
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  background: linear-gradient(
+    132deg,
+    var(--ink-deep) 0%,
+    /* 53%, not the source's 47%: at 47% the seam cuts through the rail's body
+       copy and trust line, and the tails render pale-on-pale (the source has
+       this bug live). Pushing it 6% right keeps every rail line on navy and
+       still reads as the same diagonal. */
+    var(--ink-mid) 53%,
+    var(--paper-2) 53%,
+    var(--paper) 100%
+  );
+}
+
+.page::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.13) 1px, transparent 1px);
+  background-size: 18px 18px;
+  mask-image: linear-gradient(to right, #000, transparent 66%);
+  -webkit-mask-image: linear-gradient(to right, #000, transparent 66%);
+}
+
+.orb {
+  position: absolute;
+  z-index: -1;
+  border-radius: 50%;
+  filter: blur(2px);
+  opacity: 0.58;
+}
+
+.orbOne {
+  width: 19rem;
+  height: 19rem;
+  left: -7rem;
+  top: 12%;
+  background: radial-gradient(circle, #54b8fc, transparent 67%);
+}
+
+.orbTwo {
+  width: 24rem;
+  height: 24rem;
+  right: -11rem;
+  bottom: -9rem;
+  background: radial-gradient(circle, #92c6f7, transparent 65%);
+}
+
+.shell {
+  width: min(1040px, 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(390px, 0.92fr);
+  min-height: min(660px, calc(100dvh - 2rem));
+  border-radius: var(--radius-shell);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 25px 80px rgba(8, 31, 64, 0.22),
+    inset 0 1px rgba(255, 255, 255, 0.18);
+}
+
+/* ---------- story rail ---------- */
+
+.story {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(1.6rem, 5vw, 3.35rem);
+  color: var(--rail-text);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: fit-content;
+  color: var(--rail-text);
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
+.brandMark {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  color: #123562;
+  background: linear-gradient(135deg, var(--gold), var(--gold-2));
+  border-radius: 0.8rem;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.6);
+}
+
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.34rem 0.56rem;
+  color: var(--kicker-ink);
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  font-size: 0.61rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1.15;
+}
+
+.kickerDark {
+  color: var(--kicker-dark-ink);
+  background: var(--kicker-dark-bg);
+}
+
+.storyTitle {
+  margin: 0.8rem 0;
+  min-width: 0;
+  max-width: 440px;
+  font-size: clamp(1.75rem, 4vw, 3.35rem);
+  font-weight: 700;
+  /* 1.2, not the .94 the condensed themes use: this wraps in Thai, and Thai
+     vowel marks sit above the cap line — a tighter leading collides them. */
+  line-height: 1.2;
+  letter-spacing: -0.055em;
+  overflow-wrap: anywhere;
+}
+
+.storyTitleAccent {
+  color: var(--accent-light);
+  font-style: normal;
+}
+
+.storyBody {
+  max-width: 390px;
+  margin: 0;
+  color: var(--rail-text-2);
+  font-size: 0.9rem;
+  line-height: 1.75;
+}
+
+.trust {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--rail-text-3);
+  font-size: 0.75rem;
+}
+
+.trustIcon {
+  display: grid;
+  place-items: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  flex-shrink: 0;
+  color: var(--gold);
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 0.65rem;
+}
+
+/* ---------- card ---------- */
+
+.cardWrap {
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 3.5vw, 2.35rem);
+  background: var(--paper-card);
+  border-radius: var(--radius-card);
+}
+
+.card {
+  width: min(350px, 100%);
+}
+
+.cardHead {
+  margin-bottom: 1.8rem;
+}
+
+.cardIcon {
+  display: grid;
+  place-items: center;
+  width: 2.65rem;
+  height: 2.65rem;
+  margin-bottom: 1rem;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0.9rem;
+}
+
+.cardTitle {
+  margin: 0.65rem 0 0.3rem;
+  min-width: 0;
+  color: var(--heading-ink);
+  font-size: 1.38rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.cardLede {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.form {
+  display: grid;
+  gap: 1rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.field label {
+  color: var(--label-ink);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.inputWrap {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  height: var(--control-h);
+  padding: 0 0.78rem;
+  color: var(--field-icon);
+  background: #fff;
+  /* 1px transparent border held in every state so the error state can colour it
+     without shifting the box. */
+  border: 1px solid transparent;
+  border-radius: var(--radius-field);
+  box-shadow:
+    0 1px 0 rgba(20, 50, 83, 0.07),
+    0 7px 18px rgba(22, 53, 89, 0.045);
+  transition: box-shadow 0.2s var(--ease-out);
+}
+
+@media (hover: hover) {
+  .inputWrap:hover {
+    box-shadow:
+      0 1px 0 rgba(20, 50, 83, 0.1),
+      0 7px 18px rgba(22, 53, 89, 0.07);
+  }
+}
+
+/* The wrap carries the focus indicator for the whole field, so the ring is a
+   solid 2px accent rather than the reference's 15%-alpha wash — that wash sits
+   under 3:1 against white and fails as a keyboard indicator. */
+.inputWrap:focus-within {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 7px 18px rgba(22, 53, 89, 0.06);
+}
+
+/* The inner input must not draw its own ring on top of the wrap's — two boxes
+   nested 3px apart read as a rendering bug. */
+.inputWrap input:focus-visible {
+  outline: none;
+}
+
+.inputWrapError {
+  border-color: var(--error-ink);
+}
+
+.inputWrap input {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  color: var(--field-ink);
+  background: transparent;
+  font-size: 0.88rem;
+  font-family: inherit;
+}
+
+.inputWrap input::placeholder {
+  color: var(--field-placeholder);
+}
+
+.inputWrap input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.fieldIcon {
+  flex-shrink: 0;
+}
+
+.passwordToggle {
+  display: grid;
+  place-items: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  flex-shrink: 0;
+  position: relative;
+  color: #6985a3;
+  background: transparent;
+  border: 0;
+  border-radius: 0.52rem;
+  cursor: pointer;
+  transition: color var(--dur) var(--ease-out), background-color var(--dur) var(--ease-out);
+}
+
+/* 44px touch target without growing the visual chip. */
+.passwordToggle::before {
+  content: '';
+  position: absolute;
+  inset: -0.55rem;
+}
+
+@media (hover: hover) {
+  .passwordToggle:hover {
+    color: var(--accent);
+    background: #edf5ff;
+  }
+}
+
+.passwordToggle:active {
+  transform: translateY(1px);
+}
+
+.passwordToggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------- error ---------- */
+
+/* No reserved height: the alert sits below both fields, so it only ever pushes
+   the submit button — never the input the user is typing in. Reserving 44px
+   here (as the inbox Split Studio build did) leaves a visible void in the happy
+   path, and the reference design doesn't have one. */
+.errorSlot:empty {
+  display: none;
+}
+
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.68rem 0.76rem;
+  color: var(--error-ink);
+  background: var(--error-bg);
+  border-radius: 0.7rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.errorIcon {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+/* ---------- submit ---------- */
+
+.submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  width: 100%;
+  height: var(--control-h);
+  margin-top: 0.3rem;
+  padding: 0 1rem;
+  color: #fff;
+  background: linear-gradient(110deg, var(--accent), var(--accent-2));
+  border: 0;
+  border-radius: var(--radius-field);
+  box-shadow: 0 11px 22px rgba(22, 102, 199, 0.23);
+  font-size: 0.84rem;
+  font-weight: 700;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .submit:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 25px rgba(22, 102, 199, 0.3);
+  }
+}
+
+.submit:not(:disabled):active {
+  transform: translateY(0);
+  box-shadow: 0 6px 14px rgba(22, 102, 199, 0.22);
+}
+
+.submit:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+/* Bootstrap's .spinner-border.spinner-border-sm, reproduced so the loading
+   state matches the source app exactly. */
+.spinner {
+  display: inline-block;
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
+  border: 0.15em solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spinnerBorder 0.75s linear infinite;
+}
+
+@keyframes spinnerBorder {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.submitArrow {
+  display: grid;
+  place-items: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 0.48rem;
+}
+
+.help {
+  margin: 1.25rem 0 0;
+  text-align: center;
+  color: var(--muted-2);
+  font-size: 0.72rem;
+  line-height: 1.6;
+}
+
+.helpLink {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+/* ---------- focus rings ---------- */
+
+.page :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 0.4rem;
+}
+
+.story :focus-visible {
+  outline-color: var(--accent-light);
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 800px) {
+  .page {
+    padding: 0;
+    background: #f6f9fd;
+  }
+
+  .page::before,
+  .page::after {
+    display: none;
+  }
+
+  .orb {
+    display: none;
+  }
+
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+  }
+
+  .story {
+    display: none;
+  }
+
+  .cardWrap {
+    min-height: 100dvh;
+    padding: 1.5rem;
+    border-radius: 0;
+    background: #f6f9fd;
+  }
+
+  .card {
+    width: min(390px, 100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Transitions only — the loading spinner keeps turning, because freezing it
+     leaves a stalled ring that reads as a hung request. The source app draws
+     the same line. */
+  .page *,
+  .page *::before,
+  .page *::after {
+    transition-duration: 0.01ms !important;
+  }
+
+  .submit:not(:disabled):hover {
+    transform: none;
+  }
+}

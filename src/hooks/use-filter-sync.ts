@@ -19,6 +19,8 @@ export function useFilterSync() {
 
   // Parse filters from URL on mount
   useEffect(() => {
+    if (!searchParams) return
+
     const urlFilters: ConversationFilters = {}
 
     const status = searchParams.get('status')
@@ -72,6 +74,8 @@ export function useFilterSync() {
 
   // Update URL when filters change
   useEffect(() => {
+    if (!searchParams || !pathname) return
+
     const params = new URLSearchParams()
 
     if (filters.status && filters.status !== 'all') {

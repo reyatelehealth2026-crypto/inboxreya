@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/hooks/use-toast'
+import { SlipCheckTips } from '@/components/inbox/SlipCheckTips'
 import { cn } from '@/lib/utils'
 
 interface SlipVerifyResult {
@@ -197,7 +198,9 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
       const res = await fetch('/api/inbox/verify-slip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrl: imageUrlToVerify }),
+        // Sending the amount lets slip-c skip OCR (~3x faster).
+        // It falls back on its own when the amount does not match.
+        body: JSON.stringify({ imageUrl: imageUrlToVerify, amount: parseFloat(amount) || undefined }),
       })
       const json: SlipVerifyResult = await res.json()
       setVerifyResult(json)
@@ -275,6 +278,11 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
             amount: amount ? parseFloat(amount) : undefined,
             transferDate: transferDate || undefined,
             bdoId: bdo.bdo_id,
+            // The server awards the points, sends the LINE flex and marks the
+            // chat image, so it needs the same labels the rep sees here.
+            bdoName: bdo.bdo_name || null,
+            customerName: customerName || null,
+            notifyCustomer: sendToCustomer,
             ...verifyPayload,
           }),
         })
@@ -309,6 +317,11 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
             amount: amount ? parseFloat(amount) : undefined,
             transferDate: transferDate || undefined,
             bdoId: bdo.bdo_id,
+            // The server awards the points, sends the LINE flex and marks the
+            // chat image, so it needs the same labels the rep sees here.
+            bdoName: bdo.bdo_name || null,
+            customerName: customerName || null,
+            notifyCustomer: sendToCustomer,
             ...verifyPayload,
           }),
         })
@@ -318,46 +331,14 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
         }
       }
 
-      // Points recording (if slip is verified)
-      let earnedPoints = 0
-      if (verifyResult?.verified && verifyResult?.data?.amount) {
-        earnedPoints = Math.floor(verifyResult.data.amount / POINTS_RATE)
-        if (earnedPoints > 0) {
-          try {
-            await fetch(`/api/customers/${userId}/points/adjust`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                points: earnedPoints,
-                reason: `แต้มจากสลิป ${bdo.bdo_name || 'BDO-' + bdo.bdo_id} (฿${verifyResult.data.amount.toLocaleString()})`,
-                type: 'earn',
-              }),
-            })
-          } catch {
-            // Points recording failure should not block slip save
-            console.error('Failed to record points')
-          }
-        }
-      }
-
-      // Send Flex notification to LINE (if checkbox enabled + slip verified)
-      if (sendToCustomer && verifyResult?.verified && verifyResult?.data) {
-        try {
-          await fetch('/api/inbox/slip-verify-notify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: Number(userId),
-              verifyData: verifyResult.data,
-              points: earnedPoints,
-              bdoName: bdo.bdo_name || 'BDO-' + bdo.bdo_id,
-              customerName: customerName || null,
-            }),
-          })
-        } catch {
-          console.error('Failed to send LINE notification')
-        }
-      }
+      // Points and the LINE notification are the server's job now (see
+      // /api/inbox/forward-slip-odoo). Firing them from here meant closing the
+      // modal or switching chats could cancel the request in flight and the
+      // customer would quietly never get their points.
+      const earnedPoints =
+        verifyResult?.verified && verifyResult?.data?.amount
+          ? Math.floor(verifyResult.data.amount / POINTS_RATE)
+          : 0
 
       const pointsMsg = earnedPoints > 0 ? ` (+${earnedPoints} แต้ม)` : ''
       toast({
@@ -557,6 +538,8 @@ export function SlipUploadModal({ open, onClose, bdo, userId, customerName, cust
                 />
               </div>
             </div>
+
+            <SlipCheckTips />
 
             {/* Verify Result Panel */}
             {verifyResult && (

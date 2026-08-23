@@ -31,27 +31,36 @@ export async function PATCH(
       );
     }
 
-    const body = (await request.json()) as { scheduledAt?: string };
-    if (!body.scheduledAt) {
+    const body = (await request.json()) as {
+      scheduledAt?: string
+      replaceBcid?: boolean
+    };
+
+    const wantsReplaceBcid = body.replaceBcid === true;
+    const wantsReschedule = typeof body.scheduledAt === 'string' && body.scheduledAt.length > 0;
+
+    if (!wantsReschedule && !wantsReplaceBcid) {
       return NextResponse.json(
-        { success: false, error: 'scheduledAt is required' },
+        { success: false, error: 'scheduledAt or replaceBcid is required' },
         { status: 400 }
       );
     }
 
-    const newDate = new Date(body.scheduledAt);
-    if (isNaN(newDate.getTime())) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid scheduledAt' },
-        { status: 400 }
-      );
-    }
-
-    if (newDate.getTime() <= Date.now()) {
-      return NextResponse.json(
-        { success: false, error: 'scheduledAt must be in the future' },
-        { status: 400 }
-      );
+    let newDate: Date | null = null;
+    if (wantsReschedule) {
+      newDate = new Date(body.scheduledAt as string);
+      if (isNaN(newDate.getTime())) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid scheduledAt' },
+          { status: 400 }
+        );
+      }
+      if (newDate.getTime() <= Date.now()) {
+        return NextResponse.json(
+          { success: false, error: 'scheduledAt must be in the future' },
+          { status: 400 }
+        );
+      }
     }
 
     const broadcast = await prisma.broadcastMessageV2.findFirst({
@@ -67,21 +76,40 @@ export async function PATCH(
 
     if (broadcast.status !== 'scheduled' && broadcast.status !== 'draft') {
       return NextResponse.json(
-        { success: false, error: 'Only scheduled broadcasts can be rescheduled' },
+        { success: false, error: 'Only scheduled or draft broadcasts can be edited' },
         { status: 400 }
       );
     }
 
+    // Build patch payload: optional content rewrite for {{BCID}} placeholders.
+    const updateData: { scheduledAt?: Date; content?: string } = {};
+    if (newDate) updateData.scheduledAt = newDate;
+
+    let replacedCount = 0;
+    if (wantsReplaceBcid && typeof broadcast.content === 'string') {
+      const placeholder = '{{BCID}}';
+      const idStr = String(id);
+      const occurrences = broadcast.content.split(placeholder).length - 1;
+      if (occurrences > 0) {
+        updateData.content = broadcast.content.split(placeholder).join(idStr);
+        replacedCount = occurrences;
+      }
+    }
+
     await prisma.broadcastMessageV2.update({
       where: { id },
-      data: { scheduledAt: newDate },
+      data: updateData,
     });
 
     await cacheInvalidate('broadcasts:*');
 
     return NextResponse.json({
       success: true,
-      data: { id, scheduledAt: newDate.toISOString() },
+      data: {
+        id,
+        scheduledAt: newDate?.toISOString() ?? broadcast.scheduledAt?.toISOString() ?? null,
+        bcidReplacements: replacedCount,
+      },
     });
   } catch (error) {
     return NextResponse.json(

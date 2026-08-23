@@ -25,40 +25,67 @@ const globalForPrisma = globalThis as unknown as {
  * 2. On READ (findMany/etc): Intercept all returned Date objects and SUBTRACT 7 hours.
  *    Prisma reads "10:00" and returns "10:00 UTC". We subtract 7h -> "03:00 UTC".
  *    Next.js sends "03:00 UTC" to browser, browser adds 7h -> "10:00 BKK" correctly!
+ * 
+ * timezone-aware TIMESTAMP vs naive DATETIME:
+ * Columns stored as TIMESTAMP in MySQL (e.g. messages.created_at, users.created_at, etc.)
+ * are automatically timezone-aware and stored in UTC. They should NOT be shifted!
  */
 
 const OFFSET_MS = 7 * 60 * 60 * 1000 // 7 hours for Asia/Bangkok
 
-function shiftDatesForward(obj: any): any {
+const TIMESTAMP_FIELDS: Record<string, string[]> = {
+  Message: ['createdAt'],
+  LineUser: ['createdAt', 'updatedAt'],
+  AutoTagRule: ['createdAt', 'updatedAt'],
+  transactions: ['created_at', 'updated_at'],
+  AiUsageLog: ['createdAt'],
+  FeatureFlag: ['updatedAt'],
+  TikTokShopAccount: ['createdAt', 'updatedAt'],
+  FacebookAccount: ['createdAt', 'updatedAt'],
+}
+
+function shouldSkipShift(model: string | undefined, key: string | undefined): boolean {
+  if (!model || !key) return false
+  const fields = TIMESTAMP_FIELDS[model]
+  return fields ? fields.includes(key) : false
+}
+
+function shiftDatesForward(obj: any, model?: string, key?: string): any {
   if (obj === null || obj === undefined) return obj
   if (obj instanceof Date && !isNaN(obj.getTime())) {
+    if (shouldSkipShift(model, key)) {
+      return obj
+    }
     return new Date(obj.getTime() + OFFSET_MS)
   }
   if (Array.isArray(obj)) {
-    return obj.map(shiftDatesForward)
+    return obj.map(item => shiftDatesForward(item, model, key))
   }
   if (typeof obj === 'object' && obj.constructor?.name === 'Object') {
     const out: any = {}
     for (const [k, v] of Object.entries(obj)) {
-      out[k] = shiftDatesForward(v)
+      out[k] = shiftDatesForward(v, model, k)
     }
     return out
   }
   return obj
 }
 
-function shiftDatesBackward(obj: any): any {
+function shiftDatesBackward(obj: any, model?: string, key?: string): any {
   if (obj === null || obj === undefined) return obj
   if (obj instanceof Date && !isNaN(obj.getTime())) {
+    if (shouldSkipShift(model, key)) {
+      return obj
+    }
     return new Date(obj.getTime() - OFFSET_MS)
   }
   if (Array.isArray(obj)) {
-    return obj.map(shiftDatesBackward)
+    return obj.map(item => shiftDatesBackward(item, model, key))
   }
   if (typeof obj === 'object' && obj.constructor?.name === 'Object') {
     const out: any = {}
     for (const [k, v] of Object.entries(obj)) {
-      out[k] = shiftDatesBackward(v)
+      out[k] = shiftDatesBackward(v, model, k)
     }
     return out
   }
@@ -73,18 +100,15 @@ function createPrismaClient(): PrismaClient {
   return client.$extends({
     query: {
       $allModels: {
-        async $allOperations({ args, query }) {
-          // 1. Shift ANY Date in the query arguments FORWARD (+7h)
-          // This includes `data`, `where`, `create`, etc.
-          // So "03:00 UTC" -> "10:00 UTC" which Prisma writes as "10:00".
-          const shiftedArgs = shiftDatesForward(args)
+        async $allOperations({ model, args, query }) {
+          // 1. Shift ANY Date in the query arguments FORWARD (+7h) (if not timezone-aware timestamp)
+          const shiftedArgs = shiftDatesForward(args, model)
 
           // 2. Execute query
           const result = await query(shiftedArgs)
 
-          // 3. Shift ANY returned Date BACKWARD (-7h)
-          // Prisma reads "10:00" -> "10:00 UTC" -> we shift to "03:00 UTC"
-          return shiftDatesBackward(result)
+          // 3. Shift ANY returned Date BACKWARD (-7h) (if not timezone-aware timestamp)
+          return shiftDatesBackward(result, model)
         },
       },
     },
@@ -95,7 +119,7 @@ export const prisma =
   globalForPrisma.prisma ??
   createPrismaClient()
 
-// Always cache globally — critical for serverless (Vercel) to prevent connection pool exhaustion (P2024)
+// Always cache globally - critical for serverless (Vercel) to prevent connection pool exhaustion (P2024)
 globalForPrisma.prisma = prisma
 
 export default prisma

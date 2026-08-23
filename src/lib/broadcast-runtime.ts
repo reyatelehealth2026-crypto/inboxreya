@@ -1,5 +1,5 @@
 import prisma from '@/lib/prisma'
-import { pushLineMessage } from '@/lib/line-api'
+import { pushLineMessage, broadcastLineMessage } from '@/lib/line-api'
 
 export type BroadcastMessageType = 'text' | 'image' | 'video' | 'flex' | 'multi'
 
@@ -349,6 +349,41 @@ export async function sendBroadcastRecord(broadcast: {
   const parsed = parseStoredBroadcast(broadcast.content, broadcast.mediaUrl)
   if (!parsed.messages || parsed.messages.length === 0) {
     throw new Error('Broadcast has no LINE messages to send')
+  }
+
+  // Target = ALL followers → use LINE's native broadcast endpoint (one API call to
+  // every friend of the OA). Sending to the whole audience via per-user push loops
+  // would blow past the serverless function timeout and leave the record stuck
+  // mid-send (status never advances past 'draft'/'sending').
+  if (parsed.target.mode === 'all') {
+    // LINE broadcast does not report per-recipient delivery; use our follower count
+    // (mirrors resolveAllTargetUsers eligibility) for the record.
+    const total = await prisma.lineUser.count({
+      where: {
+        lineAccountId: broadcast.lineAccountId,
+        lineUserId: { not: '' },
+        isBlocked: false,
+      },
+    })
+    // Fail fast on a misconfigured/unsynced account instead of firing a broadcast
+    // that would be recorded as "sent to 0 recipients" (parity with the push path).
+    if (total === 0) {
+      throw new Error('No target users found for this broadcast')
+    }
+    const result = await broadcastLineMessage(
+      parsed.messages as Parameters<typeof broadcastLineMessage>[0],
+      broadcast.lineAccountId
+    )
+    onProgress?.(total, result.success ? total : 0, result.success ? 0 : total, total)
+    return {
+      summaryText: parsed.summaryText,
+      messageType: parsed.messageType,
+      totalRecipients: total,
+      successCount: result.success ? total : 0,
+      failCount: result.success ? 0 : total,
+      errors: result.success ? [] : [result.error ?? 'LINE broadcast failed'],
+      finalStatus: (result.success ? 'sent' : 'failed') as 'sent' | 'failed',
+    }
   }
 
   const targetUsers = await resolveBroadcastTargetUsers({

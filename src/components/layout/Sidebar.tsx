@@ -35,6 +35,7 @@ import {
   Receipt,
   CalendarDays,
   Sparkles,
+  Bot,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -42,6 +43,9 @@ interface MenuItem {
   icon: React.ReactNode;
   href: string;
   badge?: number;
+  // ปลายทางออกนอกแอป (route ที่ 302 ไปอีกโดเมน) — ต้องใช้ <a> ธรรมดา เพราะ
+  // <Link> จะ navigate ฝั่ง client แล้วไปติด CORS ก่อนถอยมาโหลดเต็มหน้าอยู่ดี
+  external?: boolean;
 }
 
 interface MenuGroup {
@@ -55,7 +59,30 @@ interface SidebarProps {
   className?: string;
 }
 
+// โดเมนหน้าบ้านขายส่ง — ฝังตรงนี้เลยไม่ผ่าน env เพราะ Sidebar เป็น client component
+// การทำให้อ่าน env ได้ต้องใช้ NEXT_PUBLIC_* ซึ่งต้องมีตั้งแต่ตอน build (ต้องเพิ่ม
+// build-arg ใน Dockerfile อีก) ไม่คุ้มกับลิงก์เมนูอันเดียว
+// ฝั่งหลังบ้านไม่ต้องฝัง เพราะวิ่งผ่าน /api/admin/wholesale-sso ที่อ่าน env ฝั่ง server
+const WHOLESALE_STOREFRONT_URL = 'https://wholesale.re-ya.com'
+
+// ปักหมุดไว้เหนือทุกกลุ่ม — ทีมเปิดดูทุกวันจนไม่ควรต้องไล่หาในกลุ่มที่พับอยู่
+const PINNED_MENU: MenuItem = {
+  title: 'สรุปสลิปที่ตรวจ',
+  icon: <Receipt className="h-4 w-4" />,
+  href: '/inbox/slip-report',
+};
+
 const menuGroups: MenuGroup[] = [
+  {
+    groupId: 'wholesale',
+    groupTitle: 'ระบบขายส่ง',
+    groupIcon: '🏪',
+    menus: [
+      // เข้าหลังบ้านโดยไม่ต้องล็อกอินซ้ำ — route ปั้น token แล้ว 302 ออกไป
+      { title: 'หลังบ้านขายส่ง', icon: <Package className="h-4 w-4" />, href: '/api/admin/wholesale-sso', external: true },
+      { title: 'หน้าบ้านขายส่ง', icon: <ShoppingBag className="h-4 w-4" />, href: WHOLESALE_STOREFRONT_URL, external: true },
+    ],
+  },
   {
     groupId: 'overview',
     groupTitle: 'ภาพรวม',
@@ -75,6 +102,7 @@ const menuGroups: MenuGroup[] = [
       { title: 'กล่องข้อความ', icon: <MessageSquare className="h-4 w-4" />, href: '/inbox' },
       { title: 'แชทกลุ่ม', icon: <MessagesSquare className="h-4 w-4" />, href: '/inbox/groups' },
       { title: 'Broadcast', icon: <Send className="h-4 w-4" />, href: '/inbox/broadcasts' },
+      { title: 'AI Agent', icon: <Bot className="h-4 w-4" />, href: '/ai-agent' },
       { title: 'แคตตาล็อค & โปรโมชัน', icon: <ShoppingBag className="h-4 w-4" />, href: '/inbox/promotions' },
       { title: 'ปฏิทินการส่ง', icon: <CalendarDays className="h-4 w-4" />, href: '/inbox/calendar' },
       { title: 'Slip Center', icon: <Receipt className="h-4 w-4" />, href: '/dashboard/slip-center' },
@@ -112,7 +140,8 @@ const menuGroups: MenuGroup[] = [
 
 export function Sidebar({ className }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<string[]>(['overview', 'conversations']); // Default expand overview and conversations
+  // กาง 'wholesale' ไว้ด้วยตั้งแต่แรก ไม่งั้นลิงก์ข้ามระบบจะจมอยู่ในกลุ่มที่พับอยู่
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(['wholesale', 'overview', 'conversations']);
   const pathname = usePathname();
 
   // Load collapsed state from localStorage on mount
@@ -132,7 +161,7 @@ export function Sidebar({ className }: SidebarProps) {
   };
 
   const isActive = (href: string) => {
-    return pathname === href || pathname.startsWith(href + '/');
+    return pathname === href || Boolean(pathname?.startsWith(href + '/'));
   };
 
   // Store collapsed state in localStorage
@@ -180,6 +209,21 @@ export function Sidebar({ className }: SidebarProps) {
 
       {/* Menu Groups */}
       <nav className="flex-1 overflow-y-auto p-2 space-y-1">
+        <Link
+          href={PINNED_MENU.href}
+          title={PINNED_MENU.title}
+          className={cn(
+            'mb-2 flex items-center rounded-lg border transition-colors',
+            collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2',
+            isActive(PINNED_MENU.href)
+              ? 'border-green-600 bg-green-600 text-white shadow-sm'
+              : 'border-green-300 bg-green-50 font-semibold text-green-800 hover:bg-green-100'
+          )}
+        >
+          {PINNED_MENU.icon}
+          {!collapsed && <span className="flex-1 text-sm">{PINNED_MENU.title}</span>}
+        </Link>
+
         {menuGroups.map((group) => {
           const isExpanded = expandedGroups.includes(group.groupId);
 
@@ -210,8 +254,10 @@ export function Sidebar({ className }: SidebarProps) {
               {/* Menu Items */}
               {(!collapsed && isExpanded) && (
                 <div className="mt-1 space-y-1 pl-2">
-                  {group.menus.map((menu) => (
-                    <Link
+                  {group.menus.map((menu) => {
+                    const Anchor = menu.external ? 'a' : Link;
+                    return (
+                    <Anchor
                       key={menu.href}
                       href={menu.href}
                       className={cn(
@@ -228,16 +274,19 @@ export function Sidebar({ className }: SidebarProps) {
                           {menu.badge}
                         </Badge>
                       )}
-                    </Link>
-                  ))}
+                    </Anchor>
+                    );
+                  })}
                 </div>
               )}
 
               {/* Collapsed view - show icon only */}
               {collapsed && (
                 <div className="mt-1 space-y-1">
-                  {group.menus.map((menu) => (
-                    <Link
+                  {group.menus.map((menu) => {
+                    const Anchor = menu.external ? 'a' : Link;
+                    return (
+                    <Anchor
                       key={menu.href}
                       href={menu.href}
                       className={cn(
@@ -249,8 +298,9 @@ export function Sidebar({ className }: SidebarProps) {
                       title={menu.title}
                     >
                       {menu.icon}
-                    </Link>
-                  ))}
+                    </Anchor>
+                    );
+                  })}
                 </div>
               )}
             </div>

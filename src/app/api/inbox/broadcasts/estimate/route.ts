@@ -3,10 +3,14 @@ import { z } from 'zod'
 import { requireAuth } from '@/lib/auth-middleware'
 import { countBroadcastRecipients } from '@/lib/broadcast-recipient-estimate'
 
+const positiveInt = z.coerce.number().int().positive()
+const optionalPositiveInt = z.preprocess((value) => value === '' || value === null ? undefined : value, positiveInt.optional())
+const positiveIntArray = z.array(positiveInt).transform((ids) => [...new Set(ids)])
+
 const estimateBroadcastRecipientsSchema = z.object({
-  targetSegmentId: z.number().int().positive().optional(),
-  targetCustomerIds: z.array(z.number().int().positive()).optional(),
-  targetTagIds: z.array(z.number().int().positive()).optional(),
+  targetSegmentId: optionalPositiveInt,
+  targetCustomerIds: positiveIntArray.optional(),
+  targetTagIds: positiveIntArray.optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -31,14 +35,14 @@ export async function POST(req: NextRequest) {
       data: { totalRecipients },
     })
   } catch (error: any) {
-    console.error('Error estimating broadcast recipients:', error)
-
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { success: false, error: 'Validation failed', details: (error as any).errors || (error as any).issues },
         { status: 400 }
       )
     }
+
+    console.error('Error estimating broadcast recipients:', error)
 
     return NextResponse.json(
       { success: false, error: error.message || 'Failed to estimate broadcast recipients' },

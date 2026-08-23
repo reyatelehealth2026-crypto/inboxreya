@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-middleware'
 import { sendBroadcastRecord } from '@/lib/broadcast-runtime'
+import { cacheInvalidate } from '@/lib/redis'
 
 export async function POST(
   req: NextRequest,
@@ -69,8 +70,10 @@ export async function POST(
               status: finalStatus,
               sentAt: finalStatus === 'sent' ? new Date() : null,
               deliveredCount: result.successCount,
+              totalRecipients: result.totalRecipients,
             },
           })
+          await cacheInvalidate('broadcasts:*')
 
           emit({
             type: 'complete',
@@ -83,6 +86,11 @@ export async function POST(
           })
         } catch (error: any) {
           console.error('[Broadcast Send] Error:', error)
+          await prisma.broadcastMessageV2.update({
+            where: { id: broadcast.id },
+            data: { status: 'failed' },
+          }).catch(() => undefined)
+          await cacheInvalidate('broadcasts:*').catch(() => undefined)
           emit({ type: 'error', error: error.message || 'Failed to send broadcast' })
         } finally {
           controller.close()

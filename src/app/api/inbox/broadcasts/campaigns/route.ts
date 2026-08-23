@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-middleware'
 import { parseStoredBroadcast } from '@/lib/broadcast-runtime'
+import { toBroadcastCreatedAtIso } from '@/lib/broadcast-time'
 import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 
 const VALID_STATUSES = ['draft', 'scheduled', 'sending', 'sent', 'failed', 'cancelled'] as const
@@ -106,7 +107,7 @@ export async function GET(req: NextRequest) {
             deliveredCount: broadcast.deliveredCount,
             readCount: broadcast.readCount,
             mediaUrl: broadcast.mediaUrl,
-            createdAt: broadcast.createdAt.toISOString(),
+            createdAt: toBroadcastCreatedAtIso(broadcast.createdAt),
             createdBy: broadcast.createdBy,
           }
         })

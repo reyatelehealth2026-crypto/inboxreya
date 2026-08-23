@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Upload, FileJson, Search, Package, X, Send, Check, RefreshCw,
   ShoppingBag, Zap, Tag, Sparkles, TrendingUp, Loader2,
@@ -17,6 +17,7 @@ import { ProductCard } from '@/components/product-selector/ProductCard';
 import { useCsvProducts } from '@/components/product-selector/hooks/useCsvProducts';
 import { SendCatalogDialog } from '@/components/inbox/SendCatalogDialog';
 import { csvProductToPreviewProduct } from '@/lib/flex-builder';
+import { cnyProductsToCsvProducts } from '@/lib/cny-catalog';
 import {
   selectedProductToPreviewProduct,
   type Product,
@@ -28,6 +29,8 @@ import type { CsvProduct } from '@/lib/csv-product';
 type SourceTab = 'csv' | 'json';
 type ViewMode = 'grid' | 'list';
 type FilterType = 'all' | 'flashsale' | 'promotion' | 'new' | 'bestseller';
+
+const CNY_CATALOG_CACHE_KEY = 'inbox-promotions-cny-catalog-cache-v2';
 
 const CATALOG_FILTERS: { key: FilterType; label: string; icon: React.ElementType; color: string; bg: string }[] = [
   { key: 'all', label: 'ทั้งหมด', icon: Package, color: 'text-gray-700', bg: 'bg-gray-100' },
@@ -619,6 +622,208 @@ function JsonCatalogGrid({
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
+function CnyCatalogGrid({
+  onSelectionChange,
+  viewMode,
+}: {
+  onSelectionChange: (products: ExportPreviewProduct[]) => void;
+  viewMode: ViewMode;
+}) {
+  const [products, setProducts] = useState<CsvProduct[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [selectedSkus, setSelectedSkus] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
+  const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem(CNY_CATALOG_CACHE_KEY);
+      if (!cached) return;
+      const parsed = JSON.parse(cached) as { products?: CsvProduct[]; fetchedAt?: string };
+      if (Array.isArray(parsed.products)) {
+        setProducts(parsed.products);
+        setLastFetchedAt(parsed.fetchedAt || null);
+      }
+    } catch {
+      localStorage.removeItem(CNY_CATALOG_CACHE_KEY);
+    }
+  }, []);
+
+  const fetchLatestProducts = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/inbox/catalog/cny-products?group=0&paginate_num=25', {
+        cache: 'no-store',
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.success || !Array.isArray(payload.product)) {
+        throw new Error(payload.error || 'ไม่สามารถดึงสินค้า CNY ได้');
+      }
+
+      const nextProducts = cnyProductsToCsvProducts(payload.product as Product[]);
+      const fetchedAt = payload.meta?.fetchedAt || new Date().toISOString();
+      setProducts(nextProducts);
+      setSelectedSkus(new Set());
+      setLastFetchedAt(fetchedAt);
+      onSelectionChange([]);
+      localStorage.setItem(
+        CNY_CATALOG_CACHE_KEY,
+        JSON.stringify({ products: nextProducts, fetchedAt })
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ไม่สามารถดึงสินค้า CNY ได้');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    if (!q) return products;
+    return products.filter(
+      (p) =>
+        p.productName.toLowerCase().includes(q) ||
+        p.sku.toLowerCase().includes(q) ||
+        p.specName.toLowerCase().includes(q)
+    );
+  }, [products, search]);
+
+  const toggleProduct = useCallback(
+    (sku: string) => {
+      setSelectedSkus((prev) => {
+        const next = new Set(prev);
+        if (next.has(sku)) next.delete(sku);
+        else next.add(sku);
+
+        const preview = products
+          .filter((p) => next.has(p.sku))
+          .map(csvProductToPreviewProduct);
+        onSelectionChange(preview);
+        return next;
+      });
+    },
+    [products, onSelectionChange]
+  );
+
+  return (
+    <div className="space-y-4">
+      <Card className="border-gray-200">
+        <CardContent className="p-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">แคตตาล็อค CNY</p>
+            <p className="text-xs text-gray-500">
+              เก็บ cache ไว้ในเครื่องนี้จนกว่าจะกดดึงสินค้าใหม่
+              {lastFetchedAt && (
+                <span className="ml-1">
+                  · ล่าสุด {new Date(lastFetchedAt).toLocaleString('th-TH')}
+                </span>
+              )}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchLatestProducts} disabled={loading}>
+            {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+            ดึงสินค้า
+          </Button>
+        </CardContent>
+      </Card>
+
+      {error && (
+        <Alert variant="destructive" className="text-sm py-2">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {products.length > 0 && (
+        <>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              placeholder="ค้นหาสินค้าหรือรหัส SKU..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+
+          <p className="text-sm text-gray-500">
+            พบ <strong>{filtered.length}</strong> รายการ
+            {selectedSkus.size > 0 && (
+              <span className="ml-2 text-green-600">
+                | เลือกแล้ว <strong>{selectedSkus.size}</strong> รายการ
+              </span>
+            )}
+          </p>
+
+          {viewMode === 'grid' ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              {filtered.map((product) => (
+                <ProductCard
+                  key={product.sku}
+                  product={product}
+                  selected={selectedSkus.has(product.sku)}
+                  onToggle={() => toggleProduct(product.sku)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="w-10 px-3 py-2 text-left">
+                      <button
+                        onClick={() => {
+                          const allSelected = filtered.every((p) => selectedSkus.has(p.sku));
+                          setSelectedSkus((prev) => {
+                            const next = new Set(prev);
+                            if (allSelected) filtered.forEach((p) => next.delete(p.sku));
+                            else filtered.forEach((p) => next.add(p.sku));
+                            onSelectionChange(products.filter((p) => next.has(p.sku)).map(csvProductToPreviewProduct));
+                            return next;
+                          });
+                        }}
+                        className="text-gray-400 hover:text-green-600 transition-colors"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                    </th>
+                    <th className="w-14 px-2 py-2"></th>
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-600">รหัสสินค้า</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-600">ชื่อสินค้า</th>
+                    <th className="px-3 py-2 text-center text-[11px] font-semibold text-gray-600">คงคลัง</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-600">หน่วย 1</th>
+                    <th className="px-3 py-2 text-center text-[11px] font-semibold text-gray-600">หน่วย 2</th>
+                    <th className="px-3 py-2 text-center text-[11px] font-semibold text-gray-600">หน่วย 3</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filtered.map((product) => (
+                    <CsvProductListRow
+                      key={product.sku}
+                      product={product}
+                      selected={selectedSkus.has(product.sku)}
+                      onToggle={() => toggleProduct(product.sku)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {products.length === 0 && !error && (
+        <div className="text-center py-16 text-gray-400">
+          <FileJson className="w-12 h-12 mx-auto mb-3 opacity-40" />
+          <p className="text-sm">กดดึงสินค้าเพื่อโหลดแคตตาล็อคจาก CNY</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PromotionsPage() {
   const [sourceTab, setSourceTab] = useState<SourceTab>('csv');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -651,7 +856,7 @@ export default function PromotionsPage() {
             <div className="flex rounded-lg border bg-gray-50 p-0.5 gap-0.5">
               {([
                 { key: 'csv' as const, label: 'โปรโมชัน CSV', icon: Tag },
-                { key: 'json' as const, label: 'แคตตาล็อค JSON', icon: FileJson },
+                { key: 'json' as const, label: 'แคตตาล็อค CNY', icon: FileJson },
               ] as const).map(({ key, label, icon: Icon }) => (
                 <button
                   key={key}
@@ -679,7 +884,7 @@ export default function PromotionsPage() {
           <CsvProductGrid onSelectionChange={setCsvSelected} viewMode={viewMode} />
         )}
         {sourceTab === 'json' && (
-          <JsonCatalogGrid onSelectionChange={setJsonSelected} viewMode={viewMode} />
+          <CnyCatalogGrid onSelectionChange={setJsonSelected} viewMode={viewMode} />
         )}
       </div>
 

@@ -2,6 +2,7 @@
  * LINE Messaging API - ส่งข้อความไปยัง LINE โดยตรง
  */
 
+import { randomUUID } from 'node:crypto'
 import prisma from './prisma'
 import { logger } from './logger'
 
@@ -54,6 +55,33 @@ function capFlexCarouselBubbles<T>(node: T): T {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
       result[key] = capFlexCarouselBubbles(obj[key])
     }
+  }
+  return result as unknown as T
+}
+
+function sanitizeLineMessagePayload<T>(node: T): T {
+  const capped = capFlexCarouselBubbles(node)
+  return stripUnsupportedFlexFields(capped)
+}
+
+function stripUnsupportedFlexFields<T>(node: T): T {
+  if (!node || typeof node !== 'object') return node
+  if (Array.isArray(node)) {
+    return node.map((item) => stripUnsupportedFlexFields(item)) as unknown as T
+  }
+
+  const obj = node as Record<string, any>
+  const result: Record<string, any> = {}
+  for (const key in obj) {
+    if (!Object.prototype.hasOwnProperty.call(obj, key)) continue
+    if (key === 'opacity' || key === 'cornerRadius') {
+      logger.warn('Flex payload contained unsupported style field; removing before LINE push', {
+        scope: 'line-api',
+        field: key,
+      })
+      continue
+    }
+    result[key] = stripUnsupportedFlexFields(obj[key])
   }
   return result as unknown as T
 }
@@ -117,7 +145,7 @@ export async function pushLineMessage(
     //   "must not be more than 12 items" errors on user/DB-built flex payloads
     const requestBody: any = {
       to: lineUserId,
-      messages: messages.slice(0, 5).map((m) => capFlexCarouselBubbles(m)),
+      messages: messages.slice(0, 5).map((m) => sanitizeLineMessagePayload(m)),
     }
 
     // Add quoteToken for quote reply if provided
@@ -309,4 +337,87 @@ export async function sendLineMessage(params: {
 
   // Default: ส่งเป็น text message (with optional quoteToken for quote reply)
   return sendTextMessage(userId, message, lineAccountId, quoteToken)
+}
+
+/**
+ * ส่ง Broadcast ไปยังผู้ติดตามทั้งหมดของ OA ผ่าน LINE Broadcast API
+ * (POST /v2/bot/message/broadcast) — ยิงครั้งเดียวถึงเพื่อนทุกคนในแชนแนล
+ * จึงไม่ต้องวน push ทีละคน และไม่ชน serverless timeout เมื่อมีผู้รับจำนวนมาก
+ *
+ * NB: endpoint นี้ไม่คืนค่ารายผู้รับ (LINE ส่งให้เพื่อนทั้งหมดเอง) — ตัวเลข
+ * จำนวนผู้รับสำหรับบันทึกลง DB ให้ผู้เรียกนับเองจากฝั่งเรา
+ *
+ * @param messages - array ของ LINE messages (สูงสุด 5)
+ * @param lineAccountId - LINE Account ID
+ */
+export async function broadcastLineMessage(
+  messages: LineMessage[],
+  lineAccountId?: number | null
+): Promise<SendMessageResult> {
+  try {
+    const accessToken = await getChannelAccessToken(lineAccountId)
+
+    if (!accessToken) {
+      return { success: false, error: 'LINE Channel Access Token not found' }
+    }
+
+    const requestBody = {
+      messages: messages.slice(0, 5).map((m) => sanitizeLineMessagePayload(m)),
+    }
+
+    const LINE_BROADCAST_URL = 'https://api.line.me/v2/bot/message/broadcast'
+    const LINE_TIMEOUT_MS = 30000
+    // Shared retry key so a timeout-retry is deduped by LINE (avoids double broadcast)
+    const retryKey = randomUUID()
+
+    let response: Response | null = null
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        response = await fetch(LINE_BROADCAST_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'X-Line-Retry-Key': retryKey,
+          },
+          body: JSON.stringify(requestBody),
+          signal: AbortSignal.timeout(LINE_TIMEOUT_MS),
+        })
+        break
+      } catch (fetchErr: any) {
+        const isTimeout =
+          fetchErr?.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' ||
+          fetchErr?.name === 'TimeoutError' ||
+          String(fetchErr?.message).includes('timeout')
+        if (isTimeout && attempt < 2) {
+          logger.warn('LINE broadcast timeout — retrying', { scope: 'line-api', attempt })
+          continue
+        }
+        throw fetchErr
+      }
+    }
+
+    if (!response || !response.ok) {
+      const errorData = response ? await response.json().catch(() => ({})) : {}
+      logger.error('LINE Broadcast Message error', {
+        scope: 'line-api',
+        status: response?.status,
+        body: errorData,
+      })
+      return {
+        success: false,
+        error: response
+          ? `LINE API error: ${response.status} - ${(errorData as any).message || response.statusText}`
+          : 'LINE API: no response received',
+      }
+    }
+
+    return { success: true }
+  } catch (error) {
+    logger.error(error, { scope: 'line-api:broadcastLineMessage' })
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
 }

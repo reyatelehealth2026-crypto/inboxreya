@@ -5174,6 +5174,24 @@ model BroadcastMessageV2 {
   @@map("broadcast_messages_v2")
 }
 
+model BroadcastEngagement {
+  id           Int      @id @default(autoincrement())
+  broadcastId  Int      @map("broadcast_id")
+  lineUserId   String   @map("line_user_id") @db.VarChar(50)
+  lineUserPkId Int?     @map("line_user_pk_id")
+  eventType    String   @map("event_type") @db.VarChar(40)
+  action       String?  @db.VarChar(80)
+  payload      Json?
+  source       String   @db.VarChar(20)
+  userAgent    String?  @map("user_agent") @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+
+  @@index([broadcastId, eventType], map: "idx_bce_broadcast_event")
+  @@index([lineUserId, broadcastId], map: "idx_bce_user_broadcast")
+  @@index([createdAt], map: "idx_bce_created")
+  @@map("broadcast_engagement")
+}
+
 model GhostDraft {
   id             Int      @id @default(autoincrement())
   conversationId Int      @map("conversation_id")
@@ -5188,6 +5206,52 @@ model GhostDraft {
   @@index([conversationId], map: "idx_conversation")
   @@index([createdAt], map: "idx_created")
   @@map("ghost_drafts")
+}
+
+model AiPromoDraft {
+  id                    Int       @id @default(autoincrement())
+  lineAccountId          Int       @map("line_account_id")
+  prompt                String    @db.Text
+  campaignType          String    @default("promotion") @map("campaign_type") @db.VarChar(40)
+  selectedProducts      Json      @map("selected_products")
+  generatedCopy         String    @map("generated_copy") @db.Text
+  flexJson              Json      @map("flex_json")
+  proposedScheduledAt   DateTime? @map("proposed_scheduled_at") @db.Timestamp(0)
+  status                String    @default("draft") @db.VarChar(40)
+  errorMessage          String?   @map("error_message") @db.Text
+  reviewNotes           String?   @map("review_notes") @db.Text
+  editedBy              Int?      @map("edited_by")
+  approvedBy            Int?      @map("approved_by")
+  approvedAt            DateTime? @map("approved_at") @db.Timestamp(0)
+  createdBroadcastId    Int?      @map("created_broadcast_id")
+  source                String    @default("manual") @db.VarChar(40)
+  productSourceUrl      String?   @map("product_source_url") @db.Text
+  createdBy             Int       @map("created_by")
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamp(0)
+
+  @@index([lineAccountId, status], map: "idx_ai_promo_drafts_account_status")
+  @@index([proposedScheduledAt], map: "idx_ai_promo_drafts_schedule")
+  @@index([createdBroadcastId], map: "idx_ai_promo_drafts_broadcast")
+  @@map("ai_promo_drafts")
+}
+
+model AiPromoRule {
+  id              Int       @id @default(autoincrement())
+  lineAccountId   Int       @map("line_account_id")
+  name            String    @db.VarChar(120)
+  campaignType    String    @default("promotion") @map("campaign_type") @db.VarChar(40)
+  schedule        String    @db.VarChar(120)
+  productFilters  Json?     @map("product_filters")
+  maxProducts     Int       @default(6) @map("max_products")
+  enabled         Boolean   @default(true)
+  lastGeneratedAt DateTime? @map("last_generated_at") @db.Timestamp(0)
+  createdBy       Int       @map("created_by")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamp(0)
+
+  @@index([lineAccountId, enabled], map: "idx_ai_promo_rules_account_enabled")
+  @@map("ai_promo_rules")
 }
 
 model ImageAnalysisResult {

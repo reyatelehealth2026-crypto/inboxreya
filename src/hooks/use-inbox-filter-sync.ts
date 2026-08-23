@@ -229,6 +229,7 @@ export function useInboxFilterSync() {
   // Sync Store -> URL (when filters change from user interaction)
   useEffect(() => {
     if (isUpdatingRef.current) return
+    if (!pathname) return
 
     const currentParams = searchParams?.toString() || ''
 

@@ -75,7 +75,7 @@ export default function InboxPageClient() {
 
   // Handle initial conversation selection from query param
   useEffect(() => {
-    const userId = searchParams.get('userId')
+    const userId = searchParams?.get('userId')
     if (userId && userId !== selectedConversationId) {
       setSelectedConversation(userId)
     }
