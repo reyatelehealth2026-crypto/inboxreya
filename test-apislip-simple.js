@@ -1,106 +1,86 @@
 #!/usr/bin/env node
 /**
- * Simple test for Thunder slip verification API.
+ * Simple test for GhostX slip verification API.
  *
  * Usage:
- *   node test-apislip-simple.js <image_url>
+ *   node test-apislip-simple.js <image_url|qrData>
+ *
+ * Pass either an image URL (QR is decoded locally) or a raw QR string.
  */
 
 const fs = require('fs')
 const path = require('path')
 
 const envPath = path.join(__dirname, '.env.local')
-const envContent = fs.readFileSync(envPath, 'utf-8')
-const apiKeyMatch = envContent.match(/THUNDER_API_KEY="?([^"\r\n]+)"?/)
-const baseUrlMatch = envContent.match(/THUNDER_API_BASE_URL="?([^"\r\n]+)"?/)
-
-if (!apiKeyMatch) {
-  console.error('THUNDER_API_KEY not found in .env.local')
-  process.exit(1)
+let BASE_URL = 'https://externalauth.ghostxapi.xyz'
+try {
+  const envContent = fs.readFileSync(envPath, 'utf-8')
+  const baseUrlMatch = envContent.match(/GHOSTX_API_BASE_URL="?([^"\r\n]+)"?/)
+  if (baseUrlMatch?.[1]) BASE_URL = baseUrlMatch[1]
+} catch {
+  // .env.local is optional; fall back to the default base URL.
 }
+BASE_URL = BASE_URL.replace(/\/$/, '')
 
-const API_KEY = apiKeyMatch[1]
-const BASE_URL = (baseUrlMatch?.[1] || 'https://api.thunder.in.th/v2').replace(/\/$/, '')
+async function decodeQr(input) {
+  // If it doesn't look like a URL, treat it as raw QR data.
+  if (!/^https?:\/\//i.test(input)) return input
 
-console.log('API Key loaded:', API_KEY.substring(0, 8) + '...')
-console.log('')
-
-async function testInfo() {
-  console.log('Test 1: Get app info...')
-
-  try {
-    const res = await fetch(`${BASE_URL}/info`, {
-      headers: { Authorization: `Bearer ${API_KEY}` },
-    })
-
-    const data = await res.json()
-
-    if (data.success) {
-      console.log('App Info:')
-      console.log(`   Application: ${data.data.application?.name || '-'}`)
-      console.log(`   Branch: ${data.data.branch?.name || '-'}`)
-      console.log(`   Credit: ${data.data.account?.credit ?? '-'}`)
-      console.log(`   Quota Remaining: ${data.data.application?.quota?.remaining ?? '-'}`)
-    } else {
-      console.log('Error:', data)
-    }
-  } catch (err) {
-    console.error('Failed:', err.message)
-  }
-  console.log('')
+  const { Jimp } = require('jimp')
+  const jsQR = require('jsqr')
+  const res = await fetch(input)
+  if (!res.ok) throw new Error(`download failed (${res.status})`)
+  const buf = Buffer.from(await res.arrayBuffer())
+  const img = await Jimp.read(buf)
+  const { data, width, height } = img.bitmap
+  const code = jsQR(new Uint8ClampedArray(data.buffer, data.byteOffset, data.length), width, height)
+  if (!code) throw new Error('no QR code found in image')
+  return code.data
 }
 
 async function testVerifySlip() {
-  const testImageUrl = process.argv[2]
+  const input = process.argv[2]
 
-  if (!testImageUrl) {
-    console.log('Test 2: Skipped (no image URL provided)')
-    console.log('   Usage: node test-apislip-simple.js <image_url>')
-    console.log('')
+  if (!input) {
+    console.log('Skipped (no image URL or qrData provided)')
+    console.log('   Usage: node test-apislip-simple.js <image_url|qrData>')
     return
   }
 
-  console.log('Test 2: Verify slip from URL...')
-  console.log(`   Image: ${testImageUrl}`)
+  console.log(`Base URL: ${BASE_URL}`)
+  let qrData
+  try {
+    qrData = await decodeQr(input)
+    console.log(`QR data: ${qrData.substring(0, 48)}${qrData.length > 48 ? '…' : ''}`)
+  } catch (err) {
+    console.error('QR decode failed:', err.message)
+    return
+  }
 
   try {
-    const res = await fetch(`${BASE_URL}/verify/bank`, {
+    const res = await fetch(`${BASE_URL}/qr/scan`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        url: testImageUrl,
-        checkDuplicate: true,
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ qrData }),
     })
-
     const data = await res.json()
+    const t = data?.slipVerification?.transfer
 
-    if (data.success && data.data?.rawSlip) {
-      const slip = data.data.rawSlip
+    if (res.ok && data?.type === 'SLIP' && t?.transactionRef) {
       console.log('Verification Success!')
-      console.log(`   Amount: ${slip.amount?.amount} ${slip.amount?.local?.currency || 'THB'}`)
-      console.log(`   Ref: ${slip.transRef}`)
-      console.log(`   Date: ${slip.date}`)
-      console.log(`   Sender: ${slip.sender?.account?.name?.th || slip.sender?.account?.name?.en || '-'}`)
-      console.log(`   Sender Bank: ${slip.sender?.bank?.name || slip.sender?.bank?.short || '-'}`)
-      console.log(`   Receiver: ${slip.receiver?.account?.name?.th || slip.receiver?.account?.name?.en || '-'}`)
-      console.log(`   Receiver Bank: ${slip.receiver?.bank?.name || slip.receiver?.bank?.short || '-'}`)
-      console.log(`   Duplicate: ${data.data.isDuplicate}`)
+      console.log(`   Amount: ${t.amount?.amount} ${t.amount?.currency?.code || 'THB'}`)
+      console.log(`   Ref: ${t.transactionRef}`)
+      console.log(`   Date: ${t.transactionDateTime}`)
+      console.log(`   Sender: ${t.fromAccountName || '-'} (${t.fromBankName || '-'}) ${t.fromAccountNo || ''}`)
+      console.log(`   Receiver: ${t.toAccountName || '-'} (${t.toBankName || '-'}) ${t.toAccountNo || ''}`)
     } else {
       console.log('Verification failed')
-      console.log(`   Code: ${data.error?.code || '-'}`)
-      console.log(`   Message: ${data.error?.message || data.message || '-'}`)
+      console.log(`   Code: ${data?.code || '-'}`)
+      console.log(`   Message: ${data?.message || data?.title || '-'}`)
     }
   } catch (err) {
     console.error('Failed:', err.message)
   }
-  console.log('')
 }
 
-;(async () => {
-  await testInfo()
-  await testVerifySlip()
-})()
+testVerifySlip()
