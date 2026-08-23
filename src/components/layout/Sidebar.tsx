@@ -36,6 +36,7 @@ import {
   CalendarDays,
   Sparkles,
   Bot,
+  Activity,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -92,6 +93,7 @@ const menuGroups: MenuGroup[] = [
       { title: 'งานของฉัน', icon: <Briefcase className="h-4 w-4" />, href: '/dashboard/my-work' },
       { title: 'Admin Dashboard', icon: <UserCog className="h-4 w-4" />, href: '/dashboard/admin' },
       { title: 'Customer Dashboard', icon: <Users className="h-4 w-4" />, href: '/dashboard/customers' },
+      { title: 'สถานะ OA', icon: <Activity className="h-4 w-4" />, href: '/oa-status' },
     ],
   },
   {
