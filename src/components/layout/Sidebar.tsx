@@ -65,6 +65,13 @@ interface SidebarProps {
 // ฝั่งหลังบ้านไม่ต้องฝัง เพราะวิ่งผ่าน /api/admin/wholesale-sso ที่อ่าน env ฝั่ง server
 const WHOLESALE_STOREFRONT_URL = 'https://wholesale.re-ya.com'
 
+// ปักหมุดไว้เหนือทุกกลุ่ม — ทีมเปิดดูทุกวันจนไม่ควรต้องไล่หาในกลุ่มที่พับอยู่
+const PINNED_MENU: MenuItem = {
+  title: 'สรุปสลิปที่ตรวจ',
+  icon: <Receipt className="h-4 w-4" />,
+  href: '/inbox/slip-report',
+};
+
 const menuGroups: MenuGroup[] = [
   {
     groupId: 'wholesale',
@@ -99,7 +106,6 @@ const menuGroups: MenuGroup[] = [
       { title: 'แคตตาล็อค & โปรโมชัน', icon: <ShoppingBag className="h-4 w-4" />, href: '/inbox/promotions' },
       { title: 'ปฏิทินการส่ง', icon: <CalendarDays className="h-4 w-4" />, href: '/inbox/calendar' },
       { title: 'Slip Center', icon: <Receipt className="h-4 w-4" />, href: '/dashboard/slip-center' },
-      { title: 'สรุปสลิปที่ตรวจ', icon: <Receipt className="h-4 w-4" />, href: '/inbox/slip-report' },
     ],
   },
   {
@@ -203,6 +209,21 @@ export function Sidebar({ className }: SidebarProps) {
 
       {/* Menu Groups */}
       <nav className="flex-1 overflow-y-auto p-2 space-y-1">
+        <Link
+          href={PINNED_MENU.href}
+          title={PINNED_MENU.title}
+          className={cn(
+            'mb-2 flex items-center rounded-lg border transition-colors',
+            collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2',
+            isActive(PINNED_MENU.href)
+              ? 'border-green-600 bg-green-600 text-white shadow-sm'
+              : 'border-green-300 bg-green-50 font-semibold text-green-800 hover:bg-green-100'
+          )}
+        >
+          {PINNED_MENU.icon}
+          {!collapsed && <span className="flex-1 text-sm">{PINNED_MENU.title}</span>}
+        </Link>
+
         {menuGroups.map((group) => {
           const isExpanded = expandedGroups.includes(group.groupId);
 

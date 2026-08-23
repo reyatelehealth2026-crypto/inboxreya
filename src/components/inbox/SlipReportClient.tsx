@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { BdoDetailPanel } from '@/components/slip-center/BdoDetailPanel'
 
 interface SlipReportItem {
   messageId: number
@@ -52,6 +54,8 @@ export function SlipReportClient() {
   const [error, setError] = useState<string | null>(null)
   const [summary, setSummary] = useState<SlipReportSummary | null>(null)
   const [items, setItems] = useState<SlipReportItem[]>([])
+  // BDO ที่กำลังเปิดดู — ใช้ panel ตัวเดียวกับ Slip Center ที่ยิงข้อมูลสดจาก Odoo เอง
+  const [openBdo, setOpenBdo] = useState<{ id: number; name: string | null } | null>(null)
 
   const load = useCallback(async (rangeDays: number) => {
     setLoading(true)
@@ -181,13 +185,36 @@ export function SlipReportClient() {
                   )}
                 </td>
                 <td className="px-3 py-2">
-                  <div className="text-xs font-medium text-gray-800">{item.customerName || '-'}</div>
-                  {item.userId && <div className="text-[10px] text-gray-400">#{item.userId}</div>}
+                  {item.userId ? (
+                    <Link
+                      href={`/inbox/customers/${item.userId}`}
+                      target="_blank"
+                      className="block rounded px-1 py-0.5 hover:bg-teal-50"
+                      title="เปิดข้อมูลลูกค้า"
+                    >
+                      <div className="text-xs font-medium text-teal-700 underline decoration-dotted underline-offset-2">
+                        {item.customerName || `ลูกค้า #${item.userId}`}
+                      </div>
+                      <div className="text-[10px] text-gray-400">#{item.userId}</div>
+                    </Link>
+                  ) : (
+                    <div className="text-xs font-medium text-gray-800">{item.customerName || '-'}</div>
+                  )}
                 </td>
                 <td className="px-3 py-2">
-                  {item.bdoName || item.bdoId ? (
-                    <span className="rounded bg-green-50 px-1.5 py-0.5 font-mono text-[11px] text-green-800">
+                  {item.bdoId ? (
+                    <button
+                      type="button"
+                      onClick={() => setOpenBdo({ id: item.bdoId as number, name: item.bdoName })}
+                      className="rounded bg-green-50 px-1.5 py-0.5 font-mono text-[11px] text-green-800 underline decoration-dotted underline-offset-2 hover:bg-green-100"
+                      title="ดูรายละเอียด BDO"
+                    >
                       {item.bdoName || `BDO-${item.bdoId}`}
+                    </button>
+                  ) : item.bdoName ? (
+                    // มีชื่อ BDO แต่ไม่มี id — เปิด panel ไม่ได้ เพราะ panel ยิงด้วย id เท่านั้น
+                    <span className="rounded bg-green-50 px-1.5 py-0.5 font-mono text-[11px] text-green-800">
+                      {item.bdoName}
                     </span>
                   ) : (
                     <span className="text-[11px] text-amber-700">ยังไม่ผูก</span>
@@ -206,6 +233,14 @@ export function SlipReportClient() {
           </tbody>
         </table>
       </div>
+
+      {openBdo && (
+        <BdoDetailPanel
+          bdoId={openBdo.id}
+          bdoName={openBdo.name}
+          onClose={() => setOpenBdo(null)}
+        />
+      )}
     </div>
   )
 }
