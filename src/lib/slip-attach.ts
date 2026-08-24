@@ -190,6 +190,32 @@ export async function attachSlip(input: AttachSlipInput): Promise<AttachSlipResu
         points: 0,
       }
     }
+  } else if (invoiceId && localSlipId > 0) {
+    // A different endpoint on purpose: `odoo_slip_match_api` above resolves only
+    // `bdo_id` and throws "No valid BDO matches" on anything else, while this one
+    // takes typed targets. Customers who pay before delivery are matched against
+    // the invoice, because their BDO does not exist yet when the slip arrives.
+    const matchResult = await callPhpApi('/api/slip-match-orders.php', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'match',
+        slip_id: localSlipId,
+        line_account_id: user.lineAccountId,
+        targets: [{ type: 'invoice', id: Number(invoiceId) }],
+        note: 'Attach slip from InboxReya',
+      }),
+    })
+
+    if (!matchResult.success) {
+      return {
+        success: false,
+        status: 502,
+        error: matchResult.error || 'บันทึกสลิปแล้ว แต่จับคู่ใบแจ้งหนี้ไม่สำเร็จ',
+        data: uploadData,
+        details: matchResult,
+        points: 0,
+      }
+    }
   }
 
   const verifiedAmount = Number(slipVerifyAmount ?? amount)

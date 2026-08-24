@@ -132,3 +132,91 @@ export async function getPendingBdos(userId: number): Promise<PendingBdo[]> {
     clearTimeout(timeout)
   }
 }
+
+/**
+ * `ขนส่งเอกชน` in `user_tags` — the customers who pay before delivery.
+ *
+ * Their bill is still at the Invoicing stage when the slip arrives: validated
+ * and waiting for a payment, with no confirmed BDO yet. A BDO does turn up
+ * eventually, but it trails behind, and matching against whatever BDO happens to
+ * exist files the money against a prepayment order instead of the invoice the
+ * customer is actually paying.
+ */
+export const PRIVATE_CARRIER_TAG_ID = 10
+
+/** Raw row shape from the `odoo_invoices` sync table. */
+interface InvoiceRow {
+  invoice_id: number
+  invoice_number: string | null
+  amount_total: unknown
+  amount_residual: unknown
+  payment_state: string | null
+}
+
+export async function hasPrivateCarrierTag(userId: number): Promise<boolean> {
+  const { default: prisma } = await import('./prisma')
+
+  const rows = await prisma.$queryRawUnsafe<Array<{ tagged: number }>>(
+    `SELECT 1 AS tagged
+       FROM user_tag_assignments
+      WHERE user_id = ?
+        AND tag_id = ?
+        AND (expires_at IS NULL OR expires_at > NOW())
+      LIMIT 1`,
+    userId,
+    PRIVATE_CARRIER_TAG_ID
+  )
+
+  return rows.length > 0
+}
+
+/**
+ * Outstanding invoices for one inbox customer, shaped like `PendingBdo` so the
+ * same amount-matching rule serves both. Reusing that shape is deliberate: the
+ * money comparison, the duplicate collapsing and the refusal to guess between
+ * two equal amounts must behave identically whichever kind of bill is on offer.
+ *
+ * Read straight from the sync table rather than through PHP — `odoo_invoices`
+ * lives in this same database, and `line_user_id` on it points at the customer
+ * directly, with no member reference to resolve first.
+ */
+export async function getPendingInvoices(userId: number): Promise<PendingBdo[]> {
+  const { default: prisma } = await import('./prisma')
+
+  const user = await prisma.lineUser.findUnique({
+    where: { id: userId },
+    select: { lineUserId: true },
+  })
+
+  if (!user?.lineUserId) return []
+
+  try {
+    const rows = await prisma.$queryRawUnsafe<InvoiceRow[]>(
+      `SELECT invoice_id, invoice_number, amount_total, amount_residual, payment_state
+         FROM odoo_invoices
+        WHERE line_user_id = ?
+          AND is_paid = 0
+          AND (payment_state IS NULL OR payment_state <> 'paid')
+        ORDER BY invoice_date DESC
+        LIMIT 50`,
+      user.lineUserId
+    )
+
+    return rows.map((row) => ({
+      bdo_id: Number(row.invoice_id),
+      bdo_name: row.invoice_number,
+      amount_total: Number(row.amount_total),
+      // Production leaves this at 0.00 on effectively every row, so `bdoPayable`
+      // falls through to the total. Kept anyway for the rows that do carry it.
+      amount_net_to_pay: Number(row.amount_residual),
+      payment_status: row.payment_state,
+    }))
+  } catch (error) {
+    console.warn(
+      '[slip-auto-match] could not load pending invoices for',
+      userId,
+      error instanceof Error ? error.message : error
+    )
+    return []
+  }
+}

@@ -123,3 +123,44 @@ describe('pickBdoForAmount', () => {
     expect(result.status).toBe('ambiguous')
   })
 })
+
+describe('invoices offered to the same matching rule', () => {
+  /**
+   * Customers tagged ขนส่งเอกชน are matched against `odoo_invoices` instead of
+   * BDOs. That table leaves `amount_residual` at 0.00 on effectively every row —
+   * 334 of the 335 unpaid rows in production — so the whole feature rests on the
+   * payable figure falling through to `amount_total`. If that fallback ever goes
+   * away, those customers silently stop matching.
+   */
+  const invoice = (over: Partial<PendingBdo> = {}): PendingBdo => ({
+    bdo_id: 9001,
+    bdo_name: 'HS2608000001',
+    amount_total: 2501.26,
+    amount_net_to_pay: 0,
+    payment_status: 'not_paid',
+    ...over,
+  })
+
+  it('reads an unpaid invoice as payable for its total when the residual is zero', () => {
+    expect(bdoPayable(invoice())).toBe(2501.26)
+  })
+
+  it('matches a slip against the one invoice carrying that amount', () => {
+    const result = pickBdoForAmount([invoice(), invoice({ bdo_id: 9002, amount_total: 13110.48 })], 2501.26)
+
+    expect(result.status).toBe('matched')
+    expect(result.status === 'matched' && result.bdo.bdo_id).toBe(9001)
+  })
+
+  it('refuses to guess between two invoices of the same amount', () => {
+    const result = pickBdoForAmount([invoice(), invoice({ bdo_id: 9002 })], 2501.26)
+
+    expect(result.status).toBe('ambiguous')
+  })
+
+  it('leaves an already-paid invoice out of the running', () => {
+    const result = pickBdoForAmount([invoice({ payment_status: 'paid' })], 2501.26)
+
+    expect(result.status).toBe('none')
+  })
+})

@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { redisGet, redisSet } from '@/lib/redis'
 import { decodeSlipQr, fetchSlipImage, verifySlip } from '@/lib/slip-verify'
-import { bdoPayable, getPendingBdos, pickBdoForAmount } from '@/lib/slip-auto-match'
+import {
+  bdoPayable,
+  getPendingBdos,
+  getPendingInvoices,
+  hasPrivateCarrierTag,
+  pickBdoForAmount,
+} from '@/lib/slip-auto-match'
 import { attachSlip } from '@/lib/slip-attach'
 
 /**
@@ -134,8 +140,11 @@ export async function GET(request: Request) {
       messageId: number
       userId: number | null
       amount: number
-      bdoId: number
-      bdoName: string | null
+      // Named for the document rather than for BDO: a rehearsal report that
+      // labelled an invoice id as a BDO id would be read as the wrong bill.
+      targetKind: 'bdo' | 'invoice'
+      targetId: number
+      targetName: string | null
     }> = []
 
     for (const message of messages) {
@@ -170,7 +179,16 @@ export async function GET(request: Request) {
 
         // Second free gate: a customer with nothing outstanding has nothing to
         // match, so there is no reason to pay slip-c to read their slip.
-        const bdos = message.userId ? await getPendingBdos(message.userId) : []
+        // Customers tagged ขนส่งเอกชน pay before delivery: when their slip
+        // arrives the bill is still an invoice, and whatever BDO exists for them
+        // is a prepayment order that trails the real one. Matching against it
+        // files the money against the wrong document, so read invoices instead.
+        const matchInvoices = message.userId ? await hasPrivateCarrierTag(message.userId) : false
+        const bdos = message.userId
+          ? matchInvoices
+            ? await getPendingInvoices(message.userId)
+            : await getPendingBdos(message.userId)
+          : []
         if (bdos.length === 0) {
           noBdoMatch += 1
           if (!dryRun) await redisSet(scannedKey(message.id), '1', SCANNED_TTL_SECONDS)
@@ -221,8 +239,9 @@ export async function GET(request: Request) {
                 messageId: message.id,
                 userId: message.userId,
                 amount: paidAmount,
-                bdoId: outcome.bdo.bdo_id,
-                bdoName: outcome.bdo.bdo_name ?? null,
+                targetKind: matchInvoices ? 'invoice' : 'bdo',
+                targetId: outcome.bdo.bdo_id,
+                targetName: outcome.bdo.bdo_name ?? null,
               })
             } else if (outcome.status === 'matched') {
               const attached = await attachSlip({
@@ -232,7 +251,9 @@ export async function GET(request: Request) {
                 transferDate: result.data?.transDate
                   ? String(result.data.transDate).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')
                   : undefined,
-                bdoId: outcome.bdo.bdo_id,
+                ...(matchInvoices
+                  ? { invoiceId: outcome.bdo.bdo_id }
+                  : { bdoId: outcome.bdo.bdo_id }),
                 bdoName: outcome.bdo.bdo_name ?? null,
                 notifyCustomer: true,
                 slipVerified: true,
@@ -245,7 +266,9 @@ export async function GET(request: Request) {
               if (attached.success) {
                 autoMatched += 1
                 console.log(
-                  `[prescan-slips] auto-matched message ${message.id} -> BDO ${outcome.bdo.bdo_id} (฿${paidAmount})`
+                  `[prescan-slips] auto-matched message ${message.id} -> ${
+                    matchInvoices ? 'invoice' : 'BDO'
+                  } ${outcome.bdo.bdo_id} (฿${paidAmount})`
                 )
               } else {
                 attachFailed += 1
