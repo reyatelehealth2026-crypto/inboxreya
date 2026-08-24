@@ -233,6 +233,7 @@ export async function attachSlip(input: AttachSlipInput): Promise<AttachSlipResu
           metadata: mergeSlipMetadata(message.metadata, {
             verified: true,
             bdoId: bdoId ? Number(bdoId) : null,
+            invoiceId: invoiceId ? Number(invoiceId) : null,
             bdoName: typeof bdoName === 'string' && bdoName ? bdoName : null,
             amount: Number.isFinite(verifiedAmount) ? verifiedAmount : null,
             ref: slipVerifyRef || null,

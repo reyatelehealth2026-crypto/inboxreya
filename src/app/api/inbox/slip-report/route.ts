@@ -51,6 +51,17 @@ export async function GET(request: NextRequest) {
         LIMIT 500`
     )
 
+    // Every image the customers sent in the window, slip or not. Counted
+    // separately because the rows above are already narrowed to the ones the
+    // scanner wrote a result onto — without this the report can say how many
+    // slips passed but not how many pictures it took to get them.
+    const [images] = await prisma.$queryRawUnsafe<Array<{ received: bigint | number }>>(
+      `SELECT COUNT(*) AS received
+         FROM messages
+        WHERE message_type = 'image'
+          AND created_at >= NOW() - INTERVAL ${days} DAY`
+    )
+
     const phpBase = process.env.NEXT_PUBLIC_PHP_API_URL || process.env.PHP_API_URL || ''
 
     const items = rows
@@ -74,6 +85,7 @@ export async function GET(request: NextRequest) {
           userId: row.user_id,
           customerName: row.display_name,
           bdoId: slip.bdoId ?? null,
+          invoiceId: slip.invoiceId ?? null,
           bdoName: slip.bdoName ?? null,
           amount: typeof slip.amount === 'number' ? slip.amount : null,
           ref: slip.ref ?? null,
@@ -85,12 +97,21 @@ export async function GET(request: NextRequest) {
       })
       .filter((item): item is NonNullable<typeof item> => item !== null)
 
+    // The funnel, narrowing at each step: every picture that arrived, the ones
+    // the scanner actually ruled on, the ones the bank confirmed, and finally
+    // what each confirmed slip was filed against.
     const summary = {
+      received: Number(images?.received ?? 0),
+      checked: rows.length,
       slips: items.length,
-      // A slip saved from the chat shortcut carries no BDO — worth showing on its
-      // own rather than folded into the total.
+      // Filed against a delivery order, the ordinary path.
       matchedBdo: items.filter((i) => i.bdoId).length,
-      unmatched: items.filter((i) => !i.bdoId).length,
+      // Filed against an invoice — customers who pay before delivery, whose BDO
+      // does not exist yet when the slip arrives.
+      matchedInvoice: items.filter((i) => !i.bdoId && i.invoiceId).length,
+      // Passed the bank check but sits against nothing: saved from the chat
+      // shortcut, or the amount fit no outstanding bill. This is the queue.
+      unmatched: items.filter((i) => !i.bdoId && !i.invoiceId).length,
       totalAmount: items.reduce((sum, i) => sum + (i.amount || 0), 0),
       totalPoints: items.reduce((sum, i) => sum + i.points, 0),
       customers: new Set(items.map((i) => i.userId).filter(Boolean)).size,

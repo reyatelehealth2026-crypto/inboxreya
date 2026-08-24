@@ -10,6 +10,7 @@ import { mergeSlipMetadata, type SlipMark } from './slip-mark'
 const MARK: SlipMark = {
   verified: true,
   bdoId: 123,
+  invoiceId: null,
   bdoName: 'BDO-TEST-0001',
   amount: 1500,
   ref: 'TESTREF0001',

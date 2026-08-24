@@ -12,6 +12,7 @@ interface SlipReportItem {
   userId: number | null
   customerName: string | null
   bdoId: number | null
+  invoiceId: number | null
   bdoName: string | null
   amount: number | null
   ref: string | null
@@ -22,8 +23,11 @@ interface SlipReportItem {
 }
 
 interface SlipReportSummary {
+  received: number
+  checked: number
   slips: number
   matchedBdo: number
+  matchedInvoice: number
   unmatched: number
   totalAmount: number
   totalPoints: number
@@ -77,12 +81,63 @@ export function SlipReportClient() {
     load(days)
   }, [days, load])
 
-  const kpis = summary
+  // Read left to right: every picture that arrived, then what survived each
+  // narrowing. Showing only the last number hides where slips are being lost.
+  const funnel = summary
     ? [
-        { label: 'สลิปที่ตรวจผ่าน', value: summary.slips.toLocaleString(), tone: 'text-teal-700' },
-        { label: 'จับคู่ BDO แล้ว', value: summary.matchedBdo.toLocaleString(), tone: 'text-green-700' },
-        { label: 'ยอดรวม', value: `฿${summary.totalAmount.toLocaleString()}`, tone: 'text-gray-800' },
-        { label: 'แต้มที่ให้', value: summary.totalPoints.toLocaleString(), tone: 'text-amber-700' },
+        {
+          label: 'รูปที่ลูกค้าส่งมา',
+          value: summary.received.toLocaleString(),
+          hint: 'ทุกรูปในช่วงนี้',
+          tone: 'text-gray-800',
+        },
+        {
+          label: 'ระบบตรวจแล้ว',
+          value: summary.checked.toLocaleString(),
+          hint: 'รูปที่มีผลตรวจบันทึกไว้',
+          tone: 'text-sky-700',
+        },
+        {
+          label: 'เป็นสลิปจริง',
+          value: summary.slips.toLocaleString(),
+          hint: 'ธนาคารยืนยันผ่าน',
+          tone: 'text-teal-700',
+        },
+        {
+          label: 'ยังไม่ผูกบิล',
+          value: summary.unmatched.toLocaleString(),
+          hint: 'คิวที่รอเซล',
+          tone: summary.unmatched > 0 ? 'text-amber-700' : 'text-gray-400',
+        },
+      ]
+    : []
+
+  const totals = summary
+    ? [
+        {
+          label: 'จับคู่ BDO',
+          value: summary.matchedBdo.toLocaleString(),
+          hint: 'ใบส่งของ',
+          tone: 'text-green-700',
+        },
+        {
+          label: 'จับคู่ใบแจ้งหนี้',
+          value: summary.matchedInvoice.toLocaleString(),
+          hint: 'ลูกค้าโอนก่อนส่ง',
+          tone: 'text-violet-700',
+        },
+        {
+          label: 'ยอดรวม',
+          value: `฿${summary.totalAmount.toLocaleString()}`,
+          hint: `${summary.customers.toLocaleString()} ลูกค้า`,
+          tone: 'text-gray-800',
+        },
+        {
+          label: 'แต้มที่ให้',
+          value: summary.totalPoints.toLocaleString(),
+          hint: '1,000 ฿ = 1 แต้ม',
+          tone: 'text-amber-700',
+        },
       ]
     : []
 
@@ -91,7 +146,9 @@ export function SlipReportClient() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-gray-800">สรุปสลิปที่ตรวจแล้ว</h1>
-          <p className="text-xs text-gray-500">สลิปที่ยืนยันกับธนาคารผ่าน และ BDO ที่จับคู่ให้</p>
+          <p className="text-xs text-gray-500">
+            สลิปที่ยืนยันกับธนาคารผ่าน และบิลที่จับคู่ให้ — ใบส่งของ (BDO) หรือใบแจ้งหนี้
+          </p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -119,18 +176,40 @@ export function SlipReportClient() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {kpis.map((kpi) => (
-          <div key={kpi.label} className="rounded-xl border border-gray-200 bg-white p-3">
-            <div className="text-[11px] font-semibold text-gray-600">{kpi.label}</div>
-            <div className={`mt-1 text-xl font-bold ${kpi.tone}`}>{kpi.value}</div>
-          </div>
-        ))}
+      <div className="space-y-1.5">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+          เส้นทางของรูปที่เข้ามา
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {funnel.map((kpi) => (
+            <div key={kpi.label} className="rounded-xl border border-gray-200 bg-white p-3">
+              <div className="text-[11px] font-semibold text-gray-600">{kpi.label}</div>
+              <div className={`mt-1 text-xl font-bold ${kpi.tone}`}>{kpi.value}</div>
+              <div className="text-[10px] text-gray-400">{kpi.hint}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+          สลิปที่ผ่านแล้วถูกผูกกับอะไร
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {totals.map((kpi) => (
+            <div key={kpi.label} className="rounded-xl border border-gray-200 bg-white p-3">
+              <div className="text-[11px] font-semibold text-gray-600">{kpi.label}</div>
+              <div className={`mt-1 text-xl font-bold ${kpi.tone}`}>{kpi.value}</div>
+              <div className="text-[10px] text-gray-400">{kpi.hint}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {summary && summary.unmatched > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          มี {summary.unmatched} สลิปที่ตรวจผ่านแต่ยังไม่ได้ผูกกับ BDO (บันทึกจากหน้าแชทจะไม่มีการเลือก BDO)
+          มี {summary.unmatched} สลิปที่ตรวจผ่านแต่ยังไม่ได้ผูกกับบิล — บันทึกจากหน้าแชทจะไม่มีการเลือกบิล
+          หรือยอดที่โอนมาไม่ตรงกับบิลค้างใบไหนเลย
         </div>
       )}
 
@@ -142,7 +221,7 @@ export function SlipReportClient() {
             <tr className="border-b border-gray-200 bg-gray-50 text-left text-[11px] uppercase text-gray-600">
               <th className="px-3 py-2 font-semibold">รูป</th>
               <th className="px-3 py-2 font-semibold">ลูกค้า</th>
-              <th className="px-3 py-2 font-semibold">BDO</th>
+              <th className="px-3 py-2 font-semibold">จับคู่กับ</th>
               <th className="px-3 py-2 text-right font-semibold">ยอด</th>
               <th className="px-3 py-2 font-semibold">Ref</th>
               <th className="px-3 py-2 text-right font-semibold">แต้ม</th>
@@ -211,6 +290,15 @@ export function SlipReportClient() {
                     >
                       {item.bdoName || `BDO-${item.bdoId}`}
                     </button>
+                  ) : item.invoiceId ? (
+                    // ใบแจ้งหนี้ของลูกค้าที่โอนก่อนส่ง — ยังไม่มี panel รายละเอียด
+                    // ฝั่ง invoice จึงแสดงเป็นป้ายเฉย ๆ ไม่ให้กด
+                    <span
+                      className="rounded bg-violet-50 px-1.5 py-0.5 font-mono text-[11px] text-violet-800"
+                      title="ใบแจ้งหนี้ — ลูกค้าโอนก่อนส่ง"
+                    >
+                      {item.bdoName || `INV-${item.invoiceId}`}
+                    </span>
                   ) : item.bdoName ? (
                     // มีชื่อ BDO แต่ไม่มี id — เปิด panel ไม่ได้ เพราะ panel ยิงด้วย id เท่านั้น
                     <span className="rounded bg-green-50 px-1.5 py-0.5 font-mono text-[11px] text-green-800">
