@@ -337,10 +337,13 @@ export function SlipReportClient() {
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-gray-500">
                       {item.invoiceNumber && <span className="font-mono">{item.invoiceNumber}</span>}
                       {item.orderName && <span className="font-mono text-gray-400">{item.orderName}</span>}
-                      {item.invoicePaid !== null && (
-                        <span className={item.invoicePaid ? 'text-green-700' : 'text-amber-700'}>
-                          {item.invoicePaid ? 'ชำระแล้ว' : 'ยังไม่ชำระ'}
-                          {item.invoicePaid && formatThaiDate(item.invoicePaidAt)
+                      {/* Only the settled state is worth a word. A slip exists
+                          because the bill was unpaid, so "ยังไม่ชำระ" tells the
+                          reader nothing they did not already know. */}
+                      {item.invoicePaid && (
+                        <span className="text-green-700">
+                          ชำระแล้ว
+                          {formatThaiDate(item.invoicePaidAt)
                             ? ` ${formatThaiDate(item.invoicePaidAt)}`
                             : ''}
                         </span>
