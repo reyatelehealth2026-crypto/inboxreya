@@ -421,3 +421,259 @@ export async function broadcastLineMessage(
     }
   }
 }
+
+/* ────────────────────────────────────────────────────────────
+ * OA insight (read-only) — ข้อมูลบัญชี OA สำหรับหน้า /oa-status
+ * ใช้ GET ล้วน ไม่แตะ quota ส่งข้อความ
+ * ──────────────────────────────────────────────────────────── */
+
+const LINE_API_BASE = 'https://api.line.me/v2/bot'
+
+async function lineGet<T>(path: string, lineAccountId?: number | null): Promise<T> {
+  const token = await getChannelAccessToken(lineAccountId)
+  if (!token) throw new Error('ไม่พบ LINE Channel Access Token')
+
+  const response = await fetch(`${LINE_API_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(`LINE GET ${path} → ${response.status} ${detail.slice(0, 200)}`)
+  }
+
+  return (await response.json()) as T
+}
+
+export interface OaBotInfo {
+  userId: string
+  basicId: string
+  premiumId?: string
+  displayName: string
+  pictureUrl?: string
+  chatMode: 'chat' | 'bot'
+  markAsReadMode: 'auto' | 'manual'
+}
+
+export interface OaFollowerInsight {
+  status: 'ready' | 'unready' | 'out_of_service'
+  followers?: number
+  targetedReaches?: number
+  blocks?: number
+}
+
+export interface OaDemographicInsight {
+  available: boolean
+  genders?: Array<{ gender: string; percentage: number }>
+  ages?: Array<{ age: string; percentage: number }>
+  areas?: Array<{ area: string; percentage: number }>
+  appTypes?: Array<{ appType: string; percentage: number }>
+  subscriptionPeriods?: Array<{ subscriptionPeriod: string; percentage: number }>
+}
+
+export interface OaSnapshot {
+  account: { id: number | null; name: string | null }
+  bot: OaBotInfo | null
+  quota: { type: 'none' | 'limited'; limit: number | null; used: number | null; remaining: number | null }
+  followers: (OaFollowerInsight & { date: string }) | null
+  demographic: OaDemographicInsight | null
+  webhook: { endpoint: string | null; active: boolean | null }
+  fetchedAt: string
+  errors: string[]
+}
+
+/** วันที่รูปแบบ yyyyMMdd ตามเวลาไทย ย้อนหลัง n วัน */
+function bangkokDateStamp(daysAgo: number): string {
+  const target = new Date(Date.now() - daysAgo * 86_400_000)
+  return target.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }).replace(/-/g, '')
+}
+
+/**
+ * LINE ยังไม่สรุป insight ของวันปัจจุบัน — เริ่มถามจากเมื่อวาน
+ * ถ้ายัง unready ถอยอีกวัน (ข้อมูลจริงดีเลย์ไม่แน่นอน ปรับจำนวนวันได้ที่นี่)
+ */
+async function fetchFollowerInsight(
+  lineAccountId?: number | null
+): Promise<(OaFollowerInsight & { date: string }) | null> {
+  let last: (OaFollowerInsight & { date: string }) | null = null
+
+  for (const daysAgo of [1, 2]) {
+    const date = bangkokDateStamp(daysAgo)
+    const insight = await lineGet<OaFollowerInsight>(`/insight/followers?date=${date}`, lineAccountId)
+    last = { ...insight, date }
+    if (insight.status === 'ready') break
+  }
+
+  return last
+}
+
+/**
+ * รวมข้อมูล OA ทั้งหมดในครั้งเดียว
+ * ใช้ allSettled — endpoint ไหนพัง (เช่น OA ใหม่ยังไม่มี insight) ที่เหลือยังแสดงได้
+ */
+export async function getOaSnapshot(lineAccountId?: number | null): Promise<OaSnapshot> {
+  const account = await prisma.lineAccount.findFirst({
+    where: lineAccountId ? { id: lineAccountId } : { isActive: true },
+    orderBy: lineAccountId ? undefined : [{ isDefault: 'desc' }, { id: 'asc' }],
+    select: { id: true, name: true },
+  })
+
+  const errors: string[] = []
+  const settle = <T,>(label: string, result: PromiseSettledResult<T>): T | null => {
+    if (result.status === 'fulfilled') return result.value
+    const reason = result.reason instanceof Error ? result.reason.message : String(result.reason)
+    errors.push(`${label}: ${reason}`)
+    return null
+  }
+
+  const [botRes, quotaRes, usageRes, followerRes, demoRes, webhookRes] = await Promise.allSettled([
+    lineGet<OaBotInfo>('/info', lineAccountId),
+    lineGet<{ type: 'none' | 'limited'; value?: number }>('/message/quota', lineAccountId),
+    lineGet<{ totalUsage: number }>('/message/quota/consumption', lineAccountId),
+    fetchFollowerInsight(lineAccountId),
+    lineGet<OaDemographicInsight>('/insight/demographic', lineAccountId),
+    lineGet<{ endpoint: string; active: boolean }>('/channel/webhook/endpoint', lineAccountId),
+  ])
+
+  const quotaRaw = settle('quota', quotaRes)
+  const usageRaw = settle('quota/consumption', usageRes)
+  const webhookRaw = settle('webhook', webhookRes)
+
+  const limit = quotaRaw?.type === 'limited' ? quotaRaw.value ?? null : null
+  const used = usageRaw?.totalUsage ?? null
+
+  return {
+    account: { id: account?.id ?? null, name: account?.name ?? null },
+    bot: settle('info', botRes),
+    quota: {
+      type: quotaRaw?.type ?? 'none',
+      limit,
+      used,
+      remaining: limit === null || used === null ? null : Math.max(0, limit - used),
+    },
+    followers: settle('insight/followers', followerRes),
+    demographic: settle('insight/demographic', demoRes),
+    webhook: { endpoint: webhookRaw?.endpoint ?? null, active: webhookRaw?.active ?? null },
+    fetchedAt: new Date().toISOString(),
+    errors,
+  }
+}
+
+/* ────────────────────────────────────────────────────────────
+ * Insight เชิงลึก + Audience — สำหรับแท็บ Insight / Audience
+ * แยกจาก getOaSnapshot เพราะยิงหลายครั้ง (แนวโน้ม 7 วัน) ไม่ควรถ่วงหน้าแรก
+ * ──────────────────────────────────────────────────────────── */
+
+export interface OaDeliveryInsight {
+  status: 'ready' | 'unready' | 'out_of_service'
+  broadcast?: number
+  targeting?: number
+  autoResponse?: number
+  welcomeResponse?: number
+  chat?: number
+  apiBroadcast?: number
+  apiPush?: number
+  apiMulticast?: number
+  apiNarrowcast?: number
+  apiReply?: number
+}
+
+export interface OaFollowerPoint {
+  date: string
+  followers: number | null
+  targetedReaches: number | null
+  blocks: number | null
+}
+
+export interface OaAudienceGroup {
+  audienceGroupId: number
+  type: string
+  description: string
+  status: string
+  failedType?: string | null
+  audienceCount: number
+  /** epoch วินาที (ไม่ใช่มิลลิวินาที) */
+  created: number
+  permission?: string
+  isIfaAudience?: boolean
+  expireTimestamp?: number | null
+}
+
+export interface OaDetail {
+  trend: OaFollowerPoint[]
+  delivery: (OaDeliveryInsight & { date: string }) | null
+  audiences: OaAudienceGroup[]
+  audienceTotal: number | null
+  audienceAuthority: string | null
+  fetchedAt: string
+  errors: string[]
+}
+
+/** จำนวนวันย้อนหลังของกราฟแนวโน้ม — เพิ่มได้ แต่ยิง LINE 1 ครั้งต่อวัน */
+const TREND_DAYS = 7
+
+/** จำนวน audience สูงสุดที่ดึงมาแสดง (LINE จำกัด size สูงสุด 40 ต่อหน้า) */
+const AUDIENCE_PAGE_SIZE = 40
+
+export async function getOaDetail(lineAccountId?: number | null): Promise<OaDetail> {
+  const errors: string[] = []
+  const settle = <T,>(label: string, result: PromiseSettledResult<T>): T | null => {
+    if (result.status === 'fulfilled') return result.value
+    const reason = result.reason instanceof Error ? result.reason.message : String(result.reason)
+    errors.push(`${label}: ${reason}`)
+    return null
+  }
+
+  // เรียงจากเก่าไปใหม่ เพื่อให้กราฟอ่านจากซ้ายไปขวา
+  const trendDates = Array.from({ length: TREND_DAYS }, (_, i) => bangkokDateStamp(i + 1)).reverse()
+
+  const [trendRes, deliveryRes, audienceRes, authorityRes] = await Promise.allSettled([
+    Promise.all(
+      trendDates.map(async (date): Promise<OaFollowerPoint> => {
+        const insight = await lineGet<OaFollowerInsight>(
+          `/insight/followers?date=${date}`,
+          lineAccountId
+        )
+        const ready = insight.status === 'ready'
+        return {
+          date,
+          followers: ready ? insight.followers ?? null : null,
+          targetedReaches: ready ? insight.targetedReaches ?? null : null,
+          blocks: ready ? insight.blocks ?? null : null,
+        }
+      })
+    ),
+    (async (): Promise<(OaDeliveryInsight & { date: string }) | null> => {
+      // เหมือน followers — LINE ยังไม่สรุปของวันนี้ ถอยไปอีกวันถ้ายัง unready
+      let last: (OaDeliveryInsight & { date: string }) | null = null
+      for (const daysAgo of [1, 2]) {
+        const date = bangkokDateStamp(daysAgo)
+        const insight = await lineGet<OaDeliveryInsight>(
+          `/insight/message/delivery?date=${date}`,
+          lineAccountId
+        )
+        last = { ...insight, date }
+        if (insight.status === 'ready') break
+      }
+      return last
+    })(),
+    lineGet<{ audienceGroups?: OaAudienceGroup[]; totalCount?: number }>(
+      `/audienceGroup/list?page=1&size=${AUDIENCE_PAGE_SIZE}`,
+      lineAccountId
+    ),
+    lineGet<{ authorityLevel: string }>('/audienceGroup/authorityLevel', lineAccountId),
+  ])
+
+  const audienceRaw = settle('audienceGroup/list', audienceRes)
+
+  return {
+    trend: settle('insight/followers (แนวโน้ม)', trendRes) ?? [],
+    delivery: settle('insight/message/delivery', deliveryRes),
+    audiences: audienceRaw?.audienceGroups ?? [],
+    audienceTotal: audienceRaw?.totalCount ?? null,
+    audienceAuthority: settle('audienceGroup/authorityLevel', authorityRes)?.authorityLevel ?? null,
+    fetchedAt: new Date().toISOString(),
+    errors,
+  }
+}
