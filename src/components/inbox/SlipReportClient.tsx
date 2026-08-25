@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Loader2, RefreshCw } from 'lucide-react'
@@ -21,12 +21,17 @@ interface SlipReportItem {
   receivedAt: string
   imageUrl: string | null
   deliveryType: 'private' | 'company'
+  /** Every order the matched document covers — a BDO often spans several. */
+  documents: SlipDocument[]
+}
+
+interface SlipDocument {
+  invoiceId: number
   invoiceNumber: string | null
   orderName: string | null
-  invoicePaid: boolean | null
-  invoicePaidAt: string | null
-  /** A BDO can cover several orders; this counts the ones not shown. */
-  otherInvoices: number
+  amount: number
+  paid: boolean
+  paidAt: string | null
 }
 
 interface SlipReportSummary {
@@ -75,6 +80,17 @@ export function SlipReportClient() {
   const [items, setItems] = useState<SlipReportItem[]>([])
   // BDO ที่กำลังเปิดดู — ใช้ panel ตัวเดียวกับ Slip Center ที่ยิงข้อมูลสดจาก Odoo เอง
   const [openBdo, setOpenBdo] = useState<{ id: number; name: string | null } | null>(null)
+  // แถวที่กางดูใบแจ้งหนี้ทั้งหมด เก็บเป็น messageId
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+
+  const toggleRow = useCallback((messageId: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(messageId)) next.delete(messageId)
+      else next.add(messageId)
+      return next
+    })
+  }, [])
 
   const load = useCallback(async (rangeDays: number) => {
     setLoading(true)
@@ -262,7 +278,8 @@ export function SlipReportClient() {
             )}
 
             {items.map((item) => (
-              <tr key={item.messageId} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+              <Fragment key={item.messageId}>
+              <tr className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
                 <td className="px-3 py-2">
                   {item.imageUrl ? (
                     <a href={item.imageUrl} target="_blank" rel="noopener noreferrer">
@@ -333,23 +350,33 @@ export function SlipReportClient() {
                     <span className="text-[11px] text-amber-700">ยังไม่ผูก</span>
                   )}
 
-                  {(item.invoiceNumber || item.orderName) && (
+                  {item.documents.length > 0 && (
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-gray-500">
-                      {item.invoiceNumber && <span className="font-mono">{item.invoiceNumber}</span>}
-                      {item.orderName && <span className="font-mono text-gray-400">{item.orderName}</span>}
+                      {item.documents[0].invoiceNumber && (
+                        <span className="font-mono">{item.documents[0].invoiceNumber}</span>
+                      )}
+                      {item.documents[0].orderName && (
+                        <span className="font-mono text-gray-400">{item.documents[0].orderName}</span>
+                      )}
                       {/* Only the settled state is worth a word. A slip exists
-                          because the bill was unpaid, so "ยังไม่ชำระ" tells the
-                          reader nothing they did not already know. */}
-                      {item.invoicePaid && (
+                          because the bill was unpaid, so the opposite label tells
+                          the reader nothing they did not already know. */}
+                      {item.documents[0].paid && (
                         <span className="text-green-700">
                           ชำระแล้ว
-                          {formatThaiDate(item.invoicePaidAt)
-                            ? ` ${formatThaiDate(item.invoicePaidAt)}`
+                          {formatThaiDate(item.documents[0].paidAt)
+                            ? ` ${formatThaiDate(item.documents[0].paidAt)}`
                             : ''}
                         </span>
                       )}
-                      {item.otherInvoices > 0 && (
-                        <span className="text-gray-400">+อีก {item.otherInvoices} ใบ</span>
+                      {item.documents.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => toggleRow(item.messageId)}
+                          className="rounded px-1 font-medium text-teal-700 underline decoration-dotted hover:bg-teal-50"
+                        >
+                          {expanded.has(item.messageId) ? 'ย่อ' : `+อีก ${item.documents.length - 1} ใบ`}
+                        </button>
                       )}
                     </div>
                   )}
@@ -363,6 +390,46 @@ export function SlipReportClient() {
                 </td>
                 <td className="px-3 py-2 text-[11px] text-gray-600">{formatThaiDateTime(item.verifiedAt)}</td>
               </tr>
+
+              {expanded.has(item.messageId) && item.documents.length > 1 && (
+                <tr className="border-b border-gray-100 bg-gray-50">
+                  <td colSpan={8} className="px-3 py-2">
+                    <div className="space-y-1 pl-14">
+                      <div className="text-[10px] font-semibold text-gray-500">
+                        {item.bdoName || 'บิลนี้'} คลุม {item.documents.length} ใบแจ้งหนี้
+                      </div>
+
+                      {item.documents.map((doc) => (
+                        <div
+                          key={doc.invoiceId}
+                          className="flex flex-wrap items-center gap-x-2 text-[11px]"
+                        >
+                          <span className="font-mono text-gray-700">
+                            {doc.invoiceNumber || `INV-${doc.invoiceId}`}
+                          </span>
+                          <span className="font-mono text-gray-400">{doc.orderName || '-'}</span>
+                          <span className="text-gray-600">฿{doc.amount.toLocaleString()}</span>
+                          {doc.paid && (
+                            <span className="text-green-700">
+                              ชำระแล้ว
+                              {formatThaiDate(doc.paidAt) ? ` ${formatThaiDate(doc.paidAt)}` : ''}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+
+                      {/* The comparison a rep is actually making: does what the
+                          bank confirmed cover everything this document holds? */}
+                      <div className="pt-1 text-[10px] text-gray-500">
+                        รวมทุกใบ ฿
+                        {item.documents.reduce((sum, d) => sum + d.amount, 0).toLocaleString()}
+                        {item.amount !== null && ` · สลิปโอนมา ฿${item.amount.toLocaleString()}`}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>

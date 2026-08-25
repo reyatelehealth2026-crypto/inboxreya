@@ -122,6 +122,7 @@ export async function GET(request: NextRequest) {
       invoice_id: number
       invoice_number: string | null
       order_name: string | null
+      amount_total: unknown
       is_paid: number | null
       payment_state: string | null
       payment_date: Date | null
@@ -134,7 +135,7 @@ export async function GET(request: NextRequest) {
       bdoIds.length || invoiceIds.length
         ? await prisma.$queryRawUnsafe<LinkRow[]>(
             `SELECT b.bdo_id, b.bdo_name, i.invoice_id, i.invoice_number, i.order_name,
-                    i.is_paid, i.payment_state, i.payment_date
+                    i.amount_total, i.is_paid, i.payment_state, i.payment_date
                FROM odoo_invoices i
                LEFT JOIN odoo_bdo_orders b ON b.order_name = i.order_name
               WHERE ${invoiceIds.length ? `i.invoice_id IN (${invoiceIds.join(',')})` : '0'}
@@ -178,21 +179,23 @@ export async function GET(request: NextRequest) {
           ? (byBdo.get(item.bdoId) ?? [])
           : []
 
-      const first = matches[0] ?? null
-
       return {
         ...item,
         deliveryType: item.userId && privateCarrier.has(item.userId) ? 'private' : 'company',
-        bdoName: item.bdoName ?? first?.bdo_name ?? null,
-        invoiceNumber: first?.invoice_number ?? null,
-        orderName: first?.order_name ?? null,
-        invoicePaid: first ? Number(first.is_paid) === 1 || first.payment_state === 'paid' : null,
-        // Odoo leaves this null on most rows even once the invoice is settled,
-        // so the UI shows the status alone when there is no date to show.
-        invoicePaidAt: first?.payment_date ?? null,
-        // One BDO can cover several orders; say so rather than implying the slip
-        // settled only the first one.
-        otherInvoices: Math.max(0, matches.length - 1),
+        bdoName: item.bdoName ?? matches[0]?.bdo_name ?? null,
+        // Every order this document covers, not just the first. A BDO routinely
+        // spans several, and a rep checking whether a payment settled the whole
+        // bill needs to see all of them.
+        documents: matches.map((row) => ({
+          invoiceId: Number(row.invoice_id),
+          invoiceNumber: row.invoice_number,
+          orderName: row.order_name,
+          amount: Number(row.amount_total) || 0,
+          paid: Number(row.is_paid) === 1 || row.payment_state === 'paid',
+          // Odoo leaves this null on most settled invoices, so the UI shows the
+          // status without a date rather than inventing one.
+          paidAt: row.payment_date ?? null,
+        })),
       }
     })
 
