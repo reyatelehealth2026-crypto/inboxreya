@@ -1,0 +1,27 @@
+[
+  {
+    "date": "2026-08-04",
+    "scope": "page",
+    "verb": "redesign",
+    "target": "src/app/auth/login/page.tsx",
+    "genre": "modern-minimal",
+    "macrostructure": "Split Studio (glass shell variant)",
+    "theme": "parity port of wholesale.re-ya.com/admin (navy diagonal + cobalt accent)",
+    "theme_axes": "dark paper / grotesk-sans (Inter+Noto, preserved) / cool accent (cobalt)",
+    "enrichment": "E-orb (2 radial blooms, carried from the source design)",
+    "brief": "inboxreya - user-directed parity with the sibling wholesale admin login",
+    "note": "Diversification suspended on purpose: the brief is visual parity with a sibling app, not variety. Orbs / diagonal gradient / glass shell / gradient CTA come from the source design and would not be Hallmark picks on a greenfield build."
+  },
+  {
+    "date": "2026-08-04",
+    "scope": "page",
+    "verb": "redesign",
+    "target": "src/app/auth/login/page.tsx",
+    "genre": "modern-minimal",
+    "macrostructure": "Split Studio",
+    "theme": "project palette (shadcn slate tokens + LINE green accent)",
+    "theme_axes": "light paper / grotesk-sans (Inter, preserved) / chromatic-other (LINE green)",
+    "enrichment": "none",
+    "brief": "inboxreya - redesign the login page, utilitarian mood, login file only (superseded)"
+  }
+]
