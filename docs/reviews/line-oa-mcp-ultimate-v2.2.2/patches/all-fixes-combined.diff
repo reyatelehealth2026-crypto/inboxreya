@@ -1,0 +1,1538 @@
+diff --git a/README.md b/README.md
+index c1a2db5..8574f16 100644
+--- a/README.md
++++ b/README.md
+@@ -66,7 +66,7 @@ LY Corporation publishes an official [LINE Bot MCP server](https://github.com/li
+ | LINE Shopping (MyShop) | ✅ 14 opt-in tools — products, stock, orders, parcel labels, settlements, checkout links | ❌ |
+ | Rich Message images | ✅ zero-setup (v2.2) — attach a picture, everything else is automatic and **verified delivered-able before "success"** | ❌ bring your own hosted URLs |
+ | Multi-OA | ✅ one config file for all client OAs + runtime switch (`line_use_oa`) + fan-out (`line_run_on_many_oas`) | ❌ one OA per server instance |
+-| Quota / quiet-hours guardrails | ✅ pre-flight Quota Guardian, 22:00–08:00 quiet-hours warnings, `dry_run` cost estimates | ➖ quota *read* tool (`get_message_quota`); no pre-flight guardrails |
++| Quota / quiet-hours guardrails | ✅ pre-flight Quota Guardian, 22:00–08:00 quiet hours that block a live send (`force: true` to override), `confirm` on every uncountable fan-out, `dry_run` cost estimates | ➖ quota *read* tool (`get_message_quota`); no pre-flight guardrails |
+ | Thai i18n | ✅ every user-facing error/warning in Thai, plus full Thai guides | ❌ English (Japanese README available) |
+ | Rich-menu image generation | ✅ pure-JS satori + resvg (~10 MB, no browser), with a **preview-before-deploy** loop | ✅ Marp + Puppeteer (downloads headless Chromium), generate-and-upload in one shot |
+ | Transports | stdio + Streamable HTTP with bearer-token auth (`MCP_HTTP_TOKEN`) | stdio (npx / Docker) |
+diff --git a/SECURITY.md b/SECURITY.md
+index e53f423..7dc9a9c 100644
+--- a/SECURITY.md
++++ b/SECURITY.md
+@@ -70,8 +70,21 @@ bugs (report to LINE), and social engineering.
+ - **Config-file permission check** — a group/other-readable
+   `~/.line-mcp/config.json` triggers a `chmod 600` warning at startup.
+ - **Blast-radius limiters** — Quota Guardian (blocks sends projected over 95%
+-  of remaining quota without `confirm: true`), quiet-hours warning
+-  (22:00–08:00 Asia/Bangkok), and explicit `confirm` for broadcast-to-everyone.
++  of remaining quota without `confirm: true`), quiet hours (22:00–08:00
++  Asia/Bangkok) which **refuse** a `send_now` unless `force: true`, and an
++  explicit `confirm` for every send whose recipient count LINE cannot report
++  ahead of time: broadcast `{ everyone: true }` and both narrowcast shapes
++  (`{ audience }`, `{ filter }`). The projected cost of those transports is
++  reported as `"unknown"` rather than 0, so they can never pass the Quota
++  Guardian by arithmetic.
++- **Destructive-action hints** — every tool whose effect cannot be undone from
++  this server (`line_send_message`, `line_set_webhook_endpoint`,
++  `line_set_default_rich_menu`, the `delete_*` tools, and the `manage_*` tools
++  carrying a delete/discontinue mode) declares `destructiveHint: true`, so an
++  MCP host can prompt the operator before the call runs.
++- **Request deadlines** — every LINE API call runs under an AbortController
++  deadline that covers the response body, not just the headers, so a stalled
++  peer cannot hang a tool call.
+ 
+ ## Known limitations
+ 
+diff --git a/docs/clients-setup-th.md b/docs/clients-setup-th.md
+index aff5c09..9e2a224 100644
+--- a/docs/clients-setup-th.md
++++ b/docs/clients-setup-th.md
+@@ -144,12 +144,12 @@ LINE_CHANNEL_ACCESS_TOKEN = "YOUR_TOKEN"
+ | **คนเรียก** | โค้ดที่คุณเขียนเอง | **AI agent เรียกเองด้วยภาษาธรรมชาติ** |
+ | **ต้องรู้ API spec ไหม** | ต้องอ่าน LINE API doc เอง | ไม่ต้อง — tool description บอก AI เอง |
+ | **เขียนโค้ด** | ต้องเขียน HTTP request, parse, handle error | ไม่ต้องเขียนโค้ดเลย |
+-| **Validation / quota / quiet-hours** | ต้องทำเอง | server ทำให้ (pre-flight validate, Quota Guardian, quiet-hours warning) |
++| **Validation / quota / quiet-hours** | ต้องทำเอง | server ทำให้ (pre-flight validate, Quota Guardian, quiet-hours block, confirm gate สำหรับ broadcast/narrowcast) |
+ | **Thai templates / sticker / festival** | สร้างเอง | มีให้พร้อม (Flex templates, sticker index, ปฏิทินเทศกาลไทย) |
+ | **เปลี่ยน host** | ผูกกับโค้ดที่เขียน | ย้าย config ก็ใช้ได้ทุก host (Cowork/Code/Cursor/Codex) |
+ | **เหมาะกับ** | ระบบ production ที่ flow ตายตัว | งานที่สั่งด้วย "เจตนา" + เปลี่ยนแปลงบ่อย + ให้ AI ตัดสินใจ |
+ 
+-**สรุปสั้นๆ:** REST API คือ "ท่อ" ที่โปรแกรมเมอร์ต่อเอง — MCP คือ "ท่อที่ AI ใช้เป็น" เพราะมาพร้อม schema + คำอธิบายให้ LLM เลือก tool และกรอก argument ได้เอง คุณเลยสั่งงานด้วยภาษาคนแทนการเขียนโค้ด และ logic ความปลอดภัย (validate, quota, quiet-hours) ถูกฝังใน server ครั้งเดียว ใช้ซ้ำได้ทุก host
++**สรุปสั้นๆ:** REST API คือ "ท่อ" ที่โปรแกรมเมอร์ต่อเอง — MCP คือ "ท่อที่ AI ใช้เป็น" เพราะมาพร้อม schema + คำอธิบายให้ LLM เลือก tool และกรอก argument ได้เอง คุณเลยสั่งงานด้วยภาษาคนแทนการเขียนโค้ด และ logic ความปลอดภัย (validate, quota, quiet-hours, confirm gate) ถูกฝังใน server ครั้งเดียว ใช้ซ้ำได้ทุก host
+ 
+ > MCP **ไม่ได้มาแทน** REST API — ข้างใน MCP server ตัวนี้ก็เรียก LINE REST API นั่นแหละ แต่มันห่อด้วยชั้นที่ "AI เข้าใจและใช้เองได้" ทำให้คุณข้ามขั้นเขียน integration code ไปเลย
+ 
+diff --git a/docs/messaging-guide-th.md b/docs/messaging-guide-th.md
+index 80732ba..907ae8e 100644
+--- a/docs/messaging-guide-th.md
++++ b/docs/messaging-guide-th.md
+@@ -35,7 +35,7 @@
+ 
+ ### เรื่องที่ 2 — "ส่งจริง / ซ้อม / ร่าง" มี 3 โหมด
+ 
+-- **`send_now`** — ส่งจริงทันที (ผ่านระบบเช็ก quota + quiet hours)
++- **`send_now`** — ส่งจริงทันที (ผ่านระบบเช็ก quota + quiet hours ซึ่ง **บล็อก** การส่งในช่วง 22:00–08:00 BKK เว้นแต่ `force: true`; broadcast/narrowcast ต้อง `confirm: true`)
+ - **`dry_run`** — "ซ้อมส่ง" ตรวจว่าข้อความถูกไหม + บอกว่าจะส่งกี่คน เปลือง quota เท่าไหร่ **แต่ยังไม่ส่งจริง** (แนะนำทำก่อน broadcast ใหญ่ทุกครั้ง)
+ - **`draft`** — เตรียมแบบร่าง แล้วเอาไปตั้งเวลาส่งในหน้า LINE OA Manager (LINE delivery เสถียรกว่า + มี audit log)
+ 
+diff --git a/docs/quickstart-th.md b/docs/quickstart-th.md
+index c1792e1..55ecf32 100644
+--- a/docs/quickstart-th.md
++++ b/docs/quickstart-th.md
+@@ -127,7 +127,8 @@
+ - **ก่อน broadcast ใหญ่ ให้ "ซ้อมส่ง" ก่อน** — บอก AI ว่า _"ลองส่งแบบ dry run ก่อน"_ (`mode: "dry_run"`) = **ยังไม่ส่งจริง** แต่ระบบจะตรวจให้ว่าข้อความถูกต้องไหม + บอกว่าจะส่งถึงกี่คน และใช้ quota กี่ข้อความ ดูให้ชัวร์ก่อนค่อยสั่งส่งจริง — กันยิงผิดกลุ่มหรือเปลือง quota
+ - **Schedule ใน LINE OA Manager** ดีกว่า build เอง — LINE delivery reliability สูงกว่า + audit log อยู่ใน OA Manager
+ - **Quota Guardian** จะเตือนเองถ้าจะส่งเกิน 95% ของ quota — ใช้ `confirm: true` ถ้ายืนยัน
+-- **Quiet hours (22:00–08:00 BKK)** ถ้าจำเป็นต้องส่ง ใช้ `force: true` หรือ `quiet_push: true`
++- **Quiet hours (22:00–08:00 BKK)** `mode: "send_now"` จะถูก **ปฏิเสธ** ในช่วงนี้ — ถ้าจำเป็นต้องส่งจริง ใช้ `force: true` (หรือ `quiet_push: true` เพื่อส่งแบบไม่เด้ง noti) ส่วน `dry_run` / `draft` ไม่ถูกบล็อก
++- **Broadcast / narrowcast ต้อง `confirm: true`** เพราะ LINE ไม่บอกจำนวนผู้รับล่วงหน้า และยกเลิกหลังส่งไม่ได้ — รัน `mode: "dry_run"` ก่อนเพื่อดู quota
+ 
+ ### ⚠️ ระวัง
+ 
+diff --git a/src/config/multi-oa.ts b/src/config/multi-oa.ts
+index 9826a17..0fe3e86 100644
+--- a/src/config/multi-oa.ts
++++ b/src/config/multi-oa.ts
+@@ -206,7 +206,16 @@ function readJson(path: string): MultiOaConfig {
+   try {
+     return JSON.parse(readFileSync(path, "utf-8")) as MultiOaConfig;
+   } catch (err) {
+-    const msg = err instanceof Error ? err.message : String(err);
+-    throw new Error(`Failed to read config at ${path}: ${msg}`);
++    // NEVER forward err.message here. V8 quotes the source text around the
++    // failure point inside SyntaxError messages — for a config whose very
++    // first value is a channel access token, that quoted snippet IS the token.
++    // registerSecret() has not run at this point in the load, so redactSecrets()
++    // cannot mask it either, and this string flows into MCP replies and logs.
++    // The path plus the failure kind is everything the operator needs.
++    const kind =
++      err instanceof SyntaxError
++        ? "ไฟล์ไม่ใช่ JSON ที่ถูกต้อง (ตรวจ comma / วงเล็บ / เครื่องหมายคำพูดที่ขาดหาย) — ตัดรายละเอียดออกเพราะอาจมี token ปนอยู่"
++        : "เปิดไฟล์ไม่สำเร็จ — ตรวจว่ามีไฟล์อยู่จริงและมีสิทธิ์อ่าน";
++    throw new Error(`Failed to read config at ${path}: ${kind}`);
+   }
+ }
+diff --git a/src/constants.ts b/src/constants.ts
+index 060a5fe..114a291 100644
+--- a/src/constants.ts
++++ b/src/constants.ts
+@@ -14,6 +14,15 @@ export const LINE_API_DATA_BASE = "https://api-data.line.me"; // for content / a
+ export const SERVER_NAME = "line-oa-mcp-ultimate";
+ export const SERVER_VERSION = "2.2.2";
+ 
++// ---- HTTP client deadlines ----
++// One deadline covers the WHOLE call — connect, headers, AND body read. A peer
++// that answers headers fast and then stalls the body must not hold a tool call
++// open forever, so the abort timer stays armed until `response.text()` resolves.
++export const LINE_REQUEST_TIMEOUT_MS = 30_000;
++// Rich menu image upload pushes up to RICH_MENU_IMAGE_MAX_BYTES over api-data;
++// give the body write real headroom on a slow uplink before aborting.
++export const LINE_UPLOAD_TIMEOUT_MS = 60_000;
++
+ // ---- Response sizing ----
+ export const CHARACTER_LIMIT = 25_000; // truncate responses beyond this size
+ export const DEFAULT_PAGE_LIMIT = 20;
+diff --git a/src/i18n/th.ts b/src/i18n/th.ts
+index a85a95c..bbdaa39 100644
+--- a/src/i18n/th.ts
++++ b/src/i18n/th.ts
+@@ -14,10 +14,28 @@ export const TH = {
+   quotaExceeded: (projected: number, remaining: number) =>
+     `🛑 ส่งไม่ได้: คาดว่าจะใช้ ${projected.toLocaleString()} ข้อความ แต่เหลือ quota แค่ ${remaining.toLocaleString()}. ปรับ audience ให้เล็กลงหรือรอ quota รอบใหม่`,
+ 
++  // ---- Unbounded fan-out (broadcast / narrowcast) ----
++  // LINE exposes no pre-send recipient count for these transports, so no quota
++  // arithmetic can protect the caller — and neither transport can be unsent.
++  unboundedFanoutNeedsConfirm: (transport?: string) =>
++    `${
++      transport === "broadcast"
++        ? "⚠️ Broadcast ถึงทุกคนใน OA"
++        : transport === "narrowcast"
++          ? "⚠️ Narrowcast (audience / filter) ถึงคนจำนวนมาก"
++          : "⚠️ การส่งแบบ broadcast/narrowcast"
++    } — ประเมินจำนวนผู้รับล่วงหน้าไม่ได้ และยกเลิกหลังส่งไม่ได้ ต้องระบุ confirm=true\n→ แนะนำ: รัน mode='dry_run' ก่อน เพื่อ validate + ดู quota ที่เหลือ`,
++
++  unboundedFanoutConfirmed: (transport: string) =>
++    `🟡 ส่งแบบ ${transport} — จำนวนผู้รับจริงและ quota ที่ใช้ ทราบได้หลังส่งเท่านั้น. ตรวจ quota ที่ใช้จริงด้วย line_get_oa_status`,
++
+   // ---- Quiet hours ----
+   quietHoursWarning: (bkkHour: number) =>
+     `🌙 ตอนนี้ ${bkkHour}:00 BKK — เป็นช่วง quiet hours (22:00-08:00) ลูกค้าไทยส่วนใหญ่ไม่ชอบถูกปลุก. ตั้งค่า force=true เพื่อส่งต่อ หรือใช้ mode='draft' เพื่อ schedule ใน LINE OA Manager UI`,
+ 
++  quietHoursBlocked: (bkkHour: number) =>
++    `🌙 ยังไม่ได้ส่ง — ตอนนี้ ${bkkHour}:00 BKK อยู่ในช่วง quiet hours (22:00-08:00) ลูกค้าไทยส่วนใหญ่ไม่ชอบถูกปลุกกลางดึก\n→ ระบุ force=true ถ้ายืนยันจะส่งตอนนี้\n→ หรือใช้ mode='draft' เพื่อไป schedule ใน LINE OA Manager UI`,
++
+   // ---- Reply token ----
+   replyTokenExpiredFallback:
+     "💡 Reply token หมดอายุ (มีอายุ ~1 นาที) — ส่งเป็น push message แทนอัตโนมัติ (ใช้ quota +1)",
+diff --git a/src/line/client.ts b/src/line/client.ts
+index 2d59cf9..1dd3be0 100644
+--- a/src/line/client.ts
++++ b/src/line/client.ts
+@@ -14,7 +14,12 @@
+ 
+ import { randomUUID } from "node:crypto";
+ 
+-import { LINE_API_BASE, LINE_API_DATA_BASE } from "../constants.js";
++import {
++  LINE_API_BASE,
++  LINE_API_DATA_BASE,
++  LINE_REQUEST_TIMEOUT_MS,
++  LINE_UPLOAD_TIMEOUT_MS,
++} from "../constants.js";
+ import { TH } from "../i18n/th.js";
+ import { redactSecrets } from "./redact.js";
+ import type { LineMessage, LineQuota, LineQuotaConsumption } from "../types.js";
+@@ -105,28 +110,39 @@ export class LineClient {
+     }
+ 
+     const controller = new AbortController();
+-    const timer = setTimeout(() => controller.abort(), 30_000);
+-    let response: Response;
++    const timer = setTimeout(() => controller.abort(), LINE_REQUEST_TIMEOUT_MS);
+     try {
+-      response = await fetch(url, {
+-        method,
+-        headers,
+-        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+-        signal: controller.signal,
+-      });
+-    } catch (err) {
+-      const msg = err instanceof Error ? err.message : String(err);
+-      throw new LineApiError(0, { message: `Network error: ${msg}` });
++      let response: Response;
++      try {
++        response = await fetch(url, {
++          method,
++          headers,
++          body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
++          signal: controller.signal,
++        });
++      } catch (err) {
++        throw networkError(err);
++      }
++
++      // The timer is cleared in `finally`, AFTER the body is read — not before.
++      // Headers can arrive in milliseconds while the body trickles or stalls
++      // forever; disarming at the header boundary left that read with no
++      // ceiling at all and could hang a tool call indefinitely.
++      let text: string;
++      try {
++        text = await response.text();
++      } catch (err) {
++        throw networkError(err);
++      }
++
++      const body = text ? safeJson(text) : {};
++      if (!response.ok) {
++        throw new LineApiError(response.status, body);
++      }
++      return body as T;
+     } finally {
+       clearTimeout(timer);
+     }
+-
+-    const text = await response.text();
+-    const body = text ? safeJson(text) : {};
+-    if (!response.ok) {
+-      throw new LineApiError(response.status, body);
+-    }
+-    return body as T;
+   }
+ 
+   /** Generate an idempotency key suitable for `X-Line-Retry-Key`. */
+@@ -461,17 +477,37 @@ export class LineClient {
+       `/v2/bot/richmenu/${encodeURIComponent(richMenuId)}/content`,
+       this.apiDataBase,
+     );
+-    const res = await fetch(url, {
+-      method: "POST",
+-      headers: {
+-        Authorization: `Bearer ${this.token}`,
+-        "Content-Type": contentType,
+-      },
+-      body: image,
+-    });
+-    if (!res.ok) {
+-      const text = await res.text();
+-      throw new LineApiError(res.status, text ? safeJson(text) : { message: "upload failed" });
++    // This path bypasses request() (raw binary body, api-data domain) and so
++    // used to bypass its abort timer too — a stalled upload hung the tool call
++    // with no ceiling. Same deadline discipline, longer budget for the body.
++    const controller = new AbortController();
++    const timer = setTimeout(() => controller.abort(), LINE_UPLOAD_TIMEOUT_MS);
++    try {
++      let res: Response;
++      try {
++        res = await fetch(url, {
++          method: "POST",
++          headers: {
++            Authorization: `Bearer ${this.token}`,
++            "Content-Type": contentType,
++          },
++          body: image,
++          signal: controller.signal,
++        });
++      } catch (err) {
++        throw networkError(err);
++      }
++      if (!res.ok) {
++        let text = "";
++        try {
++          text = await res.text();
++        } catch {
++          /* body unreadable (aborted / truncated) — the status still explains it */
++        }
++        throw new LineApiError(res.status, text ? safeJson(text) : { message: "upload failed" });
++      }
++    } finally {
++      clearTimeout(timer);
+     }
+   }
+ 
+@@ -572,16 +608,49 @@ export class LineClient {
+     const token = accessToken ?? this.token;
+     const url = new URL("/oauth2/v2.1/verify", this.apiBase);
+     url.searchParams.set("access_token", token);
+-    const res = await fetch(url, { method: "GET", headers: { Accept: "application/json" } });
+-    const text = await res.text();
+-    const body = text ? safeJson(text) : {};
+-    if (!res.ok) {
+-      throw new LineApiError(res.status, body);
++
++    // Hand-rolled (the token rides as a query param, no Bearer header), so it
++    // needs its own deadline — request()'s does not apply here.
++    const controller = new AbortController();
++    const timer = setTimeout(() => controller.abort(), LINE_REQUEST_TIMEOUT_MS);
++    try {
++      let res: Response;
++      try {
++        res = await fetch(url, {
++          method: "GET",
++          headers: { Accept: "application/json" },
++          signal: controller.signal,
++        });
++      } catch (err) {
++        throw networkError(err);
++      }
++      let text: string;
++      try {
++        text = await res.text();
++      } catch (err) {
++        throw networkError(err);
++      }
++      const body = text ? safeJson(text) : {};
++      if (!res.ok) {
++        throw new LineApiError(res.status, body);
++      }
++      return body as { client_id: string; expires_in: number; scope?: string };
++    } finally {
++      clearTimeout(timer);
+     }
+-    return body as { client_id: string; expires_in: number; scope?: string };
+   }
+ }
+ 
++/**
++ * Wrap a transport-level failure (DNS, TLS, socket, or our own abort) in the
++ * same LineApiError shape callers already handle, so a timeout surfaces as a
++ * Thai tool error rather than a raw AbortError escaping the client.
++ */
++function networkError(err: unknown): LineApiError {
++  const msg = err instanceof Error ? err.message : String(err);
++  return new LineApiError(0, { message: `Network error: ${msg}` });
++}
++
+ function safeJson(text: string): unknown {
+   try {
+     return JSON.parse(text);
+diff --git a/src/line/quiet-hours.ts b/src/line/quiet-hours.ts
+index d917fb6..8e9ee43 100644
+--- a/src/line/quiet-hours.ts
++++ b/src/line/quiet-hours.ts
+@@ -2,8 +2,14 @@
+  * Bangkok quiet-hours helper.
+  *
+  * Thai customers strongly dislike LINE OAs that push during the night.
+- * We surface a warning whenever a send is requested between 22:00 and 08:00
+- * BKK time, and let the caller override with `force: true`.
++ * We flag any send requested between 22:00 and 08:00 BKK time, and let the
++ * caller override with `force: true`.
++ *
++ * This module only REPORTS; `line_send_message` decides what to do with the
++ * verdict — `send_now` refuses outright (v2.2.3: a warning attached to a
++ * `success: true` reply is invisible to an autonomous agent, which is exactly
++ * the caller that ships promos at 02:00), while `dry_run` / `draft` only warn
++ * because neither delivers anything.
+  */
+ 
+ import {
+diff --git a/src/line/quota-guardian.ts b/src/line/quota-guardian.ts
+index f1d29fd..daaf836 100644
+--- a/src/line/quota-guardian.ts
++++ b/src/line/quota-guardian.ts
+@@ -5,17 +5,29 @@
+  * per message above the included allotment. We refuse sends that would consume
+  * more than QUOTA_WARN_THRESHOLD of remaining quota unless the caller passes
+  * `confirm: true`.
++ *
++ * `projectedMessages` is deliberately `number | "unknown"`. Broadcast and
++ * narrowcast have no pre-send recipient count, and v2.2.2 passed 0 for them —
++ * which made every arithmetic branch below a no-op and let an unbounded,
++ * un-unsendable fan-out through unguarded. "unknown" is now its own case that
++ * always requires `confirm`, so a target shape added later inherits the gate
++ * instead of silently costing nothing.
+  */
+ 
+ import { QUOTA_WARN_THRESHOLD } from "../constants.js";
+ import { TH } from "../i18n/th.js";
+ import type { LineClient } from "./client.js";
+-import type { QuotaSnapshot } from "../types.js";
++import type { QuotaSnapshot, SendTransport } from "../types.js";
++
++/** Recipient count a send is expected to cost, or "unknown" when LINE cannot tell us before the send. */
++export type ProjectedMessages = number | "unknown";
+ 
+ export interface QuotaGuardInput {
+   client: LineClient;
+-  projectedMessages: number;
++  projectedMessages: ProjectedMessages;
+   confirm: boolean;
++  /** Transport, used only to word the "unknown" refusal. */
++  transport?: SendTransport;
+ }
+ 
+ export interface QuotaGuardOk {
+@@ -37,6 +49,22 @@ export async function checkQuota(input: QuotaGuardInput): Promise<QuotaGuardResu
+   const snapshot = await snapshotQuota(input.client);
+   const warnings: string[] = [];
+ 
++  // Uncountable fan-out — checked BEFORE the unlimited-plan shortcut on
++  // purpose: the gate exists because the send cannot be recalled, which is
++  // true no matter how much quota the plan carries.
++  if (input.projectedMessages === "unknown") {
++    if (!input.confirm) {
++      return {
++        ok: false,
++        reason: "needs_confirmation",
++        snapshot,
++        message: TH.unboundedFanoutNeedsConfirm(input.transport),
++      };
++    }
++    warnings.push(TH.unboundedFanoutConfirmed(input.transport ?? "narrowcast"));
++    return { ok: true, snapshot, warnings };
++  }
++
+   if (snapshot.total === "unlimited") {
+     return { ok: true, snapshot, warnings };
+   }
+diff --git a/src/tools/manage-coupon.ts b/src/tools/manage-coupon.ts
+index cd99396..c0b563b 100644
+--- a/src/tools/manage-coupon.ts
++++ b/src/tools/manage-coupon.ts
+@@ -237,7 +237,9 @@ Example: "Early Bird ลด 20% 1–8 มิ.ย." → { mode:"create", data:{ t
+       inputSchema: InputSchema.shape,
+       annotations: {
+         readOnlyHint: false,
+-        destructiveHint: false,
++        // `mode: "discontinue"` ends a live coupon and cannot be undone — the
++        // tool's own description says so. Host should confirm first.
++        destructiveHint: true,
+         idempotentHint: false,
+         openWorldHint: true,
+       },
+diff --git a/src/tools/manage-liff-app.ts b/src/tools/manage-liff-app.ts
+index 5213f68..9b4b77b 100644
+--- a/src/tools/manage-liff-app.ts
++++ b/src/tools/manage-liff-app.ts
+@@ -63,7 +63,9 @@ Example: "สร้าง LIFF tall https://my.app" → { mode:"create", config:
+       inputSchema: InputSchema.shape,
+       annotations: {
+         readOnlyHint: false,
+-        destructiveHint: false,
++        // `mode: "delete"` permanently removes a LIFF app; any link already shared
++        // to customers dies with it. Host should confirm first.
++        destructiveHint: true,
+         idempotentHint: false,
+         openWorldHint: true,
+       },
+diff --git a/src/tools/manage-rich-menu-alias.ts b/src/tools/manage-rich-menu-alias.ts
+index e61ed30..28a9c84 100644
+--- a/src/tools/manage-rich-menu-alias.ts
++++ b/src/tools/manage-rich-menu-alias.ts
+@@ -49,7 +49,9 @@ Example: "เปลี่ยน alias tab-a ไปที่ R456" → { mode:"up
+       inputSchema: InputSchema.shape,
+       annotations: {
+         readOnlyHint: false,
+-        destructiveHint: false,
++        // `mode: "delete"` removes an alias, breaking every richmenuswitch action
++        // that points at it. Host should confirm first.
++        destructiveHint: true,
+         idempotentHint: false,
+         openWorldHint: true,
+       },
+diff --git a/src/tools/send-message.ts b/src/tools/send-message.ts
+index 2c6e4d5..1387351 100644
+--- a/src/tools/send-message.ts
++++ b/src/tools/send-message.ts
+@@ -21,8 +21,8 @@ import { ImageHostError } from "../imagehost/types.js";
+ import { LineApiError, LineClient } from "../line/client.js";
+ import { redactSecrets } from "../line/redact.js";
+ import { FLEX_TEMPLATE_NAMES, renderTemplate } from "../line/flex-templates.js";
+-import { checkQuota } from "../line/quota-guardian.js";
+-import { quietHoursCheck } from "../line/quiet-hours.js";
++import { checkQuota, type ProjectedMessages } from "../line/quota-guardian.js";
++import { bkkHour, quietHoursCheck } from "../line/quiet-hours.js";
+ import { pickTransport } from "../line/transports.js";
+ import { TH } from "../i18n/th.js";
+ import type {
+@@ -169,13 +169,13 @@ const InputSchema = z
+       .boolean()
+       .default(false)
+       .describe(
+-        "Required to be true when projected cost > 95% of remaining quota, or when target.everyone === true.",
++        "Required to be true when projected cost > 95% of remaining quota, or for any send whose recipient count LINE cannot report ahead of time: target.everyone (broadcast), target.audience and target.filter (narrowcast).",
+       ),
+     force: z
+       .boolean()
+       .default(false)
+       .describe(
+-        "Override quiet-hours warning (22:00–08:00 BKK). Defaults false; LINE Thai customers prefer not to be pinged at night.",
++        "Override the quiet-hours block (22:00–08:00 BKK) for mode='send_now'. Defaults false; LINE Thai customers prefer not to be pinged at night. draft / dry_run are never blocked — they only carry the warning.",
+       ),
+     quiet_push: z
+       .boolean()
+@@ -268,14 +268,19 @@ function buildLineMessages(message: Input["message"]): LineMessage[] {
+   return [flex];
+ }
+ 
+-function estimateRecipients(target: SendTarget, estimatedFromTransport?: number): number {
++function estimateRecipients(
++  target: SendTarget,
++  estimatedFromTransport?: number,
++): ProjectedMessages {
+   if ("user_id" in target) return 1;
+   if ("user_ids" in target) return target.user_ids.length;
+   if ("reply_to" in target) return 1;
+   if (estimatedFromTransport !== undefined) return estimatedFromTransport;
+-  // Narrowcast / broadcast — unknown, use 0 so the Quota Guardian doesn't false-block.
+-  // The user must `confirm: true` for `everyone: true` per schema.
+-  return 0;
++  // Narrowcast / broadcast — LINE publishes no pre-send recipient count.
++  // v2.2.2 returned 0 here, which quietly disarmed the Quota Guardian (0 can
++  // never exceed anything) and reported "sent to 0 people" after a real
++  // broadcast. "unknown" is the honest answer and is confirm-gated downstream.
++  return "unknown";
+ }
+ 
+ // ---- registration ----
+@@ -289,7 +294,7 @@ export function registerSendMessageTool(server: McpServer): void {
+ 
+ mode: send_now (default) sends immediately; draft returns a LINE OA Manager handoff package (URL + Flex JSON + steps) — use when the user wants to SCHEDULE, since the Messaging API can't schedule but the OA Manager UI can; dry_run validates + estimates cost without sending.
+ 
+-Safety: pre-flight /validate before spending quota; Quota Guardian blocks if projected cost >95% of remaining quota unless confirm=true; broadcast { everyone:true } requires confirm=true; quiet-hours 22:00–08:00 BKK warns unless force=true; quiet_push silences the recipient device; reply tokens expire ~1 min (falls back to a push hint).
++Safety: pre-flight /validate before spending quota; Quota Guardian blocks if projected cost >95% of remaining quota unless confirm=true; every uncountable fan-out — broadcast { everyone:true } AND narrowcast ({ audience } or { filter }) — requires confirm=true because LINE reports no recipient count before the send and nothing can be unsent; quiet-hours 22:00–08:00 BKK BLOCKS send_now unless force=true (draft/dry_run only warn); quiet_push silences the recipient device; reply tokens expire ~1 min (falls back to a push hint).
+ 
+ Returns send_now → { success, transport, request_id?, recipient_count_estimated, quota, warnings[] }; draft and dry_run return their own shapes. Narrowcast needs ~24h before line_get_message_stats shows engagement.
+ 
+@@ -297,7 +302,10 @@ Example: "ส่งโปรให้ผู้หญิง 25-44 กรุงเ
+       inputSchema: InputSchema.shape,
+       annotations: {
+         readOnlyHint: false,
+-        destructiveHint: false,
++        // A sent LINE message cannot be unsent. The host uses this flag to
++        // decide whether to prompt the human before the call runs, so `false`
++        // here was throwing away a layer of protection this tool relies on.
++        destructiveHint: true,
+         idempotentHint: false,
+         openWorldHint: true,
+       },
+@@ -317,8 +325,10 @@ Example: "ส่งโปรให้ผู้หญิง 25-44 กรุงเ
+           }
+         }
+ 
+-        // Quiet hours warning
+-        const quiet = quietHoursCheck(params.force);
++        // Quiet hours. One `now` for both the verdict and the message, so a
++        // send landing exactly on 22:00:00 cannot report a different hour.
++        const now = new Date();
++        const quiet = quietHoursCheck(params.force, now);
+ 
+         // Resolve transport
+         const picked = pickTransport({ client, target: params.target });
+@@ -340,14 +350,22 @@ Example: "ส่งโปรให้ผู้หญิง 25-44 กรุงเ
+         // ----- mode: dry_run -----
+         if (params.mode === "dry_run") {
+           const quota = await snapshotQuota(client);
++          const known = typeof projected === "number" ? projected : undefined;
+           const out: DryRunOutput = {
+             dry_run: true,
+             transport: picked.transport,
+             validated: true,
+-            projected_recipients: picked.estimatedRecipients ?? projected,
+-            projected_cost_messages: picked.estimatedRecipients ?? projected,
++            projected_recipients: known,
++            projected_cost_messages: known,
++            ...(known === undefined ? { recipients_unknown: true as const } : {}),
+             quota,
+             warnings: [
++              // Surface the confirm requirement HERE, where it costs nothing —
++              // dry_run exists precisely so the caller learns this before the
++              // real attempt refuses.
++              ...(known === undefined
++                ? [TH.unboundedFanoutNeedsConfirm(picked.transport)]
++                : []),
+               ...(quiet.warning ? [quiet.warning] : []),
+             ],
+           };
+@@ -367,11 +385,39 @@ Example: "ส่งโปรให้ผู้หญิง 25-44 กรุงเ
+         }
+ 
+         // ----- mode: send_now -----
++        // Policy gates run before the quota round-trip: a refused send should
++        // cost zero further LINE API calls. Both gates sit after /validate so a
++        // caller who fixes the gate still gets their JSON errors in one pass.
++
++        // Quiet hours — a REFUSAL, not a warning. Warnings ride on a
++        // `success: true` reply, which an autonomous agent has no reason to
++        // act on; `force: true` is the documented override.
++        if (quiet.is_quiet) {
++          return {
++            isError: true,
++            content: [{ type: "text", text: TH.quietHoursBlocked(bkkHour(now)) }],
++          };
++        }
++
++        // Uncountable fan-out (broadcast AND both narrowcast shapes). Derived
++        // from the transport, not from a hand-listed set of target keys, so a
++        // new uncountable target shape is covered the day it is added.
++        // checkQuota() enforces the same rule as a backstop.
++        if (projected === "unknown" && !params.confirm) {
++          return {
++            isError: true,
++            content: [
++              { type: "text", text: TH.unboundedFanoutNeedsConfirm(picked.transport) },
++            ],
++          };
++        }
++
+         // Quota guardian
+         const guard = await checkQuota({
+           client,
+           projectedMessages: projected,
+           confirm: params.confirm,
++          transport: picked.transport,
+         });
+         if (!guard.ok) {
+           return {
+@@ -380,31 +426,19 @@ Example: "ส่งโปรให้ผู้หญิง 25-44 กรุงเ
+           };
+         }
+ 
+-        // Confirm explicitly for broadcast-all
+-        if ("everyone" in params.target && !params.confirm) {
+-          return {
+-            isError: true,
+-            content: [
+-              {
+-                type: "text",
+-                text: "⚠️ Broadcast ถึงทุกคนใน OA ต้องระบุ confirm=true",
+-              },
+-            ],
+-          };
+-        }
+-
+         const result = await picked.send(messages, { retryKey: client.retryKey() });
+ 
++        const sentCount = typeof projected === "number" ? projected : undefined;
+         const output: SendResultOutput = {
+           success: true,
+           transport: picked.transport,
+           request_id: result.request_id,
+-          recipient_count_estimated: picked.estimatedRecipients ?? projected,
++          recipient_count_estimated: sentCount,
++          ...(sentCount === undefined ? { recipients_unknown: true as const } : {}),
+           quota: guard.snapshot,
+-          warnings: [
+-            ...guard.warnings,
+-            ...(quiet.warning ? [quiet.warning] : []),
+-          ],
++          // No quiet-hours entry here by construction: send_now returns above
++          // whenever `quiet.is_quiet`, and `force: true` clears the flag.
++          warnings: [...guard.warnings],
+           next_steps:
+             picked.transport === "narrowcast"
+               ? `รออย่างน้อย 24 ชม. แล้วใช้ line_get_message_stats ดู engagement (request_id: ${result.request_id ?? "n/a"})`
+diff --git a/src/tools/set-default-rich-menu.ts b/src/tools/set-default-rich-menu.ts
+index fcf4ea3..f2565b1 100644
+--- a/src/tools/set-default-rich-menu.ts
++++ b/src/tools/set-default-rich-menu.ts
+@@ -36,7 +36,9 @@ Returns { mode, rich_menu_id? }.`,
+       inputSchema: InputSchema.shape,
+       annotations: {
+         readOnlyHint: false,
+-        destructiveHint: false,
++        // Replaces the menu every follower of the OA sees, and `clear` removes it
++        // outright. Account-wide blast radius — host should confirm first.
++        destructiveHint: true,
+         idempotentHint: true,
+         openWorldHint: true,
+       },
+diff --git a/src/tools/set-webhook-endpoint.ts b/src/tools/set-webhook-endpoint.ts
+index 6f6110a..7775821 100644
+--- a/src/tools/set-webhook-endpoint.ts
++++ b/src/tools/set-webhook-endpoint.ts
+@@ -47,7 +47,9 @@ Returns { endpoint, active } (re-read after a 'set' to confirm).`,
+       inputSchema: InputSchema.shape,
+       annotations: {
+         readOnlyHint: false,
+-        destructiveHint: false,
++        // Re-points the live bot's webhook. A wrong endpoint silently drops every
++        // inbound message until someone notices — host should confirm first.
++        destructiveHint: true,
+         idempotentHint: true,
+         openWorldHint: true,
+       },
+diff --git a/src/types.ts b/src/types.ts
+index 2195ebb..b905a3e 100644
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -161,7 +161,10 @@ export interface SendResultOutput {
+   success: boolean;
+   transport: SendTransport;
+   request_id?: string;
++  /** Omitted for broadcast/narrowcast — see `recipients_unknown`. */
+   recipient_count_estimated?: number;
++  /** True when LINE gives no pre-send recipient count (broadcast / narrowcast). */
++  recipients_unknown?: true;
+   recipient_count_actual?: number;
+   quota?: QuotaSnapshot;
+   warnings: string[];
+@@ -184,8 +187,11 @@ export interface DryRunOutput {
+   dry_run: true;
+   transport: SendTransport;
+   validated: boolean;
++  /** Omitted for broadcast/narrowcast — see `recipients_unknown`. */
+   projected_recipients?: number;
+   projected_cost_messages?: number;
++  /** True when LINE gives no pre-send recipient count (broadcast / narrowcast). */
++  recipients_unknown?: true;
+   quota: QuotaSnapshot;
+   warnings: string[];
+ }
+diff --git a/tests/guardrails/multi-oa.test.ts b/tests/guardrails/multi-oa.test.ts
+index 4a21284..7dc0301 100644
+--- a/tests/guardrails/multi-oa.test.ts
++++ b/tests/guardrails/multi-oa.test.ts
+@@ -8,11 +8,11 @@
+  * Bearer token subsequent line_send_message calls carry.
+  */
+ 
+-import { mkdtempSync } from "node:fs";
++import { mkdtempSync, writeFileSync } from "node:fs";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ 
+-import { afterEach, beforeEach, describe, expect, it } from "vitest";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ 
+ import {
+   listOas,
+@@ -194,6 +194,60 @@ describe("invalid config shapes", () => {
+     resetConfigCache();
+     expect(() => loadConfig()).toThrow(/Failed to read config at \/nonexistent\/line-mcp-config\.json/);
+   });
++
++  // v2.2.3 — malformed JSON must not echo the file back.
++  //
++  // V8 quotes the source text around the failure point inside SyntaxError
++  // messages ("...s_token\": aBcDeFgHiJ\"... is not valid JSON"). For a LINE
++  // config the very first value IS a channel access token, and this error
++  // reaches MCP replies and logs. redactSecrets() cannot save us here:
++  // registerSecret() only runs in _setConfig(), which a parse failure never
++  // reaches.
++  describe("malformed JSON does not leak file contents", () => {
++    const SECRET = "aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcdefghijklmnop=";
++
++    /** Write a config file whose token is present but whose JSON is broken. */
++    function writeBrokenConfig(): string {
++      const dir = mkdtempSync(join(tmpdir(), "line-mcp-broken-"));
++      const path = join(dir, "config.json");
++      // Unquoted value → SyntaxError pointing straight at the token.
++      writeFileSync(path, `{"default_oa":"main","oas":{"main":{"channel_access_token": ${SECRET}}}}`, {
++        mode: 0o600,
++      });
++      process.env.LINE_MCP_CONFIG = path;
++      resetConfigCache();
++      return path;
++    }
++
++    it("the raw token never appears in the thrown message", () => {
++      writeBrokenConfig();
++      let message = "";
++      try {
++        loadConfig();
++      } catch (err) {
++        message = err instanceof Error ? err.message : String(err);
++      }
++
++      expect(message).not.toBe("");
++      expect(message).not.toContain(SECRET);
++      // Not even the leading fragment V8 would have quoted.
++      expect(message).not.toContain(SECRET.slice(0, 10));
++      expect(message).not.toContain("channel_access_token");
++      expect(message).not.toContain("is not valid JSON");
++    });
++
++    it("still tells the operator which file failed and why", () => {
++      const path = writeBrokenConfig();
++      expect(() => loadConfig()).toThrow(new RegExp(`Failed to read config at ${path}`));
++      expect(() => loadConfig()).toThrow(/JSON/); // "ไฟล์ไม่ใช่ JSON ที่ถูกต้อง"
++    });
++
++    it("a missing file reports a different (non-syntax) reason", () => {
++      process.env.LINE_MCP_CONFIG = "/nonexistent/line-mcp-config.json";
++      resetConfigCache();
++      expect(() => loadConfig()).toThrow(/เปิดไฟล์ไม่สำเร็จ/);
++    });
++  });
+ });
+ 
+ describe("cross-instance — active OA is module state, not server state", () => {
+@@ -223,6 +277,10 @@ describe("E2E — line_use_oa switches the Bearer token on subsequent sends", ()
+   let mcp: TestMcp;
+ 
+   beforeEach(async () => {
++    // Pin to 12:00 BKK: since v2.2.3 a send_now inside quiet hours is refused,
++    // so an unpinned clock would fail this suite every night. Date only —
++    // real timers keep the in-memory MCP transport working.
++    vi.useFakeTimers({ now: new Date("2026-01-15T05:00:00Z"), toFake: ["Date"] });
+     useConfigFile(twoOaConfig());
+     api = installFetchMock();
+     // Ample quota so the Quota Guardian passes cleanly (consumption route first — substring routing).
+@@ -232,6 +290,7 @@ describe("E2E — line_use_oa switches the Bearer token on subsequent sends", ()
+   });
+ 
+   afterEach(async () => {
++    vi.useRealTimers();
+     await mcp.close();
+     api.uninstall();
+   });
+diff --git a/tests/guardrails/quota-guardian.test.ts b/tests/guardrails/quota-guardian.test.ts
+index 56841f0..d3e8bf8 100644
+--- a/tests/guardrails/quota-guardian.test.ts
++++ b/tests/guardrails/quota-guardian.test.ts
+@@ -4,7 +4,8 @@
+  * Exercises checkQuota + snapshotQuota through a REAL LineClient against the
+  * shared fetch mock: hard block (over_quota), soft block (needs_confirmation
+  * at >95% of remaining), confirm override, >50% advisory warning, unlimited
+- * passthrough, and snapshot arithmetic incl. rounding.
++ * passthrough, the "unknown" (uncountable fan-out) case, and snapshot
++ * arithmetic incl. rounding.
+  *
+  * NOTE on route order: the fetch mock matches by pathname SUBSTRING, and
+  * "/v2/bot/message/quota" is a prefix of "/v2/bot/message/quota/consumption" —
+@@ -41,6 +42,85 @@ function mockQuota(opts: { value?: number; used: number; type?: "limited" | "non
+   );
+ }
+ 
++describe('checkQuota — projectedMessages: "unknown" (broadcast / narrowcast)', () => {
++  // v2.2.2 passed 0 for these transports, which made every branch below a
++  // no-op: 0 can never exceed `remaining`, and 0/remaining can never cross the
++  // 95% threshold. The Guardian returned ok for an unbounded, un-unsendable
++  // send. "unknown" is now its own confirm-gated case.
++  it("without confirm → needs_confirmation, naming the transport", async () => {
++    mockQuota({ value: 1000, used: 0 });
++
++    const res = await checkQuota({
++      client,
++      projectedMessages: "unknown",
++      confirm: false,
++      transport: "narrowcast",
++    });
++
++    expect(res.ok).toBe(false);
++    if (res.ok) return;
++    expect(res.reason).toBe("needs_confirmation");
++    expect(res.message).toBe(TH.unboundedFanoutNeedsConfirm("narrowcast"));
++    expect(res.message).toContain("confirm=true");
++    expect(res.snapshot).toEqual({ used: 0, total: 1000, remaining: 1000, percentage_used: 0 });
++  });
++
++  it("blocks on an UNLIMITED plan too — the gate is irreversibility, not quota", async () => {
++    // The unlimited shortcut returns ok for any numeric projection; "unknown"
++    // must be evaluated BEFORE it, or the whole gate evaporates on the plans
++    // most likely to fan out widely.
++    mockQuota({ used: 12_345, type: "none" });
++
++    const res = await checkQuota({
++      client,
++      projectedMessages: "unknown",
++      confirm: false,
++      transport: "broadcast",
++    });
++
++    expect(res.ok).toBe(false);
++    if (res.ok) return;
++    expect(res.reason).toBe("needs_confirmation");
++    expect(res.message).toContain("Broadcast ถึงทุกคน");
++    expect(res.snapshot.total).toBe("unlimited");
++  });
++
++  it("with confirm → ok, plus a warning that the real count is only knowable after the send", async () => {
++    mockQuota({ value: 1000, used: 0 });
++
++    const res = await checkQuota({
++      client,
++      projectedMessages: "unknown",
++      confirm: true,
++      transport: "broadcast",
++    });
++
++    expect(res.ok).toBe(true);
++    if (!res.ok) return;
++    expect(res.warnings).toEqual([TH.unboundedFanoutConfirmed("broadcast")]);
++  });
++
++  it("omitting `transport` still refuses — it only changes the wording", async () => {
++    mockQuota({ value: 1000, used: 0 });
++
++    const res = await checkQuota({ client, projectedMessages: "unknown", confirm: false });
++
++    expect(res.ok).toBe(false);
++    if (res.ok) return;
++    expect(res.message).toContain("confirm=true");
++    expect(res.message).toContain("broadcast/narrowcast");
++  });
++
++  it("a hard over-quota numeric projection still outranks nothing here — 0 stays a normal count", async () => {
++    // Regression guard: `0` must keep meaning "zero messages", not "unknown".
++    mockQuota({ value: 1000, used: 0 });
++    const res = await checkQuota({ client, projectedMessages: 0, confirm: false });
++    expect(res.ok).toBe(true);
++    if (!res.ok) return;
++    expect(res.warnings).toEqual([]);
++  });
++});
++
+ describe("checkQuota — hard block (over_quota)", () => {
+   it("blocks when projected > remaining, with the exact Thai message", async () => {
+     mockQuota({ value: 1000, used: 900 }); // remaining 100
+diff --git a/tests/guardrails/tool-annotations.test.ts b/tests/guardrails/tool-annotations.test.ts
+new file mode 100644
+index 0000000..02ae27b
+--- /dev/null
++++ b/tests/guardrails/tool-annotations.test.ts
+@@ -0,0 +1,85 @@
++/**
++ * Guardrail tests — MCP tool annotations (`destructiveHint`).
++ *
++ * The host (Claude Code / Cowork / Cursor) reads `destructiveHint` off the
++ * tool listing to decide whether to interrupt the human before a call runs.
++ * A tool that performs an irreversible, outward-facing act while advertising
++ * `destructiveHint: false` disables that prompt — the in-code `confirm` gates
++ * then stand alone, with nothing behind them.
++ *
++ * v2.2.2 shipped `false` on line_send_message (a sent LINE message cannot be
++ * unsent) and on four config tools with delete/clear/discontinue modes. These
++ * assertions pin the corrected values so a new tool cannot regress quietly.
++ *
++ * The listing is read through a real MCP client, so this checks what a host
++ * actually receives — not what the source literal says.
++ */
++
++import { afterEach, beforeEach, describe, expect, it } from "vitest";
++
++import { isolateConfigEnv, useSingleOaEnv } from "../helpers/env.js";
++import { createTestMcp, type TestMcp } from "../helpers/mcp.js";
++
++let restoreEnv: () => void;
++let mcp: TestMcp;
++let annotations: Map<string, Record<string, unknown>>;
++
++beforeEach(async () => {
++  restoreEnv = isolateConfigEnv();
++  useSingleOaEnv("annotations-token");
++  mcp = await createTestMcp();
++  const { tools } = await mcp.client.listTools();
++  annotations = new Map(
++    tools.map((t) => [t.name, (t.annotations ?? {}) as Record<string, unknown>]),
++  );
++});
++
++afterEach(async () => {
++  await mcp.close();
++  restoreEnv();
++});
++
++/** Tools whose effect cannot be undone from inside this server. */
++const MUST_BE_DESTRUCTIVE: { tool: string; why: string }[] = [
++  { tool: "line_send_message", why: "a sent LINE message cannot be unsent" },
++  { tool: "line_set_webhook_endpoint", why: "re-routes the live bot's inbound traffic" },
++  { tool: "line_set_default_rich_menu", why: "changes/clears the menu every follower sees" },
++  { tool: "line_manage_liff_app", why: 'mode "delete" removes a LIFF app permanently' },
++  { tool: "line_manage_rich_menu_alias", why: 'mode "delete" breaks richmenuswitch actions' },
++  { tool: "line_manage_coupon", why: 'mode "discontinue" ends a live coupon irreversibly' },
++  // Already correct in v2.2.2 — pinned so they stay that way.
++  { tool: "line_delete_rich_menu", why: "deletes a rich menu" },
++  { tool: "line_delete_audience", why: "deletes an audience group" },
++];
++
++describe("destructiveHint is set on every irreversible tool", () => {
++  it.each(MUST_BE_DESTRUCTIVE)("$tool — $why", ({ tool }) => {
++    expect(annotations.has(tool)).toBe(true);
++    expect(annotations.get(tool)!.destructiveHint).toBe(true);
++  });
++});
++
++describe("read-only tools stay non-destructive", () => {
++  const READ_ONLY = [
++    "line_get_oa_status",
++    "line_list_rich_menus",
++    "line_list_audiences",
++    "line_get_message_stats",
++    "line_list_followers",
++    "line_list_oas",
++  ];
++
++  it.each(READ_ONLY)("%s is not flagged destructive", (tool) => {
++    expect(annotations.has(tool)).toBe(true);
++    expect(annotations.get(tool)!.destructiveHint).toBe(false);
++  });
++});
++
++describe("every registered tool declares the annotation at all", () => {
++  it("no tool leaves destructiveHint undefined — hosts treat missing as unknown", () => {
++    const missing = [...annotations.entries()]
++      .filter(([, a]) => typeof a.destructiveHint !== "boolean")
++      .map(([name]) => name);
++    expect(missing).toEqual([]);
++  });
++});
+diff --git a/tests/security/client-deadlines.test.ts b/tests/security/client-deadlines.test.ts
+new file mode 100644
+index 0000000..c4b2f9b
+--- /dev/null
++++ b/tests/security/client-deadlines.test.ts
+@@ -0,0 +1,213 @@
++/**
++ * Security/robustness tests — every LineClient fetch runs under a deadline.
++ *
++ * Two distinct v2.2.2 gaps are pinned here:
++ *
++ *   1. request() armed an AbortController but cleared it in a `finally` that
++ *      ran when the RESPONSE OBJECT arrived — before `response.text()`. A peer
++ *      that flushes headers immediately and then stalls the body therefore had
++ *      no ceiling at all, and the tool call hung indefinitely.
++ *   2. uploadRichMenuImage() and verifyAccessToken() bypass request() (raw
++ *      binary body / query-param auth) and so carried no timeout whatsoever.
++ *
++ * Timers are faked so a 30s/60s deadline costs no wall-clock. Each stalled
++ * promise resolves only via its AbortSignal — if a deadline is ever removed
++ * again these tests hang rather than silently pass, so they carry an explicit
++ * per-test timeout.
++ */
++
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++import {
++  LINE_REQUEST_TIMEOUT_MS,
++  LINE_UPLOAD_TIMEOUT_MS,
++} from "../../src/constants.js";
++import { LineApiError, LineClient } from "../../src/line/client.js";
++
++const TEST_TIMEOUT_MS = 5_000;
++
++let client: LineClient;
++
++beforeEach(() => {
++  vi.useFakeTimers();
++  client = new LineClient({ channelAccessToken: "deadline-token" });
++});
++
++afterEach(() => {
++  vi.useRealTimers();
++  vi.unstubAllGlobals();
++});
++
++function abortError(): Error {
++  return Object.assign(new Error("This operation was aborted"), { name: "AbortError" });
++}
++
++/** A Response whose headers are already here but whose body never arrives. */
++function stallingBodyResponse(signal: AbortSignal | null | undefined): Response {
++  return {
++    ok: true,
++    status: 200,
++    text: () =>
++      new Promise<string>((_resolve, reject) => {
++        if (signal?.aborted) return reject(abortError());
++        signal?.addEventListener("abort", () => reject(abortError()));
++      }),
++  } as unknown as Response;
++}
++
++/** A JSON Response that behaves normally. */
++function jsonResponse(body: unknown): Response {
++  return {
++    ok: true,
++    status: 200,
++    text: async () => JSON.stringify(body),
++  } as unknown as Response;
++}
++
++type FetchArgs = { input: RequestInfo | URL; init?: RequestInit };
++
++/** Stub global fetch, recording every call. */
++function stubFetch(handler: (args: FetchArgs) => Promise<Response>): FetchArgs[] {
++  const seen: FetchArgs[] = [];
++  vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
++    seen.push({ input, init });
++    return handler({ input, init });
++  });
++  return seen;
++}
++
++describe("request() — the deadline covers the BODY read, not just the headers", () => {
++  it(
++    "a response whose body never arrives is aborted and surfaced as a LineApiError",
++    async () => {
++      stubFetch(async ({ init }) => stallingBodyResponse(init?.signal));
++
++      // v2.2.2: clearTimeout() had already fired by this point, so this promise
++      // never settled — the MCP tool call hung forever.
++      const settled = client.getQuota().then(
++        () => "resolved" as const,
++        (err: unknown) => err,
++      );
++
++      // One tick short of the deadline: still pending.
++      await vi.advanceTimersByTimeAsync(LINE_REQUEST_TIMEOUT_MS - 1);
++      let done = false;
++      void settled.then(() => {
++        done = true;
++      });
++      await Promise.resolve();
++      expect(done).toBe(false);
++
++      await vi.advanceTimersByTimeAsync(2);
++      const err = await settled;
++      expect(err).toBeInstanceOf(LineApiError);
++      expect((err as LineApiError).status).toBe(0);
++      expect((err as LineApiError).message).toContain("Network error");
++    },
++    TEST_TIMEOUT_MS,
++  );
++
++  it("clears its timer on the happy path — no dangling handle per call", async () => {
++    stubFetch(async () => jsonResponse({ type: "limited", value: 500 }));
++
++    const before = vi.getTimerCount();
++    const quota = await client.getQuota();
++
++    expect(quota).toEqual({ type: "limited", value: 500 });
++    expect(vi.getTimerCount()).toBe(before);
++  });
++
++  it("clears its timer when LINE returns an error status too", async () => {
++    stubFetch(async () => ({
++      ok: false,
++      status: 429,
++      text: async () => JSON.stringify({ message: "rate limited" }),
++    }) as unknown as Response);
++
++    await expect(client.getQuota()).rejects.toBeInstanceOf(LineApiError);
++    expect(vi.getTimerCount()).toBe(0);
++  });
++});
++
++describe("uploadRichMenuImage() — raw-binary path is no longer un-timed", () => {
++  it("passes an AbortSignal to fetch", async () => {
++    const seen = stubFetch(async () => ({ ok: true, status: 200 }) as unknown as Response);
++
++    await client.uploadRichMenuImage("richmenu-1", Buffer.from([1, 2, 3]), "image/png");
++
++    expect(seen).toHaveLength(1);
++    expect(seen[0]!.init?.signal).toBeInstanceOf(AbortSignal);
++    expect(vi.getTimerCount()).toBe(0); // and the timer is cleared afterwards
++  });
++
++  it(
++    "a stalled upload aborts at LINE_UPLOAD_TIMEOUT_MS instead of hanging",
++    async () => {
++      stubFetch(
++        ({ init }) =>
++          new Promise<Response>((_resolve, reject) => {
++            init?.signal?.addEventListener("abort", () => reject(abortError()));
++          }),
++      );
++
++      const settled = client
++        .uploadRichMenuImage("richmenu-1", Buffer.from([1, 2, 3]), "image/png")
++        .then(() => "resolved" as const, (err: unknown) => err);
++
++      await vi.advanceTimersByTimeAsync(LINE_UPLOAD_TIMEOUT_MS + 1);
++
++      const err = await settled;
++      expect(err).toBeInstanceOf(LineApiError);
++      expect((err as LineApiError).status).toBe(0);
++    },
++    TEST_TIMEOUT_MS,
++  );
++
++  it("an upload rejected by LINE still surfaces the API status, not a timeout", async () => {
++    stubFetch(async () => ({
++      ok: false,
++      status: 400,
++      text: async () => JSON.stringify({ message: "invalid image" }),
++    }) as unknown as Response);
++
++    const err = await client
++      .uploadRichMenuImage("richmenu-1", Buffer.from([1]), "image/png")
++      .catch((e: unknown) => e);
++
++    expect(err).toBeInstanceOf(LineApiError);
++    expect((err as LineApiError).status).toBe(400);
++    expect(vi.getTimerCount()).toBe(0);
++  });
++});
++
++describe("verifyAccessToken() — query-param auth path is no longer un-timed", () => {
++  it("passes an AbortSignal and clears its timer", async () => {
++    const seen = stubFetch(async () =>
++      jsonResponse({ client_id: "cid", expires_in: 2_592_000 }),
++    );
++
++    const out = await client.verifyAccessToken();
++
++    expect(out.client_id).toBe("cid");
++    expect(seen[0]!.init?.signal).toBeInstanceOf(AbortSignal);
++    expect(vi.getTimerCount()).toBe(0);
++  });
++
++  it(
++    "a stalled verify aborts at LINE_REQUEST_TIMEOUT_MS",
++    async () => {
++      stubFetch(async ({ init }) => stallingBodyResponse(init?.signal));
++
++      const settled = client
++        .verifyAccessToken("some-other-token")
++        .then(() => "resolved" as const, (err: unknown) => err);
++
++      await vi.advanceTimersByTimeAsync(LINE_REQUEST_TIMEOUT_MS + 1);
++
++      const err = await settled;
++      expect(err).toBeInstanceOf(LineApiError);
++      expect((err as LineApiError).message).toContain("Network error");
++    },
++    TEST_TIMEOUT_MS,
++  );
++});
+diff --git a/tests/send-message.e2e.test.ts b/tests/send-message.e2e.test.ts
+index 26404cd..41f50b8 100644
+--- a/tests/send-message.e2e.test.ts
++++ b/tests/send-message.e2e.test.ts
+@@ -3,12 +3,17 @@
+  * with all LINE traffic intercepted by the fetch mock.
+  *
+  * Proves the guardrail pipeline end-to-end: validate-before-send ordering,
+- * retry-key header, dry_run isolation, draft zero-send guarantee, broadcast
+- * confirm gate, quota soft-block + confirm override, quiet-hours warning
++ * retry-key header, dry_run isolation, draft zero-send guarantee, the
++ * uncountable-fan-out confirm gate (broadcast AND both narrowcast shapes),
++ * quota soft-block + confirm override, the quiet-hours send_now block
+  * (fake Date, timers stay real), LINE error surfacing (400 details / 401 /
+  * 429 in Thai), schema rejection with zero network calls, quiet_push, and
+  * the reply_to no-fallback gap (pinned as current behavior).
+  *
++ * Every test runs on a PINNED daytime clock (see DAYTIME_BKK). Since v2.2.3
++ * quiet hours REFUSE a send_now rather than warn, so an unpinned suite would
++ * pass by day and fail every night between 22:00 and 08:00 BKK.
++ *
+  * Fetch-mock routing is SUBSTRING based — "/v2/bot/message/quota" must be
+  * registered AFTER "/v2/bot/message/quota/consumption".
+  */
+@@ -27,11 +32,18 @@ const SEND_PATHS = [
+   "/v2/bot/message/narrowcast",
+ ] as const;
+ 
++/** 12:00 Bangkok (UTC+7) — comfortably outside the 22:00-08:00 quiet window. */
++const DAYTIME_BKK = new Date("2026-01-15T05:00:00Z");
++/** 23:00 Bangkok — inside the quiet window. */
++const QUIET_NIGHT_BKK = new Date("2026-07-24T16:00:00Z");
++
+ let restoreEnv: () => void;
+ let api: FetchMock;
+ let mcp: TestMcp;
+ 
+ beforeEach(async () => {
++  // Date only — real timers, so the MCP transport still works.
++  vi.useFakeTimers({ now: DAYTIME_BKK, toFake: ["Date"] });
+   restoreEnv = isolateConfigEnv();
+   useSingleOaEnv("e2e-token");
+   api = installFetchMock();
+@@ -57,10 +69,7 @@ function sendPathCallCounts(): Record<string, number> {
+ 
+ describe("send_now — push happy path", () => {
+   it("validates BEFORE sending, carries x-line-retry-key, returns success structured content", async () => {
+-    // Pin the clock to 12:00 BKK — otherwise this test fails between 22:00-08:00
+-    // BKK when the (correct) quiet-hours warning appears. Timers stay real.
+-    vi.useFakeTimers({ now: new Date("2026-01-15T05:00:00Z"), toFake: ["Date"] });
+-    mockQuota(1000, 100); // remaining 900
++    mockQuota(1000, 100); // remaining 900 — clock pinned to DAYTIME_BKK globally
+ 
+     const result = await mcp.callTool("line_send_message", {
+       target: { user_id: "U-happy" },
+@@ -211,6 +220,11 @@ describe("broadcast confirm gate (everyone: true)", () => {
+     expect(firstText(result)).toContain("confirm=true");
+     expect(firstText(result)).toContain("Broadcast ถึงทุกคน");
+     expect(api.callsTo("/v2/bot/message/broadcast")).toHaveLength(0);
++    // The gate runs BEFORE the quota round-trip: a refused send costs no
++    // further LINE calls beyond the pre-flight /validate.
++    expect(api.callsTo("/v2/bot/message/quota")).toHaveLength(0);
++    expect(api.calls).toHaveLength(1);
++    expect(api.calls[0]!.url.pathname).toBe("/v2/bot/message/validate/broadcast");
+   });
+ 
+   it("with confirm + quota ok → /broadcast called with retry key", async () => {
+@@ -228,6 +242,12 @@ describe("broadcast confirm gate (everyone: true)", () => {
+     expect(casts).toHaveLength(1);
+     expect(casts[0]!.headers["x-line-retry-key"]).toBeTruthy();
+     expect(api.callsTo("/v2/bot/message/validate/broadcast")).toHaveLength(1);
++
++    // v2.2.3: no invented recipient count. v2.2.2 reported 0 here — i.e.
++    // "this broadcast reached nobody" right after it reached the whole OA.
++    const sc = result.structuredContent!;
++    expect(sc.recipient_count_estimated).toBeUndefined();
++    expect(sc.recipients_unknown).toBe(true);
+   });
+ });
+ 
+@@ -287,10 +307,13 @@ describe("quota soft-block (Quota Guardian through the tool)", () => {
+   });
+ });
+ 
+-describe("quiet hours (23:00 BKK = 16:00 UTC, fake Date only)", () => {
+-  it("warning present without force — but the message still sends (warning-only)", async () => {
+-    vi.useFakeTimers({ toFake: ["Date"] });
+-    vi.setSystemTime(new Date("2026-07-24T16:00:00Z"));
++describe("quiet hours — send_now is BLOCKED, not warned (23:00 BKK = 16:00 UTC)", () => {
++  // v2.2.2 attached TH.quietHoursWarning to a `success: true` reply, so the
++  // message had already gone out by the time anyone could read the warning —
++  // and an autonomous agent never reads it at all. `force` claimed to
++  // "override" something that was never blocking. Now it really blocks.
++  it("without force → isError, and NOTHING is sent (zero push, zero quota calls)", async () => {
++    vi.setSystemTime(QUIET_NIGHT_BKK);
+     mockQuota(1000, 0);
+ 
+     const result = await mcp.callTool("line_send_message", {
+@@ -298,17 +321,17 @@ describe("quiet hours (23:00 BKK = 16:00 UTC, fake Date only)", () => {
+       message: { text: "ดึกแล้วนะ" },
+     });
+ 
+-    expect(result.isError).toBeFalsy();
+-    expect(result.structuredContent).toMatchObject({ success: true, transport: "push" });
+-    const warnings = result.structuredContent!.warnings as string[];
+-    expect(warnings).toContain(TH.quietHoursWarning(23));
+-    expect(firstText(result)).toContain("quiet hours");
+-    expect(api.callsTo("/v2/bot/message/push")).toHaveLength(1);
++    expect(result.isError).toBe(true);
++    const text = firstText(result);
++    expect(text).toBe(TH.quietHoursBlocked(23));
++    expect(text).toContain("quiet hours");
++    expect(text).toContain("force=true"); // the documented escape hatch
++    expect(api.callsTo("/v2/bot/message/push")).toHaveLength(0);
++    expect(api.callsTo("/v2/bot/message/quota")).toHaveLength(0);
+   });
+ 
+-  it("force:true suppresses the warning entirely", async () => {
+-    vi.useFakeTimers({ toFake: ["Date"] });
+-    vi.setSystemTime(new Date("2026-07-24T16:00:00Z"));
++  it("force:true sends at 23:00 with no warning attached", async () => {
++    vi.setSystemTime(QUIET_NIGHT_BKK);
+     mockQuota(1000, 0);
+ 
+     const result = await mcp.callTool("line_send_message", {
+@@ -322,8 +345,37 @@ describe("quiet hours (23:00 BKK = 16:00 UTC, fake Date only)", () => {
+     expect(api.callsTo("/v2/bot/message/push")).toHaveLength(1);
+   });
+ 
+-  it("daytime (12:00 BKK) has no quiet-hours warning", async () => {
+-    vi.useFakeTimers({ toFake: ["Date"] });
++  it("dry_run at 23:00 is NOT blocked — it warns instead (nothing is delivered)", async () => {
++    vi.setSystemTime(QUIET_NIGHT_BKK);
++    mockQuota(1000, 0);
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { user_id: "U-night" },
++      message: { text: "ลองดูก่อน" },
++      mode: "dry_run",
++    });
++
++    expect(result.isError).toBeFalsy();
++    expect(result.structuredContent!.dry_run).toBe(true);
++    expect(result.structuredContent!.warnings).toContain(TH.quietHoursWarning(23));
++    expect(api.callsTo("/v2/bot/message/push")).toHaveLength(0);
++  });
++
++  it("draft at 23:00 is NOT blocked — quiet hours land in `notes`", async () => {
++    vi.setSystemTime(QUIET_NIGHT_BKK);
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { audience: "7777" },
++      message: { text: "ตั้งเวลาไว้ก่อน" },
++      mode: "draft",
++    });
++
++    expect(result.isError).toBeFalsy();
++    expect(result.structuredContent!.draft).toBe(true);
++    expect(result.structuredContent!.notes).toBe(TH.quietHoursWarning(23));
++  });
++
++  it("daytime (12:00 BKK) sends clean with no quiet-hours warning", async () => {
+     vi.setSystemTime(new Date("2026-07-24T05:00:00Z"));
+     mockQuota(1000, 0);
+ 
+@@ -334,6 +386,146 @@ describe("quiet hours (23:00 BKK = 16:00 UTC, fake Date only)", () => {
+ 
+     expect(result.isError).toBeFalsy();
+     expect(result.structuredContent!.warnings).toEqual([]);
++    expect(api.callsTo("/v2/bot/message/push")).toHaveLength(1);
++  });
++
++  it("21:59:59 BKK still sends; 22:00:00 BKK is refused (boundary through the tool)", async () => {
++    mockQuota(1000, 0);
++
++    vi.setSystemTime(new Date("2026-07-24T14:59:59Z")); // 21:59:59 BKK
++    const ok = await mcp.callTool("line_send_message", {
++      target: { user_id: "U-2159" },
++      message: { text: "ทันพอดี" },
++    });
++    expect(ok.isError).toBeFalsy();
++
++    vi.setSystemTime(new Date("2026-07-24T15:00:00Z")); // 22:00:00 BKK
++    const blocked = await mcp.callTool("line_send_message", {
++      target: { user_id: "U-2200" },
++      message: { text: "ช้าไปหนึ่งวินาที" },
++    });
++    expect(blocked.isError).toBe(true);
++    expect(firstText(blocked)).toBe(TH.quietHoursBlocked(22));
++
++    expect(api.callsTo("/v2/bot/message/push")).toHaveLength(1); // only the 21:59:59 one
++  });
++});
++
++describe("narrowcast confirm gate — the v2.2.2 hole", () => {
++  // v2.2.2 gated only `"everyone" in target`. Both narrowcast shapes
++  // (`{ audience }`, `{ filter }`) fell through with projected = 0, which also
++  // made every Quota Guardian branch a no-op: an LLM could fan out to the
++  // whole OA by demographic filter in a single turn, unconfirmed and unmetered.
++  const NARROWCAST_TARGETS: { label: string; target: Record<string, unknown> }[] = [
++    { label: "{ audience }", target: { audience: "7777" } },
++    {
++      label: "{ filter } (demographic)",
++      target: { filter: { genders: ["female"], areas: ["bangkok"] } },
++    },
++  ];
++
++  it.each(NARROWCAST_TARGETS)(
++    "$label without confirm → isError, zero /narrowcast, zero quota round-trip",
++    async ({ target }) => {
++      mockQuota(1000, 0);
++
++      const result = await mcp.callTool("line_send_message", { target, message: { text: "โปรลับ" } });
++
++      expect(result.isError).toBe(true);
++      const text = firstText(result);
++      expect(text).toBe(TH.unboundedFanoutNeedsConfirm("narrowcast"));
++      expect(text).toContain("confirm=true");
++      expect(text).toContain("dry_run"); // points at the safe way to look first
++      expect(api.callsTo("/v2/bot/message/narrowcast")).toHaveLength(0);
++      expect(api.callsTo("/v2/bot/message/quota")).toHaveLength(0);
++      // Only the pre-flight validate left the process.
++      expect(api.calls).toHaveLength(1);
++      expect(api.calls[0]!.url.pathname).toBe("/v2/bot/message/validate/narrowcast");
++    },
++  );
++
++  it.each(NARROWCAST_TARGETS)(
++    "$label with confirm:true → sends, reports recipients_unknown, warns that the count is post-hoc",
++    async ({ target }) => {
++      mockQuota(1000, 0);
++      api.on("/v2/bot/message/narrowcast", { body: { requestId: "req-123" } });
++
++      const result = await mcp.callTool("line_send_message", {
++        target,
++        message: { text: "โปรลับ" },
++        confirm: true,
++      });
++
++      expect(result.isError).toBeFalsy();
++      const sc = result.structuredContent!;
++      expect(sc).toMatchObject({ success: true, transport: "narrowcast", recipients_unknown: true });
++      expect(sc.recipient_count_estimated).toBeUndefined();
++      expect(sc.warnings as string[]).toContain(TH.unboundedFanoutConfirmed("narrowcast"));
++      expect(api.callsTo("/v2/bot/message/narrowcast")).toHaveLength(1);
++    },
++  );
++
++  it("the gate is derived from the transport, so an UNLIMITED plan is gated too", async () => {
++    // Quota Guardian short-circuits on unlimited plans; the confirm requirement
++    // here is about irreversibility, not quota, so it must survive that path.
++    api.on("/v2/bot/message/quota/consumption", { body: { totalUsage: 0 } });
++    api.on("/v2/bot/message/quota", { body: { type: "none" } }, { method: "GET" });
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { audience: "7777" },
++      message: { text: "โปรลับ" },
++    });
++
++    expect(result.isError).toBe(true);
++    expect(firstText(result)).toContain("confirm=true");
++    expect(api.callsTo("/v2/bot/message/narrowcast")).toHaveLength(0);
++  });
++
++  it("dry_run surfaces the confirm requirement up-front and marks the count unknown", async () => {
++    mockQuota(1000, 0);
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { filter: { genders: ["female"] } },
++      message: { text: "โปรลับ" },
++      mode: "dry_run",
++    });
++
++    expect(result.isError).toBeFalsy();
++    const sc = result.structuredContent!;
++    expect(sc).toMatchObject({ dry_run: true, transport: "narrowcast", recipients_unknown: true });
++    expect(sc.projected_recipients).toBeUndefined();
++    expect(sc.projected_cost_messages).toBeUndefined();
++    expect(sc.warnings as string[]).toContain(TH.unboundedFanoutNeedsConfirm("narrowcast"));
++    expect(api.callsTo("/v2/bot/message/narrowcast")).toHaveLength(0);
++  });
++
++  it("draft needs no confirm — it delivers nothing", async () => {
++    const result = await mcp.callTool("line_send_message", {
++      target: { filter: { ages: ["age_25"] } },
++      message: { text: "โปรลับ" },
++      mode: "draft",
++    });
++
++    expect(result.isError).toBeFalsy();
++    expect(result.structuredContent!.draft).toBe(true);
++    expect(api.callsTo("/v2/bot/message/narrowcast")).toHaveLength(0);
++  });
++
++  it("countable targets are untouched by the gate — user_ids still sends without confirm", async () => {
++    mockQuota(1000, 0);
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { user_ids: ["U1", "U2", "U3"] },
++      message: { text: "ถึงสามคน" },
++    });
++
++    expect(result.isError).toBeFalsy();
++    expect(result.structuredContent).toMatchObject({
++      success: true,
++      transport: "multicast",
++      recipient_count_estimated: 3,
++    });
++    expect(result.structuredContent!.recipients_unknown).toBeUndefined();
+   });
+ });
+ 

@@ -1,0 +1,222 @@
+From 694fcc5c0bb08fa255d902db8f7d711a30d8cc0d Mon Sep 17 00:00:00 2001
+From: CNY Healthcare <cnyhealthymall@gmail.com>
+Date: Wed, 19 Aug 2026 16:44:39 +0000
+Subject: [PATCH 2/6] fix(annotations): mark the irreversible tools
+ destructiveHint: true
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+MCP hosts read `destructiveHint` off the tool listing to decide whether to
+interrupt the human before a call runs. Six tools performed irreversible,
+outward-facing acts while advertising `destructiveHint: false`, which switches
+that prompt off — leaving the in-code confirm gates standing alone with
+nothing behind them.
+
+  line_send_message           a sent LINE message cannot be unsent
+  line_set_webhook_endpoint   re-routes the live bot's inbound traffic
+  line_set_default_rich_menu  changes/clears the menu every follower sees
+  line_manage_liff_app        mode "delete" removes a LIFF app permanently
+  line_manage_rich_menu_alias mode "delete" breaks richmenuswitch actions
+  line_manage_coupon          mode "discontinue" is irreversible by its own docs
+
+The last two are the same defect class as the four originally reported and
+are corrected here as well. The delete-* tools were already correct.
+
+Tests: a new guardrail suite reads the annotations back through a real MCP
+client — the shape a host actually receives — pinning destructiveHint true on
+every irreversible tool, false on the read-only ones, and asserting no tool
+leaves the flag undefined.
+---
+ src/tools/manage-coupon.ts                |  4 +-
+ src/tools/manage-liff-app.ts              |  4 +-
+ src/tools/manage-rich-menu-alias.ts       |  4 +-
+ src/tools/send-message.ts                 |  5 +-
+ src/tools/set-default-rich-menu.ts        |  4 +-
+ src/tools/set-webhook-endpoint.ts         |  4 +-
+ tests/guardrails/tool-annotations.test.ts | 85 +++++++++++++++++++++++
+ 7 files changed, 104 insertions(+), 6 deletions(-)
+ create mode 100644 tests/guardrails/tool-annotations.test.ts
+
+diff --git a/src/tools/manage-coupon.ts b/src/tools/manage-coupon.ts
+index cd99396..c0b563b 100644
+--- a/src/tools/manage-coupon.ts
++++ b/src/tools/manage-coupon.ts
+@@ -237,7 +237,9 @@ Example: "Early Bird ลด 20% 1–8 มิ.ย." → { mode:"create", data:{ t
+       inputSchema: InputSchema.shape,
+       annotations: {
+         readOnlyHint: false,
+-        destructiveHint: false,
++        // `mode: "discontinue"` ends a live coupon and cannot be undone — the
++        // tool's own description says so. Host should confirm first.
++        destructiveHint: true,
+         idempotentHint: false,
+         openWorldHint: true,
+       },
+diff --git a/src/tools/manage-liff-app.ts b/src/tools/manage-liff-app.ts
+index 5213f68..9b4b77b 100644
+--- a/src/tools/manage-liff-app.ts
++++ b/src/tools/manage-liff-app.ts
+@@ -63,7 +63,9 @@ Example: "สร้าง LIFF tall https://my.app" → { mode:"create", config:
+       inputSchema: InputSchema.shape,
+       annotations: {
+         readOnlyHint: false,
+-        destructiveHint: false,
++        // `mode: "delete"` permanently removes a LIFF app; any link already shared
++        // to customers dies with it. Host should confirm first.
++        destructiveHint: true,
+         idempotentHint: false,
+         openWorldHint: true,
+       },
+diff --git a/src/tools/manage-rich-menu-alias.ts b/src/tools/manage-rich-menu-alias.ts
+index e61ed30..28a9c84 100644
+--- a/src/tools/manage-rich-menu-alias.ts
++++ b/src/tools/manage-rich-menu-alias.ts
+@@ -49,7 +49,9 @@ Example: "เปลี่ยน alias tab-a ไปที่ R456" → { mode:"up
+       inputSchema: InputSchema.shape,
+       annotations: {
+         readOnlyHint: false,
+-        destructiveHint: false,
++        // `mode: "delete"` removes an alias, breaking every richmenuswitch action
++        // that points at it. Host should confirm first.
++        destructiveHint: true,
+         idempotentHint: false,
+         openWorldHint: true,
+       },
+diff --git a/src/tools/send-message.ts b/src/tools/send-message.ts
+index fc71ce1..cbb7478 100644
+--- a/src/tools/send-message.ts
++++ b/src/tools/send-message.ts
+@@ -302,7 +302,10 @@ Example: "ส่งโปรให้ผู้หญิง 25-44 กรุงเ
+       inputSchema: InputSchema.shape,
+       annotations: {
+         readOnlyHint: false,
+-        destructiveHint: false,
++        // A sent LINE message cannot be unsent. The host uses this flag to
++        // decide whether to prompt the human before the call runs, so `false`
++        // here was throwing away a layer of protection this tool relies on.
++        destructiveHint: true,
+         idempotentHint: false,
+         openWorldHint: true,
+       },
+diff --git a/src/tools/set-default-rich-menu.ts b/src/tools/set-default-rich-menu.ts
+index fcf4ea3..f2565b1 100644
+--- a/src/tools/set-default-rich-menu.ts
++++ b/src/tools/set-default-rich-menu.ts
+@@ -36,7 +36,9 @@ Returns { mode, rich_menu_id? }.`,
+       inputSchema: InputSchema.shape,
+       annotations: {
+         readOnlyHint: false,
+-        destructiveHint: false,
++        // Replaces the menu every follower of the OA sees, and `clear` removes it
++        // outright. Account-wide blast radius — host should confirm first.
++        destructiveHint: true,
+         idempotentHint: true,
+         openWorldHint: true,
+       },
+diff --git a/src/tools/set-webhook-endpoint.ts b/src/tools/set-webhook-endpoint.ts
+index 6f6110a..7775821 100644
+--- a/src/tools/set-webhook-endpoint.ts
++++ b/src/tools/set-webhook-endpoint.ts
+@@ -47,7 +47,9 @@ Returns { endpoint, active } (re-read after a 'set' to confirm).`,
+       inputSchema: InputSchema.shape,
+       annotations: {
+         readOnlyHint: false,
+-        destructiveHint: false,
++        // Re-points the live bot's webhook. A wrong endpoint silently drops every
++        // inbound message until someone notices — host should confirm first.
++        destructiveHint: true,
+         idempotentHint: true,
+         openWorldHint: true,
+       },
+diff --git a/tests/guardrails/tool-annotations.test.ts b/tests/guardrails/tool-annotations.test.ts
+new file mode 100644
+index 0000000..02ae27b
+--- /dev/null
++++ b/tests/guardrails/tool-annotations.test.ts
+@@ -0,0 +1,85 @@
++/**
++ * Guardrail tests — MCP tool annotations (`destructiveHint`).
++ *
++ * The host (Claude Code / Cowork / Cursor) reads `destructiveHint` off the
++ * tool listing to decide whether to interrupt the human before a call runs.
++ * A tool that performs an irreversible, outward-facing act while advertising
++ * `destructiveHint: false` disables that prompt — the in-code `confirm` gates
++ * then stand alone, with nothing behind them.
++ *
++ * v2.2.2 shipped `false` on line_send_message (a sent LINE message cannot be
++ * unsent) and on four config tools with delete/clear/discontinue modes. These
++ * assertions pin the corrected values so a new tool cannot regress quietly.
++ *
++ * The listing is read through a real MCP client, so this checks what a host
++ * actually receives — not what the source literal says.
++ */
++
++import { afterEach, beforeEach, describe, expect, it } from "vitest";
++
++import { isolateConfigEnv, useSingleOaEnv } from "../helpers/env.js";
++import { createTestMcp, type TestMcp } from "../helpers/mcp.js";
++
++let restoreEnv: () => void;
++let mcp: TestMcp;
++let annotations: Map<string, Record<string, unknown>>;
++
++beforeEach(async () => {
++  restoreEnv = isolateConfigEnv();
++  useSingleOaEnv("annotations-token");
++  mcp = await createTestMcp();
++  const { tools } = await mcp.client.listTools();
++  annotations = new Map(
++    tools.map((t) => [t.name, (t.annotations ?? {}) as Record<string, unknown>]),
++  );
++});
++
++afterEach(async () => {
++  await mcp.close();
++  restoreEnv();
++});
++
++/** Tools whose effect cannot be undone from inside this server. */
++const MUST_BE_DESTRUCTIVE: { tool: string; why: string }[] = [
++  { tool: "line_send_message", why: "a sent LINE message cannot be unsent" },
++  { tool: "line_set_webhook_endpoint", why: "re-routes the live bot's inbound traffic" },
++  { tool: "line_set_default_rich_menu", why: "changes/clears the menu every follower sees" },
++  { tool: "line_manage_liff_app", why: 'mode "delete" removes a LIFF app permanently' },
++  { tool: "line_manage_rich_menu_alias", why: 'mode "delete" breaks richmenuswitch actions' },
++  { tool: "line_manage_coupon", why: 'mode "discontinue" ends a live coupon irreversibly' },
++  // Already correct in v2.2.2 — pinned so they stay that way.
++  { tool: "line_delete_rich_menu", why: "deletes a rich menu" },
++  { tool: "line_delete_audience", why: "deletes an audience group" },
++];
++
++describe("destructiveHint is set on every irreversible tool", () => {
++  it.each(MUST_BE_DESTRUCTIVE)("$tool — $why", ({ tool }) => {
++    expect(annotations.has(tool)).toBe(true);
++    expect(annotations.get(tool)!.destructiveHint).toBe(true);
++  });
++});
++
++describe("read-only tools stay non-destructive", () => {
++  const READ_ONLY = [
++    "line_get_oa_status",
++    "line_list_rich_menus",
++    "line_list_audiences",
++    "line_get_message_stats",
++    "line_list_followers",
++    "line_list_oas",
++  ];
++
++  it.each(READ_ONLY)("%s is not flagged destructive", (tool) => {
++    expect(annotations.has(tool)).toBe(true);
++    expect(annotations.get(tool)!.destructiveHint).toBe(false);
++  });
++});
++
++describe("every registered tool declares the annotation at all", () => {
++  it("no tool leaves destructiveHint undefined — hosts treat missing as unknown", () => {
++    const missing = [...annotations.entries()]
++      .filter(([, a]) => typeof a.destructiveHint !== "boolean")
++      .map(([name]) => name);
++    expect(missing).toEqual([]);
++  });
++});

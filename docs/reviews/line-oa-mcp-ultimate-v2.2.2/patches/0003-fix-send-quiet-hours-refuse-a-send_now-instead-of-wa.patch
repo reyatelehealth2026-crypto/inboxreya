@@ -1,0 +1,526 @@
+From 1ef4baf678a3f213338f8495b3c7a744f3671486 Mon Sep 17 00:00:00 2001
+From: CNY Healthcare <cnyhealthymall@gmail.com>
+Date: Wed, 19 Aug 2026 16:45:26 +0000
+Subject: [PATCH 3/6] fix(send): quiet hours refuse a send_now instead of
+ warning after the fact
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+`quietHoursCheck()` produced a warning that was appended to the `warnings[]`
+of a `success: true` reply — which means the message had already gone out by
+the time anyone could read it. A human might feel bad about it; an autonomous
+agent has no reason to act on a warning attached to a success, so nothing
+stopped a promo from shipping at 02:00. `force: true` therefore did not
+"override" a block, it only suppressed the text.
+
+mode='send_now' now refuses inside 22:00-08:00 BKK and says how to proceed
+(`force=true`, or mode='draft' to schedule in OA Manager). dry_run and draft
+are untouched — neither delivers anything, so both still just warn.
+
+The verdict and the message now share one pinned `now`, so a send landing
+exactly on 22:00:00 cannot report a different hour than the one it refused on.
+
+Note for CI: this makes any unpinned send_now test time-dependent — it would
+pass by day and fail nightly. The two suites that exercise send_now through
+the MCP surface now pin a daytime clock in beforeEach (Date only, real
+timers), which the happy-path test was already doing locally for exactly this
+reason.
+
+Tests: the previously pinned "warning-only" behaviour is replaced by its
+opposite — blocked with zero /push and zero /quota traffic — plus force=true
+sending clean, dry_run and draft staying unblocked, and a 21:59:59 / 22:00:00
+boundary pair driven through the tool.
+---
+ src/i18n/th.ts                    |   3 +
+ src/line/quiet-hours.ts           |  10 +-
+ src/tools/send-message.ts         |  36 ++--
+ tests/guardrails/multi-oa.test.ts |   7 +-
+ tests/send-message.e2e.test.ts    | 285 ++++++++++++++++++------------
+ 5 files changed, 215 insertions(+), 126 deletions(-)
+
+diff --git a/src/i18n/th.ts b/src/i18n/th.ts
+index 8fa74da..bbdaa39 100644
+--- a/src/i18n/th.ts
++++ b/src/i18n/th.ts
+@@ -33,6 +33,9 @@ export const TH = {
+   quietHoursWarning: (bkkHour: number) =>
+     `🌙 ตอนนี้ ${bkkHour}:00 BKK — เป็นช่วง quiet hours (22:00-08:00) ลูกค้าไทยส่วนใหญ่ไม่ชอบถูกปลุก. ตั้งค่า force=true เพื่อส่งต่อ หรือใช้ mode='draft' เพื่อ schedule ใน LINE OA Manager UI`,
+ 
++  quietHoursBlocked: (bkkHour: number) =>
++    `🌙 ยังไม่ได้ส่ง — ตอนนี้ ${bkkHour}:00 BKK อยู่ในช่วง quiet hours (22:00-08:00) ลูกค้าไทยส่วนใหญ่ไม่ชอบถูกปลุกกลางดึก\n→ ระบุ force=true ถ้ายืนยันจะส่งตอนนี้\n→ หรือใช้ mode='draft' เพื่อไป schedule ใน LINE OA Manager UI`,
++
+   // ---- Reply token ----
+   replyTokenExpiredFallback:
+     "💡 Reply token หมดอายุ (มีอายุ ~1 นาที) — ส่งเป็น push message แทนอัตโนมัติ (ใช้ quota +1)",
+diff --git a/src/line/quiet-hours.ts b/src/line/quiet-hours.ts
+index d917fb6..8e9ee43 100644
+--- a/src/line/quiet-hours.ts
++++ b/src/line/quiet-hours.ts
+@@ -2,8 +2,14 @@
+  * Bangkok quiet-hours helper.
+  *
+  * Thai customers strongly dislike LINE OAs that push during the night.
+- * We surface a warning whenever a send is requested between 22:00 and 08:00
+- * BKK time, and let the caller override with `force: true`.
++ * We flag any send requested between 22:00 and 08:00 BKK time, and let the
++ * caller override with `force: true`.
++ *
++ * This module only REPORTS; `line_send_message` decides what to do with the
++ * verdict — `send_now` refuses outright (v2.2.3: a warning attached to a
++ * `success: true` reply is invisible to an autonomous agent, which is exactly
++ * the caller that ships promos at 02:00), while `dry_run` / `draft` only warn
++ * because neither delivers anything.
+  */
+ 
+ import {
+diff --git a/src/tools/send-message.ts b/src/tools/send-message.ts
+index cbb7478..1387351 100644
+--- a/src/tools/send-message.ts
++++ b/src/tools/send-message.ts
+@@ -22,7 +22,7 @@ import { LineApiError, LineClient } from "../line/client.js";
+ import { redactSecrets } from "../line/redact.js";
+ import { FLEX_TEMPLATE_NAMES, renderTemplate } from "../line/flex-templates.js";
+ import { checkQuota, type ProjectedMessages } from "../line/quota-guardian.js";
+-import { quietHoursCheck } from "../line/quiet-hours.js";
++import { bkkHour, quietHoursCheck } from "../line/quiet-hours.js";
+ import { pickTransport } from "../line/transports.js";
+ import { TH } from "../i18n/th.js";
+ import type {
+@@ -175,7 +175,7 @@ const InputSchema = z
+       .boolean()
+       .default(false)
+       .describe(
+-        "Override quiet-hours warning (22:00–08:00 BKK). Defaults false; LINE Thai customers prefer not to be pinged at night.",
++        "Override the quiet-hours block (22:00–08:00 BKK) for mode='send_now'. Defaults false; LINE Thai customers prefer not to be pinged at night. draft / dry_run are never blocked — they only carry the warning.",
+       ),
+     quiet_push: z
+       .boolean()
+@@ -294,7 +294,7 @@ export function registerSendMessageTool(server: McpServer): void {
+ 
+ mode: send_now (default) sends immediately; draft returns a LINE OA Manager handoff package (URL + Flex JSON + steps) — use when the user wants to SCHEDULE, since the Messaging API can't schedule but the OA Manager UI can; dry_run validates + estimates cost without sending.
+ 
+-Safety: pre-flight /validate before spending quota; Quota Guardian blocks if projected cost >95% of remaining quota unless confirm=true; every uncountable fan-out — broadcast { everyone:true } AND narrowcast ({ audience } or { filter }) — requires confirm=true because LINE reports no recipient count before the send and nothing can be unsent; quiet-hours 22:00–08:00 BKK warns unless force=true; quiet_push silences the recipient device; reply tokens expire ~1 min (falls back to a push hint).
++Safety: pre-flight /validate before spending quota; Quota Guardian blocks if projected cost >95% of remaining quota unless confirm=true; every uncountable fan-out — broadcast { everyone:true } AND narrowcast ({ audience } or { filter }) — requires confirm=true because LINE reports no recipient count before the send and nothing can be unsent; quiet-hours 22:00–08:00 BKK BLOCKS send_now unless force=true (draft/dry_run only warn); quiet_push silences the recipient device; reply tokens expire ~1 min (falls back to a push hint).
+ 
+ Returns send_now → { success, transport, request_id?, recipient_count_estimated, quota, warnings[] }; draft and dry_run return their own shapes. Narrowcast needs ~24h before line_get_message_stats shows engagement.
+ 
+@@ -325,8 +325,10 @@ Example: "ส่งโปรให้ผู้หญิง 25-44 กรุงเ
+           }
+         }
+ 
+-        // Quiet hours warning
+-        const quiet = quietHoursCheck(params.force);
++        // Quiet hours. One `now` for both the verdict and the message, so a
++        // send landing exactly on 22:00:00 cannot report a different hour.
++        const now = new Date();
++        const quiet = quietHoursCheck(params.force, now);
+ 
+         // Resolve transport
+         const picked = pickTransport({ client, target: params.target });
+@@ -383,11 +385,24 @@ Example: "ส่งโปรให้ผู้หญิง 25-44 กรุงเ
+         }
+ 
+         // ----- mode: send_now -----
++        // Policy gates run before the quota round-trip: a refused send should
++        // cost zero further LINE API calls. Both gates sit after /validate so a
++        // caller who fixes the gate still gets their JSON errors in one pass.
++
++        // Quiet hours — a REFUSAL, not a warning. Warnings ride on a
++        // `success: true` reply, which an autonomous agent has no reason to
++        // act on; `force: true` is the documented override.
++        if (quiet.is_quiet) {
++          return {
++            isError: true,
++            content: [{ type: "text", text: TH.quietHoursBlocked(bkkHour(now)) }],
++          };
++        }
++
+         // Uncountable fan-out (broadcast AND both narrowcast shapes). Derived
+         // from the transport, not from a hand-listed set of target keys, so a
+         // new uncountable target shape is covered the day it is added.
+-        // Runs BEFORE the quota round-trip so a refused send costs zero further
+-        // LINE API calls; checkQuota() enforces the same rule as a backstop.
++        // checkQuota() enforces the same rule as a backstop.
+         if (projected === "unknown" && !params.confirm) {
+           return {
+             isError: true,
+@@ -421,10 +436,9 @@ Example: "ส่งโปรให้ผู้หญิง 25-44 กรุงเ
+           recipient_count_estimated: sentCount,
+           ...(sentCount === undefined ? { recipients_unknown: true as const } : {}),
+           quota: guard.snapshot,
+-          warnings: [
+-            ...guard.warnings,
+-            ...(quiet.warning ? [quiet.warning] : []),
+-          ],
++          // No quiet-hours entry here by construction: send_now returns above
++          // whenever `quiet.is_quiet`, and `force: true` clears the flag.
++          warnings: [...guard.warnings],
+           next_steps:
+             picked.transport === "narrowcast"
+               ? `รออย่างน้อย 24 ชม. แล้วใช้ line_get_message_stats ดู engagement (request_id: ${result.request_id ?? "n/a"})`
+diff --git a/tests/guardrails/multi-oa.test.ts b/tests/guardrails/multi-oa.test.ts
+index 4a21284..a9d2756 100644
+--- a/tests/guardrails/multi-oa.test.ts
++++ b/tests/guardrails/multi-oa.test.ts
+@@ -12,7 +12,7 @@ import { mkdtempSync } from "node:fs";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ 
+-import { afterEach, beforeEach, describe, expect, it } from "vitest";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ 
+ import {
+   listOas,
+@@ -223,6 +223,10 @@ describe("E2E — line_use_oa switches the Bearer token on subsequent sends", ()
+   let mcp: TestMcp;
+ 
+   beforeEach(async () => {
++    // Pin to 12:00 BKK: since v2.2.3 a send_now inside quiet hours is refused,
++    // so an unpinned clock would fail this suite every night. Date only —
++    // real timers keep the in-memory MCP transport working.
++    vi.useFakeTimers({ now: new Date("2026-01-15T05:00:00Z"), toFake: ["Date"] });
+     useConfigFile(twoOaConfig());
+     api = installFetchMock();
+     // Ample quota so the Quota Guardian passes cleanly (consumption route first — substring routing).
+@@ -232,6 +236,7 @@ describe("E2E — line_use_oa switches the Bearer token on subsequent sends", ()
+   });
+ 
+   afterEach(async () => {
++    vi.useRealTimers();
+     await mcp.close();
+     api.uninstall();
+   });
+diff --git a/tests/send-message.e2e.test.ts b/tests/send-message.e2e.test.ts
+index 6e445a6..41f50b8 100644
+--- a/tests/send-message.e2e.test.ts
++++ b/tests/send-message.e2e.test.ts
+@@ -5,11 +5,15 @@
+  * Proves the guardrail pipeline end-to-end: validate-before-send ordering,
+  * retry-key header, dry_run isolation, draft zero-send guarantee, the
+  * uncountable-fan-out confirm gate (broadcast AND both narrowcast shapes),
+- * quota soft-block + confirm override, quiet-hours warning
++ * quota soft-block + confirm override, the quiet-hours send_now block
+  * (fake Date, timers stay real), LINE error surfacing (400 details / 401 /
+  * 429 in Thai), schema rejection with zero network calls, quiet_push, and
+  * the reply_to no-fallback gap (pinned as current behavior).
+  *
++ * Every test runs on a PINNED daytime clock (see DAYTIME_BKK). Since v2.2.3
++ * quiet hours REFUSE a send_now rather than warn, so an unpinned suite would
++ * pass by day and fail every night between 22:00 and 08:00 BKK.
++ *
+  * Fetch-mock routing is SUBSTRING based — "/v2/bot/message/quota" must be
+  * registered AFTER "/v2/bot/message/quota/consumption".
+  */
+@@ -28,11 +32,18 @@ const SEND_PATHS = [
+   "/v2/bot/message/narrowcast",
+ ] as const;
+ 
++/** 12:00 Bangkok (UTC+7) — comfortably outside the 22:00-08:00 quiet window. */
++const DAYTIME_BKK = new Date("2026-01-15T05:00:00Z");
++/** 23:00 Bangkok — inside the quiet window. */
++const QUIET_NIGHT_BKK = new Date("2026-07-24T16:00:00Z");
++
+ let restoreEnv: () => void;
+ let api: FetchMock;
+ let mcp: TestMcp;
+ 
+ beforeEach(async () => {
++  // Date only — real timers, so the MCP transport still works.
++  vi.useFakeTimers({ now: DAYTIME_BKK, toFake: ["Date"] });
+   restoreEnv = isolateConfigEnv();
+   useSingleOaEnv("e2e-token");
+   api = installFetchMock();
+@@ -58,10 +69,7 @@ function sendPathCallCounts(): Record<string, number> {
+ 
+ describe("send_now — push happy path", () => {
+   it("validates BEFORE sending, carries x-line-retry-key, returns success structured content", async () => {
+-    // Pin the clock to 12:00 BKK — otherwise this test fails between 22:00-08:00
+-    // BKK when the (correct) quiet-hours warning appears. Timers stay real.
+-    vi.useFakeTimers({ now: new Date("2026-01-15T05:00:00Z"), toFake: ["Date"] });
+-    mockQuota(1000, 100); // remaining 900
++    mockQuota(1000, 100); // remaining 900 — clock pinned to DAYTIME_BKK globally
+ 
+     const result = await mcp.callTool("line_send_message", {
+       target: { user_id: "U-happy" },
+@@ -243,6 +251,166 @@ describe("broadcast confirm gate (everyone: true)", () => {
+   });
+ });
+ 
++describe("quota soft-block (Quota Guardian through the tool)", () => {
++  it("99 recipients against remaining 100 → needs-confirmation error, zero multicast calls", async () => {
++    mockQuota(1000, 900); // remaining 100
++    const userIds = Array.from({ length: 99 }, (_, i) => `U${i}`);
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { user_ids: userIds },
++      message: { text: "โปรใหญ่" },
++    });
++
++    expect(result.isError).toBe(true);
++    expect(firstText(result)).toBe(TH.quotaWarning(99, 100, 99));
++    expect(firstText(result)).toContain("confirm=true");
++    expect(api.callsTo("/v2/bot/message/multicast")).toHaveLength(0);
++  });
++
++  it("same send passes with confirm:true and surfaces the >50% advisory warning", async () => {
++    mockQuota(1000, 900);
++    const userIds = Array.from({ length: 99 }, (_, i) => `U${i}`);
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { user_ids: userIds },
++      message: { text: "โปรใหญ่" },
++      confirm: true,
++    });
++
++    expect(result.isError).toBeFalsy();
++    expect(result.structuredContent).toMatchObject({
++      success: true,
++      transport: "multicast",
++      recipient_count_estimated: 99,
++    });
++    const warnings = result.structuredContent!.warnings as string[];
++    expect(warnings.some((w) => w.includes("99%"))).toBe(true);
++
++    const casts = api.callsTo("/v2/bot/message/multicast");
++    expect(casts).toHaveLength(1); // 99 ≤ 500 → single chunk
++    expect((casts[0]!.body as { to: string[] }).to).toHaveLength(99);
++  });
++
++  it("hard over-quota (projected > remaining) blocks even WITH confirm:true", async () => {
++    mockQuota(1000, 950); // remaining 50
++    const userIds = Array.from({ length: 51 }, (_, i) => `U${i}`);
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { user_ids: userIds },
++      message: { text: "เกิน quota" },
++      confirm: true,
++    });
++
++    expect(result.isError).toBe(true);
++    expect(firstText(result)).toBe(TH.quotaExceeded(51, 50));
++    expect(api.callsTo("/v2/bot/message/multicast")).toHaveLength(0);
++  });
++});
++
++describe("quiet hours — send_now is BLOCKED, not warned (23:00 BKK = 16:00 UTC)", () => {
++  // v2.2.2 attached TH.quietHoursWarning to a `success: true` reply, so the
++  // message had already gone out by the time anyone could read the warning —
++  // and an autonomous agent never reads it at all. `force` claimed to
++  // "override" something that was never blocking. Now it really blocks.
++  it("without force → isError, and NOTHING is sent (zero push, zero quota calls)", async () => {
++    vi.setSystemTime(QUIET_NIGHT_BKK);
++    mockQuota(1000, 0);
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { user_id: "U-night" },
++      message: { text: "ดึกแล้วนะ" },
++    });
++
++    expect(result.isError).toBe(true);
++    const text = firstText(result);
++    expect(text).toBe(TH.quietHoursBlocked(23));
++    expect(text).toContain("quiet hours");
++    expect(text).toContain("force=true"); // the documented escape hatch
++    expect(api.callsTo("/v2/bot/message/push")).toHaveLength(0);
++    expect(api.callsTo("/v2/bot/message/quota")).toHaveLength(0);
++  });
++
++  it("force:true sends at 23:00 with no warning attached", async () => {
++    vi.setSystemTime(QUIET_NIGHT_BKK);
++    mockQuota(1000, 0);
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { user_id: "U-night" },
++      message: { text: "ดึกแล้วนะ" },
++      force: true,
++    });
++
++    expect(result.isError).toBeFalsy();
++    expect(result.structuredContent!.warnings).toEqual([]);
++    expect(api.callsTo("/v2/bot/message/push")).toHaveLength(1);
++  });
++
++  it("dry_run at 23:00 is NOT blocked — it warns instead (nothing is delivered)", async () => {
++    vi.setSystemTime(QUIET_NIGHT_BKK);
++    mockQuota(1000, 0);
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { user_id: "U-night" },
++      message: { text: "ลองดูก่อน" },
++      mode: "dry_run",
++    });
++
++    expect(result.isError).toBeFalsy();
++    expect(result.structuredContent!.dry_run).toBe(true);
++    expect(result.structuredContent!.warnings).toContain(TH.quietHoursWarning(23));
++    expect(api.callsTo("/v2/bot/message/push")).toHaveLength(0);
++  });
++
++  it("draft at 23:00 is NOT blocked — quiet hours land in `notes`", async () => {
++    vi.setSystemTime(QUIET_NIGHT_BKK);
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { audience: "7777" },
++      message: { text: "ตั้งเวลาไว้ก่อน" },
++      mode: "draft",
++    });
++
++    expect(result.isError).toBeFalsy();
++    expect(result.structuredContent!.draft).toBe(true);
++    expect(result.structuredContent!.notes).toBe(TH.quietHoursWarning(23));
++  });
++
++  it("daytime (12:00 BKK) sends clean with no quiet-hours warning", async () => {
++    vi.setSystemTime(new Date("2026-07-24T05:00:00Z"));
++    mockQuota(1000, 0);
++
++    const result = await mcp.callTool("line_send_message", {
++      target: { user_id: "U-day" },
++      message: { text: "สวัสดีตอนเที่ยง" },
++    });
++
++    expect(result.isError).toBeFalsy();
++    expect(result.structuredContent!.warnings).toEqual([]);
++    expect(api.callsTo("/v2/bot/message/push")).toHaveLength(1);
++  });
++
++  it("21:59:59 BKK still sends; 22:00:00 BKK is refused (boundary through the tool)", async () => {
++    mockQuota(1000, 0);
++
++    vi.setSystemTime(new Date("2026-07-24T14:59:59Z")); // 21:59:59 BKK
++    const ok = await mcp.callTool("line_send_message", {
++      target: { user_id: "U-2159" },
++      message: { text: "ทันพอดี" },
++    });
++    expect(ok.isError).toBeFalsy();
++
++    vi.setSystemTime(new Date("2026-07-24T15:00:00Z")); // 22:00:00 BKK
++    const blocked = await mcp.callTool("line_send_message", {
++      target: { user_id: "U-2200" },
++      message: { text: "ช้าไปหนึ่งวินาที" },
++    });
++    expect(blocked.isError).toBe(true);
++    expect(firstText(blocked)).toBe(TH.quietHoursBlocked(22));
++
++    expect(api.callsTo("/v2/bot/message/push")).toHaveLength(1); // only the 21:59:59 one
++  });
++});
++
+ describe("narrowcast confirm gate — the v2.2.2 hole", () => {
+   // v2.2.2 gated only `"everyone" in target`. Both narrowcast shapes
+   // (`{ audience }`, `{ filter }`) fell through with projected = 0, which also
+@@ -361,113 +529,6 @@ describe("narrowcast confirm gate — the v2.2.2 hole", () => {
+   });
+ });
+ 
+-
+-describe("quota soft-block (Quota Guardian through the tool)", () => {
+-  it("99 recipients against remaining 100 → needs-confirmation error, zero multicast calls", async () => {
+-    mockQuota(1000, 900); // remaining 100
+-    const userIds = Array.from({ length: 99 }, (_, i) => `U${i}`);
+-
+-    const result = await mcp.callTool("line_send_message", {
+-      target: { user_ids: userIds },
+-      message: { text: "โปรใหญ่" },
+-    });
+-
+-    expect(result.isError).toBe(true);
+-    expect(firstText(result)).toBe(TH.quotaWarning(99, 100, 99));
+-    expect(firstText(result)).toContain("confirm=true");
+-    expect(api.callsTo("/v2/bot/message/multicast")).toHaveLength(0);
+-  });
+-
+-  it("same send passes with confirm:true and surfaces the >50% advisory warning", async () => {
+-    mockQuota(1000, 900);
+-    const userIds = Array.from({ length: 99 }, (_, i) => `U${i}`);
+-
+-    const result = await mcp.callTool("line_send_message", {
+-      target: { user_ids: userIds },
+-      message: { text: "โปรใหญ่" },
+-      confirm: true,
+-    });
+-
+-    expect(result.isError).toBeFalsy();
+-    expect(result.structuredContent).toMatchObject({
+-      success: true,
+-      transport: "multicast",
+-      recipient_count_estimated: 99,
+-    });
+-    const warnings = result.structuredContent!.warnings as string[];
+-    expect(warnings.some((w) => w.includes("99%"))).toBe(true);
+-
+-    const casts = api.callsTo("/v2/bot/message/multicast");
+-    expect(casts).toHaveLength(1); // 99 ≤ 500 → single chunk
+-    expect((casts[0]!.body as { to: string[] }).to).toHaveLength(99);
+-  });
+-
+-  it("hard over-quota (projected > remaining) blocks even WITH confirm:true", async () => {
+-    mockQuota(1000, 950); // remaining 50
+-    const userIds = Array.from({ length: 51 }, (_, i) => `U${i}`);
+-
+-    const result = await mcp.callTool("line_send_message", {
+-      target: { user_ids: userIds },
+-      message: { text: "เกิน quota" },
+-      confirm: true,
+-    });
+-
+-    expect(result.isError).toBe(true);
+-    expect(firstText(result)).toBe(TH.quotaExceeded(51, 50));
+-    expect(api.callsTo("/v2/bot/message/multicast")).toHaveLength(0);
+-  });
+-});
+-
+-describe("quiet hours (23:00 BKK = 16:00 UTC, fake Date only)", () => {
+-  it("warning present without force — but the message still sends (warning-only)", async () => {
+-    vi.useFakeTimers({ toFake: ["Date"] });
+-    vi.setSystemTime(new Date("2026-07-24T16:00:00Z"));
+-    mockQuota(1000, 0);
+-
+-    const result = await mcp.callTool("line_send_message", {
+-      target: { user_id: "U-night" },
+-      message: { text: "ดึกแล้วนะ" },
+-    });
+-
+-    expect(result.isError).toBeFalsy();
+-    expect(result.structuredContent).toMatchObject({ success: true, transport: "push" });
+-    const warnings = result.structuredContent!.warnings as string[];
+-    expect(warnings).toContain(TH.quietHoursWarning(23));
+-    expect(firstText(result)).toContain("quiet hours");
+-    expect(api.callsTo("/v2/bot/message/push")).toHaveLength(1);
+-  });
+-
+-  it("force:true suppresses the warning entirely", async () => {
+-    vi.useFakeTimers({ toFake: ["Date"] });
+-    vi.setSystemTime(new Date("2026-07-24T16:00:00Z"));
+-    mockQuota(1000, 0);
+-
+-    const result = await mcp.callTool("line_send_message", {
+-      target: { user_id: "U-night" },
+-      message: { text: "ดึกแล้วนะ" },
+-      force: true,
+-    });
+-
+-    expect(result.isError).toBeFalsy();
+-    expect(result.structuredContent!.warnings).toEqual([]);
+-    expect(api.callsTo("/v2/bot/message/push")).toHaveLength(1);
+-  });
+-
+-  it("daytime (12:00 BKK) has no quiet-hours warning", async () => {
+-    vi.useFakeTimers({ toFake: ["Date"] });
+-    vi.setSystemTime(new Date("2026-07-24T05:00:00Z"));
+-    mockQuota(1000, 0);
+-
+-    const result = await mcp.callTool("line_send_message", {
+-      target: { user_id: "U-day" },
+-      message: { text: "สวัสดีตอนเที่ยง" },
+-    });
+-
+-    expect(result.isError).toBeFalsy();
+-    expect(result.structuredContent!.warnings).toEqual([]);
+-  });
+-});
+-
+ describe("LINE error surfacing (Thai)", () => {
+   it("/validate/push 400 with details[] → isError with each detail line surfaced", async () => {
+     api.onError("/v2/bot/message/validate/push", 400, "The request body has 2 error(s)", [

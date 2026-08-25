@@ -1,0 +1,457 @@
+From 9c6f7aa4f4c2c85d837c5389bbfd41f5e222fa0b Mon Sep 17 00:00:00 2001
+From: CNY Healthcare <cnyhealthymall@gmail.com>
+Date: Wed, 19 Aug 2026 16:46:10 +0000
+Subject: [PATCH 5/6] fix(client): put every LINE fetch under a deadline that
+ covers the body read
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Two separate gaps in LineClient.
+
+request() armed an AbortController but cleared it in a `finally` that ran the
+moment the Response object arrived — before `response.text()`. Headers can
+land in milliseconds while the body trickles or never finishes, so the body
+read had no ceiling at all and a stalled peer could hang an MCP tool call
+indefinitely. The timer now stays armed until the body is read, and an abort
+during that read is wrapped in the same LineApiError shape as any other
+transport failure instead of escaping as a raw AbortError.
+
+uploadRichMenuImage() and verifyAccessToken() bypass request() entirely (raw
+binary body on api-data; access_token as a query param, no Bearer) and so
+carried no timeout of any kind. Both now run under their own deadline —
+60s for the upload, which pushes up to 1MB, and 30s for the verify. Timeouts
+move to named constants rather than a literal in the middle of request().
+
+Tests: a new suite drives each path with faked timers and a promise that
+settles only via its AbortSignal — proving the stall is cut at the deadline,
+that the surfaced error is a LineApiError, that a LINE error status still
+reports its own status rather than a timeout, and that no call leaves a
+dangling timer behind.
+---
+ src/constants.ts                        |   9 +
+ src/line/client.ts                      | 141 ++++++++++++----
+ tests/security/client-deadlines.test.ts | 213 ++++++++++++++++++++++++
+ 3 files changed, 327 insertions(+), 36 deletions(-)
+ create mode 100644 tests/security/client-deadlines.test.ts
+
+diff --git a/src/constants.ts b/src/constants.ts
+index 060a5fe..114a291 100644
+--- a/src/constants.ts
++++ b/src/constants.ts
+@@ -14,6 +14,15 @@ export const LINE_API_DATA_BASE = "https://api-data.line.me"; // for content / a
+ export const SERVER_NAME = "line-oa-mcp-ultimate";
+ export const SERVER_VERSION = "2.2.2";
+ 
++// ---- HTTP client deadlines ----
++// One deadline covers the WHOLE call — connect, headers, AND body read. A peer
++// that answers headers fast and then stalls the body must not hold a tool call
++// open forever, so the abort timer stays armed until `response.text()` resolves.
++export const LINE_REQUEST_TIMEOUT_MS = 30_000;
++// Rich menu image upload pushes up to RICH_MENU_IMAGE_MAX_BYTES over api-data;
++// give the body write real headroom on a slow uplink before aborting.
++export const LINE_UPLOAD_TIMEOUT_MS = 60_000;
++
+ // ---- Response sizing ----
+ export const CHARACTER_LIMIT = 25_000; // truncate responses beyond this size
+ export const DEFAULT_PAGE_LIMIT = 20;
+diff --git a/src/line/client.ts b/src/line/client.ts
+index 2d59cf9..1dd3be0 100644
+--- a/src/line/client.ts
++++ b/src/line/client.ts
+@@ -14,7 +14,12 @@
+ 
+ import { randomUUID } from "node:crypto";
+ 
+-import { LINE_API_BASE, LINE_API_DATA_BASE } from "../constants.js";
++import {
++  LINE_API_BASE,
++  LINE_API_DATA_BASE,
++  LINE_REQUEST_TIMEOUT_MS,
++  LINE_UPLOAD_TIMEOUT_MS,
++} from "../constants.js";
+ import { TH } from "../i18n/th.js";
+ import { redactSecrets } from "./redact.js";
+ import type { LineMessage, LineQuota, LineQuotaConsumption } from "../types.js";
+@@ -105,28 +110,39 @@ export class LineClient {
+     }
+ 
+     const controller = new AbortController();
+-    const timer = setTimeout(() => controller.abort(), 30_000);
+-    let response: Response;
++    const timer = setTimeout(() => controller.abort(), LINE_REQUEST_TIMEOUT_MS);
+     try {
+-      response = await fetch(url, {
+-        method,
+-        headers,
+-        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+-        signal: controller.signal,
+-      });
+-    } catch (err) {
+-      const msg = err instanceof Error ? err.message : String(err);
+-      throw new LineApiError(0, { message: `Network error: ${msg}` });
++      let response: Response;
++      try {
++        response = await fetch(url, {
++          method,
++          headers,
++          body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
++          signal: controller.signal,
++        });
++      } catch (err) {
++        throw networkError(err);
++      }
++
++      // The timer is cleared in `finally`, AFTER the body is read — not before.
++      // Headers can arrive in milliseconds while the body trickles or stalls
++      // forever; disarming at the header boundary left that read with no
++      // ceiling at all and could hang a tool call indefinitely.
++      let text: string;
++      try {
++        text = await response.text();
++      } catch (err) {
++        throw networkError(err);
++      }
++
++      const body = text ? safeJson(text) : {};
++      if (!response.ok) {
++        throw new LineApiError(response.status, body);
++      }
++      return body as T;
+     } finally {
+       clearTimeout(timer);
+     }
+-
+-    const text = await response.text();
+-    const body = text ? safeJson(text) : {};
+-    if (!response.ok) {
+-      throw new LineApiError(response.status, body);
+-    }
+-    return body as T;
+   }
+ 
+   /** Generate an idempotency key suitable for `X-Line-Retry-Key`. */
+@@ -461,17 +477,37 @@ export class LineClient {
+       `/v2/bot/richmenu/${encodeURIComponent(richMenuId)}/content`,
+       this.apiDataBase,
+     );
+-    const res = await fetch(url, {
+-      method: "POST",
+-      headers: {
+-        Authorization: `Bearer ${this.token}`,
+-        "Content-Type": contentType,
+-      },
+-      body: image,
+-    });
+-    if (!res.ok) {
+-      const text = await res.text();
+-      throw new LineApiError(res.status, text ? safeJson(text) : { message: "upload failed" });
++    // This path bypasses request() (raw binary body, api-data domain) and so
++    // used to bypass its abort timer too — a stalled upload hung the tool call
++    // with no ceiling. Same deadline discipline, longer budget for the body.
++    const controller = new AbortController();
++    const timer = setTimeout(() => controller.abort(), LINE_UPLOAD_TIMEOUT_MS);
++    try {
++      let res: Response;
++      try {
++        res = await fetch(url, {
++          method: "POST",
++          headers: {
++            Authorization: `Bearer ${this.token}`,
++            "Content-Type": contentType,
++          },
++          body: image,
++          signal: controller.signal,
++        });
++      } catch (err) {
++        throw networkError(err);
++      }
++      if (!res.ok) {
++        let text = "";
++        try {
++          text = await res.text();
++        } catch {
++          /* body unreadable (aborted / truncated) — the status still explains it */
++        }
++        throw new LineApiError(res.status, text ? safeJson(text) : { message: "upload failed" });
++      }
++    } finally {
++      clearTimeout(timer);
+     }
+   }
+ 
+@@ -572,16 +608,49 @@ export class LineClient {
+     const token = accessToken ?? this.token;
+     const url = new URL("/oauth2/v2.1/verify", this.apiBase);
+     url.searchParams.set("access_token", token);
+-    const res = await fetch(url, { method: "GET", headers: { Accept: "application/json" } });
+-    const text = await res.text();
+-    const body = text ? safeJson(text) : {};
+-    if (!res.ok) {
+-      throw new LineApiError(res.status, body);
++
++    // Hand-rolled (the token rides as a query param, no Bearer header), so it
++    // needs its own deadline — request()'s does not apply here.
++    const controller = new AbortController();
++    const timer = setTimeout(() => controller.abort(), LINE_REQUEST_TIMEOUT_MS);
++    try {
++      let res: Response;
++      try {
++        res = await fetch(url, {
++          method: "GET",
++          headers: { Accept: "application/json" },
++          signal: controller.signal,
++        });
++      } catch (err) {
++        throw networkError(err);
++      }
++      let text: string;
++      try {
++        text = await res.text();
++      } catch (err) {
++        throw networkError(err);
++      }
++      const body = text ? safeJson(text) : {};
++      if (!res.ok) {
++        throw new LineApiError(res.status, body);
++      }
++      return body as { client_id: string; expires_in: number; scope?: string };
++    } finally {
++      clearTimeout(timer);
+     }
+-    return body as { client_id: string; expires_in: number; scope?: string };
+   }
+ }
+ 
++/**
++ * Wrap a transport-level failure (DNS, TLS, socket, or our own abort) in the
++ * same LineApiError shape callers already handle, so a timeout surfaces as a
++ * Thai tool error rather than a raw AbortError escaping the client.
++ */
++function networkError(err: unknown): LineApiError {
++  const msg = err instanceof Error ? err.message : String(err);
++  return new LineApiError(0, { message: `Network error: ${msg}` });
++}
++
+ function safeJson(text: string): unknown {
+   try {
+     return JSON.parse(text);
+diff --git a/tests/security/client-deadlines.test.ts b/tests/security/client-deadlines.test.ts
+new file mode 100644
+index 0000000..c4b2f9b
+--- /dev/null
++++ b/tests/security/client-deadlines.test.ts
+@@ -0,0 +1,213 @@
++/**
++ * Security/robustness tests — every LineClient fetch runs under a deadline.
++ *
++ * Two distinct v2.2.2 gaps are pinned here:
++ *
++ *   1. request() armed an AbortController but cleared it in a `finally` that
++ *      ran when the RESPONSE OBJECT arrived — before `response.text()`. A peer
++ *      that flushes headers immediately and then stalls the body therefore had
++ *      no ceiling at all, and the tool call hung indefinitely.
++ *   2. uploadRichMenuImage() and verifyAccessToken() bypass request() (raw
++ *      binary body / query-param auth) and so carried no timeout whatsoever.
++ *
++ * Timers are faked so a 30s/60s deadline costs no wall-clock. Each stalled
++ * promise resolves only via its AbortSignal — if a deadline is ever removed
++ * again these tests hang rather than silently pass, so they carry an explicit
++ * per-test timeout.
++ */
++
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++import {
++  LINE_REQUEST_TIMEOUT_MS,
++  LINE_UPLOAD_TIMEOUT_MS,
++} from "../../src/constants.js";
++import { LineApiError, LineClient } from "../../src/line/client.js";
++
++const TEST_TIMEOUT_MS = 5_000;
++
++let client: LineClient;
++
++beforeEach(() => {
++  vi.useFakeTimers();
++  client = new LineClient({ channelAccessToken: "deadline-token" });
++});
++
++afterEach(() => {
++  vi.useRealTimers();
++  vi.unstubAllGlobals();
++});
++
++function abortError(): Error {
++  return Object.assign(new Error("This operation was aborted"), { name: "AbortError" });
++}
++
++/** A Response whose headers are already here but whose body never arrives. */
++function stallingBodyResponse(signal: AbortSignal | null | undefined): Response {
++  return {
++    ok: true,
++    status: 200,
++    text: () =>
++      new Promise<string>((_resolve, reject) => {
++        if (signal?.aborted) return reject(abortError());
++        signal?.addEventListener("abort", () => reject(abortError()));
++      }),
++  } as unknown as Response;
++}
++
++/** A JSON Response that behaves normally. */
++function jsonResponse(body: unknown): Response {
++  return {
++    ok: true,
++    status: 200,
++    text: async () => JSON.stringify(body),
++  } as unknown as Response;
++}
++
++type FetchArgs = { input: RequestInfo | URL; init?: RequestInit };
++
++/** Stub global fetch, recording every call. */
++function stubFetch(handler: (args: FetchArgs) => Promise<Response>): FetchArgs[] {
++  const seen: FetchArgs[] = [];
++  vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
++    seen.push({ input, init });
++    return handler({ input, init });
++  });
++  return seen;
++}
++
++describe("request() — the deadline covers the BODY read, not just the headers", () => {
++  it(
++    "a response whose body never arrives is aborted and surfaced as a LineApiError",
++    async () => {
++      stubFetch(async ({ init }) => stallingBodyResponse(init?.signal));
++
++      // v2.2.2: clearTimeout() had already fired by this point, so this promise
++      // never settled — the MCP tool call hung forever.
++      const settled = client.getQuota().then(
++        () => "resolved" as const,
++        (err: unknown) => err,
++      );
++
++      // One tick short of the deadline: still pending.
++      await vi.advanceTimersByTimeAsync(LINE_REQUEST_TIMEOUT_MS - 1);
++      let done = false;
++      void settled.then(() => {
++        done = true;
++      });
++      await Promise.resolve();
++      expect(done).toBe(false);
++
++      await vi.advanceTimersByTimeAsync(2);
++      const err = await settled;
++      expect(err).toBeInstanceOf(LineApiError);
++      expect((err as LineApiError).status).toBe(0);
++      expect((err as LineApiError).message).toContain("Network error");
++    },
++    TEST_TIMEOUT_MS,
++  );
++
++  it("clears its timer on the happy path — no dangling handle per call", async () => {
++    stubFetch(async () => jsonResponse({ type: "limited", value: 500 }));
++
++    const before = vi.getTimerCount();
++    const quota = await client.getQuota();
++
++    expect(quota).toEqual({ type: "limited", value: 500 });
++    expect(vi.getTimerCount()).toBe(before);
++  });
++
++  it("clears its timer when LINE returns an error status too", async () => {
++    stubFetch(async () => ({
++      ok: false,
++      status: 429,
++      text: async () => JSON.stringify({ message: "rate limited" }),
++    }) as unknown as Response);
++
++    await expect(client.getQuota()).rejects.toBeInstanceOf(LineApiError);
++    expect(vi.getTimerCount()).toBe(0);
++  });
++});
++
++describe("uploadRichMenuImage() — raw-binary path is no longer un-timed", () => {
++  it("passes an AbortSignal to fetch", async () => {
++    const seen = stubFetch(async () => ({ ok: true, status: 200 }) as unknown as Response);
++
++    await client.uploadRichMenuImage("richmenu-1", Buffer.from([1, 2, 3]), "image/png");
++
++    expect(seen).toHaveLength(1);
++    expect(seen[0]!.init?.signal).toBeInstanceOf(AbortSignal);
++    expect(vi.getTimerCount()).toBe(0); // and the timer is cleared afterwards
++  });
++
++  it(
++    "a stalled upload aborts at LINE_UPLOAD_TIMEOUT_MS instead of hanging",
++    async () => {
++      stubFetch(
++        ({ init }) =>
++          new Promise<Response>((_resolve, reject) => {
++            init?.signal?.addEventListener("abort", () => reject(abortError()));
++          }),
++      );
++
++      const settled = client
++        .uploadRichMenuImage("richmenu-1", Buffer.from([1, 2, 3]), "image/png")
++        .then(() => "resolved" as const, (err: unknown) => err);
++
++      await vi.advanceTimersByTimeAsync(LINE_UPLOAD_TIMEOUT_MS + 1);
++
++      const err = await settled;
++      expect(err).toBeInstanceOf(LineApiError);
++      expect((err as LineApiError).status).toBe(0);
++    },
++    TEST_TIMEOUT_MS,
++  );
++
++  it("an upload rejected by LINE still surfaces the API status, not a timeout", async () => {
++    stubFetch(async () => ({
++      ok: false,
++      status: 400,
++      text: async () => JSON.stringify({ message: "invalid image" }),
++    }) as unknown as Response);
++
++    const err = await client
++      .uploadRichMenuImage("richmenu-1", Buffer.from([1]), "image/png")
++      .catch((e: unknown) => e);
++
++    expect(err).toBeInstanceOf(LineApiError);
++    expect((err as LineApiError).status).toBe(400);
++    expect(vi.getTimerCount()).toBe(0);
++  });
++});
++
++describe("verifyAccessToken() — query-param auth path is no longer un-timed", () => {
++  it("passes an AbortSignal and clears its timer", async () => {
++    const seen = stubFetch(async () =>
++      jsonResponse({ client_id: "cid", expires_in: 2_592_000 }),
++    );
++
++    const out = await client.verifyAccessToken();
++
++    expect(out.client_id).toBe("cid");
++    expect(seen[0]!.init?.signal).toBeInstanceOf(AbortSignal);
++    expect(vi.getTimerCount()).toBe(0);
++  });
++
++  it(
++    "a stalled verify aborts at LINE_REQUEST_TIMEOUT_MS",
++    async () => {
++      stubFetch(async ({ init }) => stallingBodyResponse(init?.signal));
++
++      const settled = client
++        .verifyAccessToken("some-other-token")
++        .then(() => "resolved" as const, (err: unknown) => err);
++
++      await vi.advanceTimersByTimeAsync(LINE_REQUEST_TIMEOUT_MS + 1);
++
++      const err = await settled;
++      expect(err).toBeInstanceOf(LineApiError);
++      expect((err as LineApiError).message).toContain("Network error");
++    },
++    TEST_TIMEOUT_MS,
++  );
++});
