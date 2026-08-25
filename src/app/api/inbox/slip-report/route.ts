@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { PRIVATE_CARRIER_TAG_ID } from '@/lib/slip-auto-match'
 
 /**
  * GET /api/inbox/slip-report?days=7
@@ -97,6 +98,104 @@ export async function GET(request: NextRequest) {
       })
       .filter((item): item is NonNullable<typeof item> => item !== null)
 
+    // Fill in what the slip's document belongs to. A BDO and an invoice for the
+    // same order share `order_name` (the SO), which is the only link between
+    // them — a BDO can cover several orders, so one slip can point at more than
+    // one invoice.
+    const ids = (values: Array<number | null>) =>
+      Array.from(
+        new Set(
+          values
+            .map((v) => Number(v))
+            .filter((v) => Number.isSafeInteger(v) && v > 0)
+            .map((v) => Math.floor(v))
+        )
+      )
+
+    const bdoIds = ids(items.map((i) => i.bdoId))
+    const invoiceIds = ids(items.map((i) => i.invoiceId))
+    const userIds = ids(items.map((i) => i.userId))
+
+    interface LinkRow {
+      bdo_id: number | null
+      bdo_name: string | null
+      invoice_id: number
+      invoice_number: string | null
+      order_name: string | null
+      is_paid: number | null
+      payment_state: string | null
+      payment_date: Date | null
+    }
+
+    // Interpolated rather than parameterised because the list length varies;
+    // every value went through `ids()` above, so it is a positive integer by the
+    // time it reaches the query.
+    const links =
+      bdoIds.length || invoiceIds.length
+        ? await prisma.$queryRawUnsafe<LinkRow[]>(
+            `SELECT b.bdo_id, b.bdo_name, i.invoice_id, i.invoice_number, i.order_name,
+                    i.is_paid, i.payment_state, i.payment_date
+               FROM odoo_invoices i
+               LEFT JOIN odoo_bdo_orders b ON b.order_name = i.order_name
+              WHERE ${invoiceIds.length ? `i.invoice_id IN (${invoiceIds.join(',')})` : '0'}
+                 OR ${bdoIds.length ? `b.bdo_id IN (${bdoIds.join(',')})` : '0'}
+              LIMIT 2000`
+          )
+        : []
+
+    // Which of these customers are the pay-before-delivery ones. Read from the
+    // tag rather than from Odoo's delivery_type, because that only comes back
+    // after a match and is null on almost every row.
+    const privateCarrier = userIds.length
+      ? new Set(
+          (
+            await prisma.$queryRawUnsafe<Array<{ user_id: number }>>(
+              `SELECT user_id
+                 FROM user_tag_assignments
+                WHERE tag_id = ${PRIVATE_CARRIER_TAG_ID}
+                  AND user_id IN (${userIds.join(',')})
+                  AND (expires_at IS NULL OR expires_at > NOW())`
+            )
+          ).map((r) => Number(r.user_id))
+        )
+      : new Set<number>()
+
+    const byInvoice = new Map<number, LinkRow>()
+    const byBdo = new Map<number, LinkRow[]>()
+    for (const row of links) {
+      byInvoice.set(Number(row.invoice_id), row)
+      if (row.bdo_id) {
+        const list = byBdo.get(Number(row.bdo_id)) ?? []
+        list.push(row)
+        byBdo.set(Number(row.bdo_id), list)
+      }
+    }
+
+    const detailed = items.map((item) => {
+      const matches = item.invoiceId
+        ? [byInvoice.get(item.invoiceId)].filter((r): r is LinkRow => Boolean(r))
+        : item.bdoId
+          ? (byBdo.get(item.bdoId) ?? [])
+          : []
+
+      const first = matches[0] ?? null
+
+      return {
+        ...item,
+        deliveryType: item.userId && privateCarrier.has(item.userId) ? 'private' : 'company',
+        bdoName: item.bdoName ?? first?.bdo_name ?? null,
+        invoiceNumber: first?.invoice_number ?? null,
+        orderName: first?.order_name ?? null,
+        invoicePaid: first ? Number(first.is_paid) === 1 || first.payment_state === 'paid' : null,
+        // Odoo leaves this null on most rows even once the invoice is settled,
+        // so the UI shows the status alone when there is no date to show.
+        invoicePaidAt: first?.payment_date ?? null,
+        // One BDO can cover several orders; say so rather than implying the slip
+        // settled only the first one.
+        otherInvoices: Math.max(0, matches.length - 1),
+      }
+    })
+
     // The funnel, narrowing at each step: every picture that arrived, the ones
     // the scanner actually ruled on, the ones the bank confirmed, and finally
     // what each confirmed slip was filed against.
@@ -117,7 +216,7 @@ export async function GET(request: NextRequest) {
       customers: new Set(items.map((i) => i.userId).filter(Boolean)).size,
     }
 
-    return NextResponse.json({ success: true, days, summary, items })
+    return NextResponse.json({ success: true, days, summary, items: detailed })
   } catch (error) {
     console.error('[slip-report] Error:', error)
     return NextResponse.json(

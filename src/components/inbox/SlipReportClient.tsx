@@ -20,6 +20,13 @@ interface SlipReportItem {
   verifiedAt: string | null
   receivedAt: string
   imageUrl: string | null
+  deliveryType: 'private' | 'company'
+  invoiceNumber: string | null
+  orderName: string | null
+  invoicePaid: boolean | null
+  invoicePaidAt: string | null
+  /** A BDO can cover several orders; this counts the ones not shown. */
+  otherInvoices: number
 }
 
 interface SlipReportSummary {
@@ -50,6 +57,14 @@ function formatThaiDateTime(iso: string | null) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+/** Date only, Buddhist era — the form the team reads on Odoo documents. */
+function formatThaiDate(iso: string | null) {
+  if (!iso) return null
+  const parsed = new Date(iso)
+  if (isNaN(parsed.getTime())) return null
+  return parsed.toLocaleDateString('th-TH', { day: 'numeric', month: 'numeric', year: 'numeric' })
 }
 
 export function SlipReportClient() {
@@ -221,6 +236,7 @@ export function SlipReportClient() {
             <tr className="border-b border-gray-200 bg-gray-50 text-left text-[11px] uppercase text-gray-600">
               <th className="px-3 py-2 font-semibold">รูป</th>
               <th className="px-3 py-2 font-semibold">ลูกค้า</th>
+              <th className="px-3 py-2 font-semibold">ขนส่ง</th>
               <th className="px-3 py-2 font-semibold">จับคู่กับ</th>
               <th className="px-3 py-2 text-right font-semibold">ยอด</th>
               <th className="px-3 py-2 font-semibold">Ref</th>
@@ -231,7 +247,7 @@ export function SlipReportClient() {
           <tbody>
             {loading && items.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-xs text-gray-500">
+                <td colSpan={8} className="px-3 py-8 text-center text-xs text-gray-500">
                   กำลังโหลด...
                 </td>
               </tr>
@@ -239,7 +255,7 @@ export function SlipReportClient() {
 
             {!loading && items.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-xs text-gray-500">
+                <td colSpan={8} className="px-3 py-8 text-center text-xs text-gray-500">
                   ยังไม่มีสลิปที่ตรวจผ่านในช่วงนี้
                 </td>
               </tr>
@@ -281,6 +297,15 @@ export function SlipReportClient() {
                   )}
                 </td>
                 <td className="px-3 py-2">
+                  {item.deliveryType === 'private' ? (
+                    <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-800">
+                      ขนส่งเอกชน
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-gray-400">สายส่ง</span>
+                  )}
+                </td>
+                <td className="px-3 py-2">
                   {item.bdoId ? (
                     <button
                       type="button"
@@ -306,6 +331,24 @@ export function SlipReportClient() {
                     </span>
                   ) : (
                     <span className="text-[11px] text-amber-700">ยังไม่ผูก</span>
+                  )}
+
+                  {(item.invoiceNumber || item.orderName) && (
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-gray-500">
+                      {item.invoiceNumber && <span className="font-mono">{item.invoiceNumber}</span>}
+                      {item.orderName && <span className="font-mono text-gray-400">{item.orderName}</span>}
+                      {item.invoicePaid !== null && (
+                        <span className={item.invoicePaid ? 'text-green-700' : 'text-amber-700'}>
+                          {item.invoicePaid ? 'ชำระแล้ว' : 'ยังไม่ชำระ'}
+                          {item.invoicePaid && formatThaiDate(item.invoicePaidAt)
+                            ? ` ${formatThaiDate(item.invoicePaidAt)}`
+                            : ''}
+                        </span>
+                      )}
+                      {item.otherInvoices > 0 && (
+                        <span className="text-gray-400">+อีก {item.otherInvoices} ใบ</span>
+                      )}
+                    </div>
                   )}
                 </td>
                 <td className="px-3 py-2 text-right text-xs font-semibold text-gray-800">
