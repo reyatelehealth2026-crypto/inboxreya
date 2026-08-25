@@ -5,6 +5,12 @@
 export interface SlipMark {
   verified: true
   bdoId: number | null
+  /**
+   * Set instead of `bdoId` for customers who pay before delivery: their slip is
+   * filed against an invoice, and without recording which one the report cannot
+   * tell those apart from a slip nobody has matched yet.
+   */
+  invoiceId: number | null
   bdoName: string | null
   amount: number | null
   ref: string | null
