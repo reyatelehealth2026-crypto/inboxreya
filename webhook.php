@@ -784,15 +784,70 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                 } catch (Exception $e) {
                     error_log("Failed to save LINE video: " . $e->getMessage());
                 }
+            } elseif ($messageType === 'file') {
+                try {
+                    $fileData = $line->getMessageContent($messageId);
+                    $originalFileName = $event['message']['fileName'] ?? ('file_' . $messageId);
+                    $fileSize = $event['message']['fileSize'] ?? (strlen($fileData) ?: 0);
+
+                    if ($fileData && strlen($fileData) > 0) {
+                        $uploadDir = __DIR__ . '/uploads/line_files/';
+                        if (!is_dir($uploadDir)) {
+                            mkdir($uploadDir, 0777, true);
+                            @chmod($uploadDir, 0777);
+                        }
+
+                        $ext = pathinfo($originalFileName, PATHINFO_EXTENSION) ?: 'bin';
+                        $cleanFileName = preg_replace('/[^a-zA-Z0-9_\.-]/', '_', pathinfo($originalFileName, PATHINFO_FILENAME));
+                        $filename = 'line_' . $messageId . '_' . time() . '_' . $cleanFileName . '.' . $ext;
+                        $filepath = $uploadDir . $filename;
+
+                        if (file_put_contents($filepath, $fileData)) {
+                            @chmod($filepath, 0666);
+                            $baseUrl = defined('BASE_URL') ? rtrim(BASE_URL, '/') : (((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? 'localhost'));
+                            $savedMediaUrl = $baseUrl . '/uploads/line_files/' . $filename;
+                            $messageContent = $originalFileName;
+                        }
+                    }
+                } catch (Exception $e) {
+                    error_log("Failed to save LINE file: " . $e->getMessage());
+                }
+            } elseif ($messageType === 'audio') {
+                try {
+                    $audioData = $line->getMessageContent($messageId);
+                    if ($audioData && strlen($audioData) > 0) {
+                        $uploadDir = __DIR__ . '/uploads/line_audio/';
+                        if (!is_dir($uploadDir)) {
+                            mkdir($uploadDir, 0777, true);
+                            @chmod($uploadDir, 0777);
+                        }
+
+                        $filename = 'line_' . $messageId . '_' . time() . '.m4a';
+                        $filepath = $uploadDir . $filename;
+
+                        if (file_put_contents($filepath, $audioData)) {
+                            @chmod($filepath, 0666);
+                            $baseUrl = defined('BASE_URL') ? rtrim(BASE_URL, '/') : (((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? 'localhost'));
+                            $savedMediaUrl = $baseUrl . '/uploads/line_audio/' . $filename;
+                            $messageContent = $savedMediaUrl;
+                        }
+                    }
+                } catch (Exception $e) {
+                    error_log("Failed to save LINE audio: " . $e->getMessage());
+                }
             }
 
-            // ถ้าบันทึกรูป/วิดีโอได้ ใช้ URL ที่บันทึก ถ้าไม่ได้ใช้ LINE message ID เป็น fallback
+            // ถ้าบันทึกรูป/วิดีโอ/ไฟล์/เสียงได้ ใช้ URL ที่บันทึก ถ้าไม่ได้ใช้ LINE message ID เป็น fallback
             if ($savedMediaUrl) {
-                $messageContent = $savedMediaUrl;
+                if ($messageType === 'file') {
+                    $messageContent = $originalFileName ?? $savedMediaUrl;
+                } else {
+                    $messageContent = $savedMediaUrl;
+                }
             } else {
                 $messageContent = "[{$messageType}] ID: {$messageId}";
             }
-            $mediaUrl = $messageId;
+            $mediaUrl = $savedMediaUrl ?: $messageId;
 
             // Check if user is in "waiting_slip" or "awaiting_slip" state - auto accept slip
             if ($messageType === 'image' && $userState && in_array($userState['state'], ['waiting_slip', 'awaiting_slip'])) {
@@ -885,6 +940,11 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                 $syncMediaUrl = isset($savedMediaUrl) ? $savedMediaUrl : (isset($mediaUrl) ? $mediaUrl : null);
                 // ส่ง lineMessageId จาก event เพื่อใช้ตรวจ duplicate
                 $lineEventMessageId = $event['message']['id'] ?? null;
+                $syncMetadata = [];
+                if ($messageType === 'file') {
+                    $syncMetadata['fileName'] = $event['message']['fileName'] ?? null;
+                    $syncMetadata['fileSize'] = $event['message']['fileSize'] ?? null;
+                }
                 syncMessageToNextjs($userId, $user, [
                     'id' => $messageId,
                     'direction' => 'incoming',
@@ -895,6 +955,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                     'lineMessageId' => $lineEventMessageId,
                     'quoteToken' => $quoteToken,
                     'quotedMessageId' => $quotedMessageId,
+                    'metadata' => !empty($syncMetadata) ? $syncMetadata : null,
                 ], $lineAccountId);
             }
         } catch (Exception $e) {
@@ -3374,6 +3435,7 @@ function syncMessageToNextjs($lineUserId, $user, $messageData, $lineAccountId = 
                 'lineMessageId' => $messageData['lineMessageId'] ?? null, // LINE message ID for dedup
                 'quoteToken' => $messageData['quoteToken'] ?? null,
                 'quotedMessageId' => $messageData['quotedMessageId'] ?? null,
+                'metadata' => $messageData['metadata'] ?? null,
             ],
         ];
 
