@@ -1,10 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Gift, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -104,6 +105,25 @@ const CONFIRM = {
   cancel: 'ยกเลิกการแลกรางวัล?\nแต้มจะถูกคืนให้ผู้ใช้',
 }
 
+type SortKey = 'points_asc' | 'points_desc' | 'stock_asc' | 'stock_desc'
+
+const SORT_LABEL: Record<SortKey, string> = {
+  points_asc: 'แต้มน้อย → มาก',
+  points_desc: 'แต้มมาก → น้อย',
+  stock_asc: 'เหลือน้อย → มาก',
+  stock_desc: 'เหลือมาก → น้อย',
+}
+
+// Unlimited stock (-1) sorts as "most left", never as "running out".
+const stockOf = (r: Reward) => (r.stock < 0 ? Number.POSITIVE_INFINITY : r.stock)
+
+const SORT_FN: Record<SortKey, (a: Reward, b: Reward) => number> = {
+  points_asc: (a, b) => a.points_required - b.points_required,
+  points_desc: (a, b) => b.points_required - a.points_required,
+  stock_asc: (a, b) => stockOf(a) - stockOf(b) || 0,
+  stock_desc: (a, b) => stockOf(b) - stockOf(a) || 0,
+}
+
 const emptyForm = {
   name: '',
   description: '',
@@ -135,6 +155,17 @@ export function RewardsAdmin() {
   const [editing, setEditing] = useState<Reward | null>(null)
   const [form, setForm] = useState<RewardForm>(emptyForm)
   const [saving, setSaving] = useState(false)
+  const [search, setSearch] = useState('')
+  const [sort, setSort] = useState<SortKey>('points_asc')
+  const [showInactive, setShowInactive] = useState(false)
+
+  const visibleRewards = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return rewards
+      .filter((r) => showInactive || r.is_active)
+      .filter((r) => !q || r.name.toLowerCase().includes(q))
+      .sort(SORT_FN[sort])
+  }, [rewards, search, sort, showInactive])
 
   const loadRewards = useCallback(async () => {
     const res = await fetch('/api/inbox/rewards')
@@ -286,13 +317,31 @@ export function RewardsAdmin() {
       ) : (
         <Tabs defaultValue={summary?.pending_redemptions ? 'redemptions' : 'rewards'}>
           <TabsList>
-            <TabsTrigger value="rewards">รางวัล ({rewards.length})</TabsTrigger>
+            <TabsTrigger value="rewards">รางวัล ({visibleRewards.length}/{rewards.length})</TabsTrigger>
             <TabsTrigger value="redemptions">คำขอแลก{summary?.pending_redemptions ? ` (${summary.pending_redemptions} รอ)` : ''}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="rewards" className="space-y-4">
-            <div className="flex justify-end">
-              <Button onClick={openCreate}><Plus className="h-4 w-4 mr-1" /> เพิ่มรางวัล</Button>
+            <div className="flex flex-wrap items-center gap-3">
+              <Input
+                placeholder="ค้นหาชื่อรางวัล…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-56"
+              />
+              <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => (
+                    <SelectItem key={k} value={k}>{SORT_LABEL[k]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox checked={showInactive} onCheckedChange={(v) => setShowInactive(v === true)} />
+                แสดงที่ปิดใช้งาน
+              </label>
+              <Button className="ml-auto" onClick={openCreate}><Plus className="h-4 w-4 mr-1" /> เพิ่มรางวัล</Button>
             </div>
             <Card className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -308,10 +357,12 @@ export function RewardsAdmin() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rewards.length === 0 && (
-                    <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">ยังไม่มีรางวัล</td></tr>
+                  {visibleRewards.length === 0 && (
+                    <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">
+                      {rewards.length === 0 ? 'ยังไม่มีรางวัล' : 'ไม่มีรางวัลที่ตรงตัวกรอง'}
+                    </td></tr>
                   )}
-                  {rewards.map((r) => (
+                  {visibleRewards.map((r) => (
                     <tr key={r.id} className={`border-t ${r.is_active ? '' : 'opacity-60'}`}>
                       <td className="p-3">
                         <div className="flex items-center gap-3">
