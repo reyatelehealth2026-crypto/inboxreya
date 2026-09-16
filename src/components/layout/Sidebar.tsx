@@ -33,6 +33,7 @@ import {
   ShoppingBag,
   Tag,
   Receipt,
+  Gift,
   CalendarDays,
   Sparkles,
   Bot,
@@ -82,6 +83,7 @@ const menuGroups: MenuGroup[] = [
       { title: 'แคตตาล็อค & โปรโมชัน', icon: <ShoppingBag className="h-4 w-4" />, href: '/inbox/promotions' },
       { title: 'ปฏิทินการส่ง', icon: <CalendarDays className="h-4 w-4" />, href: '/inbox/calendar' },
       { title: 'Slip Center', icon: <Receipt className="h-4 w-4" />, href: '/dashboard/slip-center' },
+      { title: 'รางวัลแลกแต้ม', icon: <Gift className="h-4 w-4" />, href: '/inbox/rewards' },
     ],
   },
   {
