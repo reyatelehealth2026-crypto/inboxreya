@@ -89,7 +89,10 @@ export function useConversations(options?: { limit?: number }) {
       limit,
     }),
     staleTime: 10 * 1000, // 10 seconds
-    refetchInterval: 15 * 1000, // 15s polling for near real-time
+    // 15s polling for near real-time — but not while a search term is active:
+    // 72% of search requests were the same term re-polled or retried. Pusher
+    // still invalidates the list when a message arrives.
+    refetchInterval: filters.search ? false : 15 * 1000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     retry: (failureCount, error) => {

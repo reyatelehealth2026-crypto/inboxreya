@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 import { lastMessagesFor } from '@/lib/last-messages'
+import { userIdsWithMessageContaining } from '@/lib/message-search'
 import { isInternalRequest } from '@/lib/api-utils'
 
 // TTL สั้นมาก เพราะ conversation เปลี่ยนบ่อย (ข้อความใหม่เข้าตลอด)
@@ -88,19 +89,17 @@ export async function GET(request: NextRequest) {
     // Note: Case-insensitive search relies on MySQL's default collation (utf8mb4_general_ci)
     const trimmedSearch = search?.trim()
     if (trimmedSearch) {
+      // Message content is matched once, up front (cached, shared between
+      // concurrent callers) instead of as a nested `messages: { some }` that
+      // rescanned the whole table for the rows query and again for the count.
+      const messageUserIds = await userIdsWithMessageContaining(trimmedSearch)
       where.OR = [
         { displayName: { contains: trimmedSearch } },
         { firstName: { contains: trimmedSearch } },
         { lastName: { contains: trimmedSearch } },
         { phone: { contains: trimmedSearch } },
         { email: { contains: trimmedSearch } },
-        {
-          messages: {
-            some: {
-              content: { contains: trimmedSearch },
-            },
-          },
-        },
+        { id: { in: messageUserIds } },
         {
           tagAssignments: {
             some: {

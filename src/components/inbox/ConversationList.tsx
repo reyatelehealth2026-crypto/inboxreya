@@ -357,7 +357,8 @@ export function ConversationList() {
           setFilters({ search: searchInput })
         })
       }
-    }, 200)
+      // 500 ms: at 200 ms half of all search requests were half-typed Thai words
+    }, 500)
 
     return () => clearTimeout(timeout)
   }, [filters.search, searchInput, setFilters, startTransition])
