@@ -33,9 +33,11 @@ import {
   ShoppingBag,
   Tag,
   Receipt,
+  Gift,
   CalendarDays,
   Sparkles,
   Bot,
+  Activity,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -92,6 +94,7 @@ const menuGroups: MenuGroup[] = [
       { title: 'งานของฉัน', icon: <Briefcase className="h-4 w-4" />, href: '/dashboard/my-work' },
       { title: 'Admin Dashboard', icon: <UserCog className="h-4 w-4" />, href: '/dashboard/admin' },
       { title: 'Customer Dashboard', icon: <Users className="h-4 w-4" />, href: '/dashboard/customers' },
+      { title: 'สถานะ OA', icon: <Activity className="h-4 w-4" />, href: '/oa-status' },
     ],
   },
   {
@@ -106,6 +109,7 @@ const menuGroups: MenuGroup[] = [
       { title: 'แคตตาล็อค & โปรโมชัน', icon: <ShoppingBag className="h-4 w-4" />, href: '/inbox/promotions' },
       { title: 'ปฏิทินการส่ง', icon: <CalendarDays className="h-4 w-4" />, href: '/inbox/calendar' },
       { title: 'Slip Center', icon: <Receipt className="h-4 w-4" />, href: '/dashboard/slip-center' },
+      { title: 'รางวัลแลกแต้ม', icon: <Gift className="h-4 w-4" />, href: '/inbox/rewards' },
     ],
   },
   {

@@ -7,9 +7,7 @@ import { broadcastRealtimeEvent } from '@/lib/realtime'
 import { broadcastNewMessage, broadcastConversationUpdate } from '@/lib/pusher'
 import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 import { toUtcIsoString } from '@/lib/datetime-api'
-
-const isInternalRequest = (request: NextRequest) =>
-  request.headers.get('x-internal-request') === 'true'
+import { isInternalRequest } from '@/lib/api-utils'
 
 const parseMetadata = (value: string | null) => {
   if (!value) return null

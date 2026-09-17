@@ -2,6 +2,7 @@
  * API Utilities - Error handling, validation, and rate limiting
  */
 
+import { timingSafeEqual } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { z, ZodError, ZodType } from 'zod'
 import {
@@ -340,10 +341,23 @@ export function getLineAccountId(request: NextRequest): number | null {
 }
 
 /**
- * Check if request is from internal service
+ * Check if request is from internal service.
+ *
+ * A server-to-server caller proves itself with INTERNAL_API_SECRET in
+ * `x-internal-secret`. The bare `x-internal-request: true` flag used to be
+ * enough, and nginx passes it through from the public internet — so anyone
+ * could list conversations and read or post messages without a session
+ * (found 2026-09-17; no caller in this repo or the PHP app relied on it).
+ * Fails closed when the secret is not configured.
  */
 export function isInternalRequest(request: NextRequest): boolean {
-  return request.headers.get('x-internal-request') === 'true'
+  const secret = process.env.INTERNAL_API_SECRET
+  const given = request.headers.get('x-internal-secret')
+  if (!secret || !given) return false
+
+  const a = Buffer.from(given)
+  const b = Buffer.from(secret)
+  return a.length === b.length && timingSafeEqual(a, b)
 }
 
 // ============================================================================

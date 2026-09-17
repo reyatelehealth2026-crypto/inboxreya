@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef, memo, useTransition } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Search, MessageSquare, RefreshCw, X, SearchX, CheckCheck } from 'lucide-react'
-import { useConversations } from '@/hooks/use-conversations'
+import { useConversations, useConversationPaging } from '@/hooks/use-conversations'
 import { useInboxStore } from '@/stores/inbox'
 import { useInboxKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
 import { useMarkAllMessagesRead } from '@/hooks/use-messages'
@@ -330,6 +330,18 @@ export function ConversationList() {
     overscan: 5,
   })
 
+  // Paging: ask for the next page once the rep scrolls within ten rows of the end.
+  const { loadMore } = useConversationPaging()
+  const hasMore = data?.pagination.hasMore ?? false
+  const lastVisibleIndex = rowVirtualizer.getVirtualItems().at(-1)?.index ?? -1
+  useEffect(() => {
+    if (hasMore && !isFetching && lastVisibleIndex >= conversations.length - 10) {
+      loadMore()
+    }
+    // loadMore is rebuilt every render; the values below are what should trigger it
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMore, isFetching, lastVisibleIndex, conversations.length])
+
   const handleSearch = useCallback((value: string) => {
     setSearchInput(value)
   }, [])
@@ -345,7 +357,8 @@ export function ConversationList() {
           setFilters({ search: searchInput })
         })
       }
-    }, 200)
+      // 500 ms: at 200 ms half of all search requests were half-typed Thai words
+    }, 500)
 
     return () => clearTimeout(timeout)
   }, [filters.search, searchInput, setFilters, startTransition])
