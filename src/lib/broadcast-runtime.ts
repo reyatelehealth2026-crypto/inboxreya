@@ -1,7 +1,9 @@
 import prisma from '@/lib/prisma'
 import { pushLineMessage, broadcastLineMessage } from '@/lib/line-api'
+import { signLink } from '@/lib/broadcast-link'
+import { imagemapInputSchema, type ImagemapMeta } from '@/lib/imagemap-types'
 
-export type BroadcastMessageType = 'text' | 'image' | 'video' | 'flex' | 'multi'
+export type BroadcastMessageType = 'text' | 'image' | 'video' | 'flex' | 'multi' | 'imagemap'
 
 type LinePayloadMessage = Record<string, unknown>
 
@@ -18,10 +20,34 @@ export interface BroadcastEnvelopeV2 {
   messageType: BroadcastMessageType
   messages: LinePayloadMessage[]
   target: BroadcastTarget
+  /** imagemap only: baseKey + region metadata (destination url / tag / keyword), read by /r/[token]. */
+  imagemapMeta?: ImagemapMeta
   template?: {
     id?: number
     sourceTable?: 'quick_reply_templates' | 'flex_templates' | 'templates'
   }
+}
+
+export interface BuiltBroadcastMessages {
+  summaryText: string
+  messageType: BroadcastMessageType
+  messages: LinePayloadMessage[]
+  imagemapMeta?: ImagemapMeta
+}
+
+/** Public origin of this app — same resolution order as phpApiRequest() in api-utils.ts. */
+export function getPublicOrigin(): string {
+  const origin =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+    process.env.NEXTAUTH_URL ||
+    'http://localhost:3000'
+  return origin.replace(/\/+$/, '')
+}
+
+/** LINE clients append /1040, /700, /460, /300, /240 to this. */
+export function imagemapBaseUrl(baseKey: string): string {
+  return `${getPublicOrigin()}/api/imagemap/${baseKey}`
 }
 
 function sanitizeFlexActionUris(obj: any, path = ''): any {
@@ -109,11 +135,46 @@ export function buildBroadcastMessages(input: {
   messageType?: BroadcastMessageType | 'video'
   flexContent?: unknown
   flexContents?: unknown[]
-}) {
+  imagemap?: unknown
+}): BuiltBroadcastMessages {
   const content = input.content?.trim() || ''
   const flexContentsArray = Array.isArray(input.flexContents) ? input.flexContents : null
   const hasMultipleFlex = !!flexContentsArray && flexContentsArray.length > 0
-  const type = input.messageType || (hasMultipleFlex || input.flexContent ? 'flex' : input.mediaUrl ? 'image' : 'text')
+  const type = input.imagemap
+    ? 'imagemap'
+    : input.messageType || (hasMultipleFlex || input.flexContent ? 'flex' : input.mediaUrl ? 'image' : 'text')
+
+  if (type === 'imagemap') {
+    if (!input.imagemap) throw new Error('Imagemap broadcast requires imagemap')
+    const imagemap = imagemapInputSchema.parse(input.imagemap)
+    const messages: LinePayloadMessage[] = [{
+      type: 'imagemap',
+      baseUrl: imagemapBaseUrl(imagemap.baseKey),
+      altText: imagemap.altText,
+      baseSize: { width: imagemap.width, height: imagemap.height },
+      actions: imagemap.regions.map((region) => ({
+        type: 'uri',
+        linkUri: region.url,
+        area: { x: region.x, y: region.y, width: region.w, height: region.h },
+      })),
+    }]
+
+    // Optional single flex, then an optional closing text — LINE allows 5 payloads per call.
+    if (input.flexContent) {
+      const flex = normalizeFlexMessagePayload(input.flexContent, content || imagemap.altText)
+      if (!flex) throw new Error('Invalid flexContent payload')
+      messages.push(flex)
+    }
+    if (content) messages.push({ type: 'text', text: content })
+    if (messages.length > 5) throw new Error('Cannot send more than 5 messages in one broadcast')
+
+    return {
+      summaryText: content || imagemap.altText,
+      messageType: 'imagemap',
+      messages,
+      imagemapMeta: { baseKey: imagemap.baseKey, regions: imagemap.regions },
+    }
+  }
 
   if (type === 'flex') {
     const sources = hasMultipleFlex ? flexContentsArray! : [input.flexContent]
@@ -173,6 +234,7 @@ export function buildBroadcastEnvelope(input: {
   messageType?: BroadcastMessageType | 'video'
   flexContent?: unknown
   flexContents?: unknown[]
+  imagemap?: unknown
   templateId?: number
   templateSourceTable?: 'quick_reply_templates' | 'flex_templates' | 'templates'
   targetSegmentId?: number
@@ -195,6 +257,7 @@ export function buildBroadcastEnvelope(input: {
     messageType: built.messageType,
     messages: built.messages,
     target,
+    imagemapMeta: built.imagemapMeta,
     template: input.templateId || input.templateSourceTable
       ? {
           id: input.templateId,
@@ -222,6 +285,7 @@ export function parseStoredBroadcast(content: string, mediaUrl?: string | null) 
         messageType: envelope.messageType,
         messages: envelope.messages,
         target: envelope.target,
+        imagemapMeta: envelope.imagemapMeta,
         raw: envelope,
       }
     }
@@ -237,6 +301,7 @@ export function parseStoredBroadcast(content: string, mediaUrl?: string | null) 
         messageType,
         messages,
         target: { mode: 'tags', tagIds: parsed.tagIds as number[] } as BroadcastTarget,
+        imagemapMeta: undefined as ImagemapMeta | undefined,
         raw: parsed,
       }
     }
@@ -256,8 +321,33 @@ export function parseStoredBroadcast(content: string, mediaUrl?: string | null) 
     messageType: built.messageType,
     messages: built.messages,
     target: { mode: 'all' } as BroadcastTarget,
+    imagemapMeta: undefined as ImagemapMeta | undefined,
     raw: null,
   }
+}
+
+/**
+ * Rewrite imagemap action link URIs to per-user tracking links (`/r/<signed token>`).
+ * Returns new objects; non-imagemap messages are passed through untouched.
+ * `userPk` is the internal LineUser.id — 0 for the anonymous `all` broadcast path.
+ */
+export function personalizeMessages(
+  messages: LinePayloadMessage[],
+  broadcastId: number,
+  userPk: number
+): LinePayloadMessage[] {
+  return messages.map((message) => {
+    if (message?.type !== 'imagemap' || !Array.isArray(message.actions)) return message
+    const origin = getPublicOrigin()
+    return {
+      ...message,
+      actions: (message.actions as LinePayloadMessage[]).map((action, index) =>
+        action?.type === 'uri'
+          ? { ...action, linkUri: `${origin}/r/${signLink({ b: broadcastId, r: index, u: userPk })}` }
+          : action
+      ),
+    }
+  })
 }
 
 async function resolveManualTargetUsers(lineAccountId: number, customerIds: number[]) {
@@ -290,14 +380,15 @@ async function resolveTagTargetUsers(lineAccountId: number, tagIds: number[]) {
     },
     select: {
       userId: true,
-      user: { select: { lineUserId: true, lineAccountId: true } },
+      // id is needed to sign per-user imagemap tracking links.
+      user: { select: { id: true, lineUserId: true, lineAccountId: true } },
     },
     distinct: ['userId'],
   })
 
   return assignments
     .map((assignment) => assignment.user)
-    .filter((user): user is { lineUserId: string; lineAccountId: number | null } => Boolean(user?.lineUserId))
+    .filter((user): user is { id: number; lineUserId: string; lineAccountId: number | null } => Boolean(user?.lineUserId))
 }
 
 async function resolveAllTargetUsers(lineAccountId: number) {
@@ -307,7 +398,7 @@ async function resolveAllTargetUsers(lineAccountId: number) {
       lineUserId: { not: '' },
       isBlocked: false,
     },
-    select: { lineUserId: true, lineAccountId: true },
+    select: { id: true, lineUserId: true, lineAccountId: true },
   })
   return users.filter((u) => !!u.lineUserId)
 }
@@ -370,8 +461,10 @@ export async function sendBroadcastRecord(broadcast: {
     if (total === 0) {
       throw new Error('No target users found for this broadcast')
     }
+    // No per-recipient identity in a native broadcast → sign the links anonymously (u=0).
+    const messages = personalizeMessages(parsed.messages, broadcast.id, 0)
     const result = await broadcastLineMessage(
-      parsed.messages as Parameters<typeof broadcastLineMessage>[0],
+      messages as Parameters<typeof broadcastLineMessage>[0],
       broadcast.lineAccountId
     )
     onProgress?.(total, result.success ? total : 0, result.success ? 0 : total, total)
@@ -408,7 +501,7 @@ export async function sendBroadcastRecord(broadcast: {
       batch.map((targetUser) =>
         pushLineMessage(
           targetUser.lineUserId,
-          parsed.messages as Parameters<typeof pushLineMessage>[1],
+          personalizeMessages(parsed.messages, broadcast.id, targetUser.id) as Parameters<typeof pushLineMessage>[1],
           targetUser.lineAccountId ?? broadcast.lineAccountId
         )
       )
@@ -443,6 +536,15 @@ export function summarizeBroadcastForList(broadcast: {
   mediaUrl?: string | null
 }) {
   const parsed = parseStoredBroadcast(broadcast.content, broadcast.mediaUrl)
+
+  if (parsed.messageType === 'imagemap' && parsed.imagemapMeta) {
+    return {
+      summaryText: parsed.summaryText,
+      messageType: parsed.messageType,
+      mediaUrl: `${imagemapBaseUrl(parsed.imagemapMeta.baseKey)}/460`,
+    }
+  }
+
   const primaryMediaMessage = parsed.messages.find((message) => message?.type === 'image' || message?.type === 'video') as { originalContentUrl?: string } | undefined
   const primaryMediaUrl = primaryMediaMessage?.originalContentUrl || broadcast.mediaUrl || null
 

@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { buildBroadcastEnvelope, summarizeBroadcastForList } from '@/lib/broadcast-runtime'
 import { toBroadcastCreatedAtIso } from '@/lib/broadcast-time'
 import { countBroadcastRecipients } from '@/lib/broadcast-recipient-estimate'
+import { imagemapInputSchema } from '@/lib/imagemap-types'
 import { z } from 'zod'
 import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 
@@ -28,9 +29,10 @@ const positiveIntArray = z.array(positiveInt).transform((ids) => [...new Set(ids
 const createBroadcastSchema = z.object({
   content: z.string().max(5000).optional(),
   mediaUrl: optionalUrl,
-  messageType: z.enum(['text', 'image', 'video', 'flex']).optional(),
+  messageType: z.enum(['text', 'image', 'video', 'flex', 'imagemap']).optional(),
   flexContent: z.any().optional(),
   flexContents: z.array(z.any()).max(5).optional(),
+  imagemap: imagemapInputSchema.optional(),
   templateId: optionalPositiveInt,
   templateIds: z.array(positiveInt).max(5).transform((ids) => [...new Set(ids)]).optional(),
   templateSourceTable: z.enum(['templates', 'flex_templates', 'quick_reply_templates']).optional(),
@@ -133,6 +135,7 @@ export async function POST(req: NextRequest) {
       messageType: validated.messageType,
       flexContent: validated.flexContent,
       flexContents: validated.flexContents,
+      imagemap: validated.imagemap,
       templateId: validated.templateId,
       templateSourceTable: validated.templateSourceTable,
       targetSegmentId: validated.targetSegmentId,

@@ -20,6 +20,7 @@ import {
   Settings2,
   Tag,
   Trash2,
+  Upload,
   Users,
   Video,
   X,
@@ -31,10 +32,13 @@ import {
   useCreateBroadcast,
   useSendBroadcast,
 } from '@/hooks/use-broadcasts'
-import { useTags } from '@/hooks/use-tags'
+import { useTags, useCreateTag } from '@/hooks/use-tags'
 import { useToast } from '@/hooks/use-toast'
 import { TemplateSelector } from './TemplateSelector'
 import { FlexPreview } from '@/components/inbox/FlexPreview'
+import { ImagemapRegionEditor } from './ImagemapRegionEditor'
+import { ImagemapTestSendModal } from './ImagemapTestSendModal'
+import { imagemapInputSchema, type ImagemapRegion, type ImagemapInput } from '@/lib/imagemap-types'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -50,6 +54,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
 type Step = 'settings' | 'preview' | 'tags' | 'schedule' | 'confirm'
@@ -101,11 +112,39 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
   const [multiDateMode, setMultiDateMode] = useState(false)
   const [result, setResult] = useState<ResultState | null>(null)
 
+  // Message mode: Template or Imagemap
+  const [messageMode, setMessageMode] = useState<'template' | 'imagemap'>('template')
+
+  // Imagemap state
+  const [imagemapData, setImagemapData] = useState<{
+    baseKey: string
+    baseUrl: string
+    width: 1040
+    height: number
+    previewUrl: string
+  } | null>(null)
+  const [imagemapRegions, setImagemapRegions] = useState<ImagemapRegion[]>([])
+  const [imagemapAltText, setImagemapAltText] = useState('')
+  const [imagemapClosingText, setImagemapClosingText] = useState('')
+  const [imagemapFlexTemplate, setImagemapFlexTemplate] = useState<BroadcastTemplate | null>(null)
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
+  const [isTestSendModalOpen, setIsTestSendModalOpen] = useState(false)
+
   const { toast } = useToast()
   const { data: templatesData } = useBroadcastTemplates()
   const { data: tagsData, isLoading: isTagsLoading } = useTags()
+  const createTag = useCreateTag()
   const createBroadcast = useCreateBroadcast()
   const sendBroadcast = useSendBroadcast()
+
+  const handleCreateTag = async (name: string) => {
+    try {
+      const res = await createTag.mutateAsync({ name })
+      return res
+    } catch {
+      return null
+    }
+  }
 
   const templates = templatesData?.data || []
   const tags = Array.isArray(tagsData) ? tagsData : []
@@ -129,6 +168,36 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
     }
   }, [customFlexContent, isCustomFlexSelected])
 
+  // Imagemap payload & validation
+  const imagemapPayload = useMemo<ImagemapInput | null>(() => {
+    if (!imagemapData) return null
+    return {
+      baseKey: imagemapData.baseKey,
+      width: 1040,
+      height: imagemapData.height,
+      altText: imagemapAltText.trim(),
+      regions: imagemapRegions,
+    }
+  }, [imagemapData, imagemapAltText, imagemapRegions])
+
+  const imagemapValidationResult = useMemo(() => {
+    if (messageMode !== 'imagemap') return { success: true, error: null }
+    if (!imagemapData) return { success: false, error: 'กรุณาอัปโหลดรูปภาพ Imagemap' }
+    if (!imagemapAltText.trim()) return { success: false, error: 'กรุณาระบุ Alt Text สำหรับแจ้งเตือน' }
+    if (imagemapRegions.length === 0) return { success: false, error: 'กรุณาสร้างจุดกดอย่างน้อย 1 ช่อง' }
+    if (!imagemapPayload) return { success: false, error: 'ข้อมูล Imagemap ไม่สมบูรณ์' }
+
+    const parsed = imagemapInputSchema.safeParse(imagemapPayload)
+    if (!parsed.success) {
+      const firstIssue = parsed.error.issues[0]
+      return {
+        success: false,
+        error: firstIssue ? firstIssue.message : 'ข้อมูล Imagemap ไม่ถูกต้อง',
+      }
+    }
+    return { success: true, error: null }
+  }, [messageMode, imagemapData, imagemapAltText, imagemapRegions, imagemapPayload])
+
   const filteredTags = tags.filter((tag) => {
     const search = tagSearch.trim().toLowerCase()
     if (!search) return true
@@ -151,9 +220,12 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
   const hasInvalidPastDate = scheduledDateTimes.length > 0 && validScheduledDateTimes.length < scheduledDateTimes.length
   const hasValidScheduledDateTime = !sendNow && validScheduledDateTimes.length > 0 && !hasInvalidPastDate
 
-  const isSettingsValid = multiSelectMode
+  const isTemplateSettingsValid = multiSelectMode
     ? selectedTemplates.length > 0
     : !!selectedTemplate && (!isCustomFlexSelected || !!parsedCustomFlex)
+  const isImagemapSettingsValid = messageMode === 'imagemap' && imagemapValidationResult.success
+  const isSettingsValid = messageMode === 'imagemap' ? isImagemapSettingsValid : isTemplateSettingsValid
+
   const isTargetValid = targetMode === 'all' || selectedTagIds.length > 0
   const isScheduleValid = sendNow || hasValidScheduledDateTime
   const shouldEstimate = open
@@ -183,11 +255,17 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
 
   const resetForm = () => {
     setStep('settings')
+    setMessageMode('template')
     setSelectedTemplate(null)
     setSelectedTemplates([])
     setMultiSelectMode(false)
     setCustomFlexContent('')
     setCustomFlexError(null)
+    setImagemapData(null)
+    setImagemapRegions([])
+    setImagemapAltText('')
+    setImagemapClosingText('')
+    setImagemapFlexTemplate(null)
     setTargetMode('all')
     setSelectedTagIds([])
     setTagSearch('')
@@ -202,6 +280,47 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
   const handleDialogOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) resetForm()
     onOpenChange(nextOpen)
+  }
+
+  const handleImageUpload = async (file: File) => {
+    if (!file) return
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      toast({ title: 'รองรับเฉพาะไฟล์รูปภาพ JPEG หรือ PNG เท่านั้น', variant: 'destructive' })
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: 'ขนาดไฟล์ต้องไม่เกิน 10MB', variant: 'destructive' })
+      return
+    }
+
+    setIsUploadingImage(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/inbox/broadcasts/imagemap-upload', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'อัปโหลดภาพไม่สำเร็จ')
+      }
+
+      setImagemapData(data.data)
+      if (!imagemapAltText) {
+        const defaultAlt = file.name.replace(/\.[^/.]+$/, '').slice(0, 50)
+        setImagemapAltText(defaultAlt || 'โปรโมชันพิเศษ')
+      }
+      toast({ title: 'อัปโหลดและประมวลผลรูปภาพ 5 ขนาดเรียบร้อย' })
+    } catch (err) {
+      toast({
+        title: 'อัปโหลดภาพล้มเหลว',
+        description: err instanceof Error ? err.message : 'กรุณาลองใหม่อีกครั้ง',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsUploadingImage(false)
+    }
   }
 
   const handleCustomFlexChange = (value: string) => {
@@ -249,7 +368,15 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
     setResult(null)
 
     if (!isSettingsValid) {
-      toast({ title: 'กรุณาเลือก template ก่อน', description: 'หากใช้ Custom Flex ต้องกรอก JSON ให้ถูกต้อง', variant: 'destructive' })
+      if (messageMode === 'imagemap') {
+        toast({
+          title: 'ข้อมูล Imagemap ไม่ถูกต้อง',
+          description: imagemapValidationResult.error || 'กรุณาตรวจสอบรูปภาพและจุดกดก่อนยืนยัน',
+          variant: 'destructive',
+        })
+      } else {
+        toast({ title: 'กรุณาเลือก template ก่อน', description: 'หากใช้ Custom Flex ต้องกรอก JSON ให้ถูกต้อง', variant: 'destructive' })
+      }
       return
     }
     if (!isTargetValid) {
@@ -291,7 +418,20 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
       input.scheduledAt = scheduledIsoList[0]
     }
 
-    if (multiSelectMode && selectedTemplates.length > 0) {
+    if (messageMode === 'imagemap') {
+      if (!imagemapPayload) {
+        toast({ title: 'กรุณาอัปโหลดรูปภาพ Imagemap', variant: 'destructive' })
+        return
+      }
+      input.messageType = 'imagemap'
+      input.imagemap = imagemapPayload
+      if (imagemapClosingText.trim()) {
+        input.content = imagemapClosingText.trim()
+      }
+      if (imagemapFlexTemplate?.flexContent) {
+        input.flexContent = imagemapFlexTemplate.flexContent
+      }
+    } else if (multiSelectMode && selectedTemplates.length > 0) {
       const flexContents = selectedTemplates
         .map((tpl) => tpl.flexContent)
         .filter((flex): flex is NonNullable<typeof flex> => !!flex)
@@ -367,6 +507,70 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
   }
 
   const renderPreview = () => {
+    if (messageMode === 'imagemap') {
+      if (!imagemapData) {
+        return (
+          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+            ยังไม่ได้อัปโหลดภาพ Imagemap ในขั้นตอนแรก
+          </div>
+        )
+      }
+      return (
+        <div className="space-y-4 max-w-md mx-auto">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <Badge variant="outline">Imagemap Broadcast</Badge>
+            <span>{imagemapRegions.length} จุดกด</span>
+          </div>
+
+          <div className="relative overflow-hidden rounded-xl border bg-black shadow-md">
+            <img
+              src={imagemapData.previewUrl}
+              alt={imagemapAltText || 'Imagemap Preview'}
+              className="w-full object-contain"
+            />
+            {imagemapRegions.map((r, i) => (
+              <div
+                key={i}
+                className="absolute border border-emerald-400 bg-emerald-500/30 flex items-center justify-center text-white text-[10px] font-bold pointer-events-none"
+                style={{
+                  left: `${(r.x / 1040) * 100}%`,
+                  top: `${(r.y / imagemapData.height) * 100}%`,
+                  width: `${(r.w / 1040) * 100}%`,
+                  height: `${(r.h / imagemapData.height) * 100}%`,
+                }}
+              >
+                <span className="rounded-full bg-emerald-700/90 h-4 w-4 flex items-center justify-center">
+                  {i + 1}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {imagemapAltText && (
+            <div className="rounded-lg bg-muted/40 p-2 text-xs">
+              <span className="text-muted-foreground">Alt Text (แจ้งเตือนใน LINE): </span>
+              <span className="font-medium">{imagemapAltText}</span>
+            </div>
+          )}
+
+          {imagemapFlexTemplate?.flexContent && (
+            <div className="space-y-2">
+              <span className="text-xs text-muted-foreground">Flex Message ที่แนบ:</span>
+              <div className="rounded-xl bg-gradient-to-br from-[#7494a5] to-[#5a7a8a] p-4">
+                <FlexPreview flex={imagemapFlexTemplate.flexContent} />
+              </div>
+            </div>
+          )}
+
+          {imagemapClosingText.trim() && (
+            <div className="rounded-xl bg-[#85e243] p-3 text-sm text-neutral-900 shadow-sm ml-auto max-w-[80%] rounded-tr-none whitespace-pre-wrap">
+              {imagemapClosingText}
+            </div>
+          )}
+        </div>
+      )
+    }
+
     if (multiSelectMode && selectedTemplates.length > 0) {
       return (
         <div className="space-y-4">
@@ -484,110 +688,337 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
         <ScrollArea className="min-h-0 flex-1 px-6 py-4">
           {step === 'settings' ? (
             <div className="space-y-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="flex items-center gap-2 text-sm font-medium"><Settings2 className="h-4 w-4" />ตั้งค่า Broadcast จาก Template</h3>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = !multiSelectMode
-                    setMultiSelectMode(next)
-                    setResult(null)
-                    if (next) {
-                      // entering multi mode: keep current single pick (only flex templates) as starting point
-                      const seed = selectedTemplate && selectedTemplate.id !== -1 && selectedTemplate.flexContent
-                        ? [selectedTemplate]
-                        : []
-                      setSelectedTemplates(seed)
-                      setSelectedTemplate(seed[0] ?? null)
-                      setCustomFlexContent('')
-                      setCustomFlexError(null)
-                    } else {
-                      // leaving multi mode: keep first pick as the single selection
-                      const first = selectedTemplates[0] || null
-                      setSelectedTemplates([])
-                      setSelectedTemplate(first)
-                    }
-                  }}
-                  className={cn(
-                    'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
-                    multiSelectMode
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground'
-                  )}
-                >
-                  <Layers className="h-3.5 w-3.5" />
-                  {multiSelectMode ? `เลือกหลาย Flex (${selectedTemplates.length}/${MAX_FLEX_PER_BROADCAST})` : 'เลือกหลาย Flex'}
-                </button>
-              </div>
-              {multiSelectMode ? (
-                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-primary">
-                  เลือก Flex ได้สูงสุด {MAX_FLEX_PER_BROADCAST} ใบในการ broadcast เดียว ระบบจะส่งเรียงตามลำดับที่เลือก
-                  ({flexCapableTemplates.length} จาก {selectedTemplates.length} รายการเป็น Flex)
+              {/* Mode Switcher: Template Broadcast vs Imagemap Broadcast */}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+                <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMessageMode('template')
+                      setResult(null)
+                    }}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all',
+                      messageMode === 'template'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    <Layers className="h-3.5 w-3.5" />
+                    Template / Flex
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMessageMode('imagemap')
+                      setResult(null)
+                    }}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all',
+                      messageMode === 'imagemap'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    <ImageIcon className="h-3.5 w-3.5" />
+                    Imagemap (รูปภาพแบ่งจุดกด)
+                  </button>
                 </div>
-              ) : null}
-              <TemplateSelector
-                templates={templates}
-                selectedTemplateId={multiSelectMode ? undefined : selectedTemplate?.id}
-                selectedTemplateIds={multiSelectMode ? selectedTemplates.map((t) => t.id) : undefined}
-                maxSelectable={multiSelectMode ? MAX_FLEX_PER_BROADCAST : undefined}
-                onSelect={(template) => {
-                  setResult(null)
-                  if (!template) return
-                  if (multiSelectMode) {
-                    if (template.id === -1) return
-                    if (!template.flexContent) {
-                      toast({ title: 'รองรับเฉพาะ Flex', description: 'โหมดเลือกหลายรายการรองรับเฉพาะ Flex Message', variant: 'destructive' })
-                      return
-                    }
-                    setSelectedTemplates((current) => {
-                      const exists = current.some((t) => t.id === template.id)
-                      if (exists) return current.filter((t) => t.id !== template.id)
-                      if (current.length >= MAX_FLEX_PER_BROADCAST) return current
-                      return [...current, template]
-                    })
-                  } else {
-                    setSelectedTemplate(template)
-                    if (template.id !== -1) setCustomFlexError(null)
-                  }
-                }}
-              />
-              {multiSelectMode && selectedTemplates.length > 0 ? (
-                <Card>
-                  <CardContent className="space-y-2 p-4">
-                    <p className="text-xs font-medium text-muted-foreground">ลำดับการส่ง</p>
-                    <div className="space-y-2">
-                      {selectedTemplates.map((tpl, idx) => (
-                        <div key={tpl.id} className="flex items-center gap-3 rounded-lg border bg-muted/30 p-2">
-                          <Badge>{idx + 1}</Badge>
-                          <span className="flex-1 truncate text-sm">{tpl.name}</span>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedTemplates((current) => current.filter((t) => t.id !== tpl.id))}
-                            className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                            title="เอาออก"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+
+                {messageMode === 'imagemap' && imagemapData && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs gap-1.5 text-primary border-primary/40 hover:bg-primary/5"
+                    onClick={() => setIsTestSendModalOpen(true)}
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    ส่งทดสอบหาตัวเอง
+                  </Button>
+                )}
+              </div>
+
+              {/* MODE 1: IMAGEMAP */}
+              {messageMode === 'imagemap' ? (
+                <div className="space-y-6">
+                  {!imagemapData ? (
+                    <Card className="border-dashed border-2">
+                      <CardContent className="flex flex-col items-center justify-center p-8 text-center space-y-3">
+                        <div className="rounded-full bg-primary/10 p-3 text-primary">
+                          {isUploadingImage ? (
+                            <Loader2 className="h-8 w-8 animate-spin" />
+                          ) : (
+                            <ImageIcon className="h-8 w-8" />
+                          )}
                         </div>
-                      ))}
+                        <div>
+                          <h4 className="text-sm font-semibold">อัปโหลดรูปภาพสำหรับ Imagemap</h4>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            รองรับ JPEG หรือ PNG (สูงสุด 10MB) • ระบบจะย่อขนาด 5 ไซส์ (1040, 700, 460, 300, 240) อัตโนมัติ
+                          </p>
+                        </div>
+                        <div>
+                          <input
+                            type="file"
+                            id="imagemap-file-input"
+                            accept="image/jpeg,image/png"
+                            className="hidden"
+                            disabled={isUploadingImage}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) handleImageUpload(file)
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            disabled={isUploadingImage}
+                            onClick={() => document.getElementById('imagemap-file-input')?.click()}
+                            className="gap-2"
+                          >
+                            {isUploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                            {isUploadingImage ? 'กำลังประมวลผลรูปภาพ...' : 'เลือกไฟล์รูปภาพ'}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <div className="space-y-5">
+                      {/* Uploaded image bar */}
+                      <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-foreground">รูปภาพ Imagemap:</span>
+                          <span className="text-muted-foreground font-mono">1040 × {imagemapData.height} px</span>
+                        </div>
+                        <div>
+                          <input
+                            type="file"
+                            id="imagemap-file-replace"
+                            accept="image/jpeg,image/png"
+                            className="hidden"
+                            disabled={isUploadingImage}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) handleImageUpload(file)
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => document.getElementById('imagemap-file-replace')?.click()}
+                            disabled={isUploadingImage}
+                          >
+                            เปลี่ยนรูปภาพ
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Region Editor Component */}
+                      <ImagemapRegionEditor
+                        baseKey={imagemapData.baseKey}
+                        baseUrl={imagemapData.baseUrl}
+                        imageWidth={1040}
+                        imageHeight={imagemapData.height}
+                        previewUrl={imagemapData.previewUrl}
+                        regions={imagemapRegions}
+                        onChangeRegions={(newRegions) => {
+                          setImagemapRegions(newRegions)
+                          setResult(null)
+                        }}
+                        tags={tags}
+                        onCreateTag={handleCreateTag}
+                      />
+
+                      {/* Required Alt Text */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-semibold">
+                            Alt Text (ข้อความแจ้งเตือนแทนรูปภาพใน LINE Notification) <span className="text-destructive">*</span>
+                          </label>
+                          <span className="text-[10px] text-muted-foreground">{imagemapAltText.length}/400</span>
+                        </div>
+                        <Input
+                          value={imagemapAltText}
+                          onChange={(e) => setImagemapAltText(e.target.value)}
+                          placeholder="เช่น โปรโมชันลดกระหน่ำรับปีใหม่ SOS Plus และสินค้าชั้นนำ"
+                          maxLength={400}
+                          className="text-xs"
+                        />
+                      </div>
+
+                      {/* Optional Flex Attachment (ONE Flex) */}
+                      <div className="space-y-2 border rounded-lg p-3 bg-muted/10">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-semibold flex items-center gap-1.5">
+                            <Layers className="h-3.5 w-3.5 text-primary" />
+                            แนบ Flex Message เพิ่มเติม (เป็นตัวเลือกเสริม สูงสุด 1 ใบ)
+                          </label>
+                          {imagemapFlexTemplate && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-xs text-destructive hover:bg-destructive/10"
+                              onClick={() => setImagemapFlexTemplate(null)}
+                            >
+                              เอาออก
+                            </Button>
+                          )}
+                        </div>
+
+                        {imagemapFlexTemplate ? (
+                          <div className="flex items-center justify-between rounded-md border bg-background p-2 text-xs">
+                            <span className="font-medium">{imagemapFlexTemplate.name}</span>
+                            <Badge variant="secondary">Flex Message</Badge>
+                          </div>
+                        ) : (
+                          <Select
+                            onValueChange={(tplIdStr: string) => {
+                              const tpl = templates.find((t: BroadcastTemplate) => String(t.id) === tplIdStr && !!t.flexContent)
+                              if (tpl) setImagemapFlexTemplate(tpl)
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="-- เลือก Flex Template ที่ต้องการแนบ (หรือไม่เลือก) --" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {templates
+                                .filter((t: BroadcastTemplate) => !!t.flexContent)
+                                .map((t: BroadcastTemplate) => (
+                                  <SelectItem key={t.id} value={String(t.id)}>
+                                    {t.name}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+
+                      {/* Optional Closing Text Message */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold">
+                          ข้อความปิดท้าย (เป็นตัวเลือกเสริม ส่งต่อจากภาพ Imagemap)
+                        </label>
+                        <Textarea
+                          value={imagemapClosingText}
+                          onChange={(e) => setImagemapClosingText(e.target.value)}
+                          placeholder="เช่น สอบถามเพิ่มเติมหรือสั่งซื้อ ทักแอดมินได้ตลอด 24 ชม. ค่ะ"
+                          rows={2}
+                          className="text-xs resize-none"
+                        />
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ) : null}
-              {isCustomFlexSelected ? (
-                <Card>
-                  <CardContent className="space-y-4 p-4">
-                    <label className="text-sm font-medium">Flex Message JSON</label>
-                    <Textarea
-                      value={customFlexContent}
-                      onChange={(event) => handleCustomFlexChange(event.target.value)}
-                      placeholder={`{\n  "type": "flex",\n  "altText": "ข้อความ",\n  "contents": {\n    "type": "bubble"\n  }\n}`}
-                      className="min-h-[220px] font-mono text-sm"
-                    />
-                    {customFlexError ? <div className="flex items-center gap-2 text-sm text-destructive"><AlertCircle className="h-4 w-4" />{customFlexError}</div> : null}
-                  </CardContent>
-                </Card>
-              ) : null}
+                  )}
+                </div>
+              ) : (
+                /* MODE 2: TEMPLATES & FLEX */
+                <>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <h3 className="flex items-center gap-2 text-sm font-medium"><Settings2 className="h-4 w-4" />ตั้งค่า Broadcast จาก Template</h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !multiSelectMode
+                        setMultiSelectMode(next)
+                        setResult(null)
+                        if (next) {
+                          const seed = selectedTemplate && selectedTemplate.id !== -1 && selectedTemplate.flexContent
+                            ? [selectedTemplate]
+                            : []
+                          setSelectedTemplates(seed)
+                          setSelectedTemplate(seed[0] ?? null)
+                          setCustomFlexContent('')
+                          setCustomFlexError(null)
+                        } else {
+                          const first = selectedTemplates[0] || null
+                          setSelectedTemplates([])
+                          setSelectedTemplate(first)
+                        }
+                      }}
+                      className={cn(
+                        'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                        multiSelectMode
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground'
+                      )}
+                    >
+                      <Layers className="h-3.5 w-3.5" />
+                      {multiSelectMode ? `เลือกหลาย Flex (${selectedTemplates.length}/${MAX_FLEX_PER_BROADCAST})` : 'เลือกหลาย Flex'}
+                    </button>
+                  </div>
+                  {multiSelectMode ? (
+                    <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-primary">
+                      เลือก Flex ได้สูงสุด {MAX_FLEX_PER_BROADCAST} ใบในการ broadcast เดียว ระบบจะส่งเรียงตามลำดับที่เลือก
+                      ({flexCapableTemplates.length} จาก {selectedTemplates.length} รายการเป็น Flex)
+                    </div>
+                  ) : null}
+                  <TemplateSelector
+                    templates={templates}
+                    selectedTemplateId={multiSelectMode ? undefined : selectedTemplate?.id}
+                    selectedTemplateIds={multiSelectMode ? selectedTemplates.map((t) => t.id) : undefined}
+                    maxSelectable={multiSelectMode ? MAX_FLEX_PER_BROADCAST : undefined}
+                    onSelect={(template) => {
+                      setResult(null)
+                      if (!template) return
+                      if (multiSelectMode) {
+                        if (template.id === -1) return
+                        if (!template.flexContent) {
+                          toast({ title: 'รองรับเฉพาะ Flex', description: 'โหมดเลือกหลายรายการรองรับเฉพาะ Flex Message', variant: 'destructive' })
+                          return
+                        }
+                        setSelectedTemplates((current) => {
+                          const exists = current.some((t) => t.id === template.id)
+                          if (exists) return current.filter((t) => t.id !== template.id)
+                          if (current.length >= MAX_FLEX_PER_BROADCAST) return current
+                          return [...current, template]
+                        })
+                      } else {
+                        setSelectedTemplate(template)
+                        if (template.id !== -1) setCustomFlexError(null)
+                      }
+                    }}
+                  />
+                  {multiSelectMode && selectedTemplates.length > 0 ? (
+                    <Card>
+                      <CardContent className="space-y-2 p-4">
+                        <p className="text-xs font-medium text-muted-foreground">ลำดับการส่ง</p>
+                        <div className="space-y-2">
+                          {selectedTemplates.map((tpl, idx) => (
+                            <div key={tpl.id} className="flex items-center gap-3 rounded-lg border bg-muted/30 p-2">
+                              <Badge>{idx + 1}</Badge>
+                              <span className="flex-1 truncate text-sm">{tpl.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTemplates((current) => current.filter((t) => t.id !== tpl.id))}
+                                className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                title="เอาออก"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : null}
+                  {isCustomFlexSelected ? (
+                    <Card>
+                      <CardContent className="space-y-4 p-4">
+                        <label className="text-sm font-medium">Flex Message JSON</label>
+                        <Textarea
+                          value={customFlexContent}
+                          onChange={(event) => handleCustomFlexChange(event.target.value)}
+                          placeholder={`{\n  "type": "flex",\n  "altText": "ข้อความ",\n  "contents": {\n    "type": "bubble"\n  }\n}`}
+                          className="min-h-[220px] font-mono text-sm"
+                        />
+                        {customFlexError ? <div className="flex items-center gap-2 text-sm text-destructive"><AlertCircle className="h-4 w-4" />{customFlexError}</div> : null}
+                      </CardContent>
+                    </Card>
+                  ) : null}
+                </>
+              )}
             </div>
           ) : null}
 
@@ -917,6 +1348,15 @@ export function CreateBroadcastDialog({ open, onOpenChange, onSuccess }: CreateB
           )}
         </DialogFooter>
       </DialogContent>
+
+      {/* Test Send Modal */}
+      <ImagemapTestSendModal
+        open={isTestSendModalOpen}
+        onOpenChange={setIsTestSendModalOpen}
+        imagemap={imagemapPayload}
+        content={imagemapClosingText.trim() || undefined}
+        flexContent={imagemapFlexTemplate?.flexContent || null}
+      />
     </Dialog>
   )
 }

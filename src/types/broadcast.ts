@@ -1,9 +1,12 @@
+import type { ImagemapInput } from '@/lib/imagemap-types'
+
 // Broadcast Types
 export interface Broadcast {
   id: number
   lineAccountId: number
   content: string
   mediaUrl?: string | null
+  messageType?: 'text' | 'image' | 'video' | 'flex' | 'imagemap'
   flexContent?: FlexMessage | null
   targetSegmentId?: number | null
   scheduledAt?: string | null
@@ -121,10 +124,11 @@ export interface FlexFiller {
 export interface CreateBroadcastInput {
   content?: string
   mediaUrl?: string
-  messageType?: 'text' | 'image' | 'video' | 'flex'
+  messageType?: 'text' | 'image' | 'video' | 'flex' | 'imagemap'
   flexContent?: FlexMessage
   /** Multiple flex messages bundled in a single LINE push (max 5). */
   flexContents?: FlexMessage[]
+  imagemap?: ImagemapInput
   templateId?: number
   templateSourceTable?: 'quick_reply_templates' | 'flex_templates' | 'templates'
   /** Source IDs of the templates picked when bundling multiple flexes. */

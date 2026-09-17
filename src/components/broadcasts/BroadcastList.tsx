@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import { Broadcast } from '@/types/broadcast'
 import { useBroadcasts, useCancelBroadcast, useBroadcastStats } from '@/hooks/use-broadcasts'
 import { CreateBroadcastDialog } from './CreateBroadcastDialog'
+import { BroadcastCtrBadge, BroadcastClickStats } from './BroadcastClickStats'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -44,6 +45,7 @@ export function BroadcastList() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('all')
   const [page, setPage] = useState(1)
+  const [expandedBroadcastId, setExpandedBroadcastId] = useState<number | null>(null)
   const limit = 10
   
   const { data: broadcastsData, isLoading } = useBroadcasts({ 
@@ -105,7 +107,7 @@ export function BroadcastList() {
                 <BarChart3 className="w-5 h-5 text-purple-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">สำเร็จ</p>
+                <p className="text-sm text-muted-foreground">อัตราสำเร็จเฉลี่ย</p>
                 <p className="text-2xl font-bold">{stats.avgSuccessRate}%</p>
               </div>
             </CardContent>
@@ -113,12 +115,10 @@ export function BroadcastList() {
         </div>
       )}
       
-      {/* Main Content */}
+      {/* Broadcast Table */}
       <Card>
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <CardTitle>Broadcast Messages</CardTitle>
-          </div>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>รายการ Broadcast</CardTitle>
           <Button onClick={() => setIsCreateDialogOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             สร้าง Broadcast
@@ -143,7 +143,7 @@ export function BroadcastList() {
                     <TableHead>ผู้รับ</TableHead>
                     <TableHead>อัตราสำเร็จ</TableHead>
                     <TableHead>สร้างเมื่อ</TableHead>
-                    <TableHead className="w-[50px]" />
+                    <TableHead className="w-[120px] text-right">จัดการ</TableHead>
                   </TableRow>
                 </TableHeader>
                 
@@ -168,95 +168,144 @@ export function BroadcastList() {
                       const successRate = broadcast.totalRecipients > 0 
                         ? Math.round((broadcast.deliveredCount / broadcast.totalRecipients) * 100)
                         : 0
-                      const messageType = broadcast.mediaUrl
+                      const isImagemap = broadcast.messageType === 'imagemap'
+                      const messageType = isImagemap
+                        ? 'imagemap'
+                        : broadcast.mediaUrl
                         ? (broadcast.content?.includes('[video') ? 'video' : 'image')
                         : 'text'
-                      const MessageTypeIcon = messageType === 'image'
+                      const MessageTypeIcon = isImagemap
+                        ? ImageIcon
+                        : messageType === 'image'
                         ? ImageIcon
                         : messageType === 'video'
                         ? Video
                         : MessageSquareText
                       
+                      const isExpanded = expandedBroadcastId === broadcast.id
+
                       return (
-                        <TableRow key={broadcast.id}>
-                          <TableCell className="max-w-[260px]">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="gap-1">
-                                <MessageTypeIcon className="h-3 w-3" />
-                                {messageType}
-                              </Badge>
-                            </div>
-                            <p className="mt-2 truncate font-medium">
-                              {broadcast.content || 'Broadcast message'}
-                            </p>
-                            {broadcast.mediaUrl && (
-                              <p className="mt-1 truncate text-xs text-muted-foreground">
-                                media: {broadcast.mediaUrl}
-                              </p>
-                            )}
-                            {broadcast.scheduledAt && broadcast.status === 'scheduled' && (
-                              <p className="text-xs text-muted-foreground">
-                                จะส่ง: {format(new Date(broadcast.scheduledAt), 'PPp', { locale: th })}
-                              </p>
-                            )}
-                          </TableCell>
-                          
-                          <TableCell>
-                            <Badge className={cn("flex items-center gap-1 w-fit", status.color)}>
-                              <StatusIcon className={cn("w-3 h-3", broadcast.status === 'sending' && 'animate-spin')} />
-                              {status.label}
-                            </Badge>
-                          </TableCell>
-                          
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <Users className="w-3 h-3 text-muted-foreground" />
-                              <span>{broadcast.totalRecipients.toLocaleString()}</span>
-                            </div>
-                          </TableCell>
-                          
-                          <TableCell>
-                            {broadcast.status === 'sent' || broadcast.status === 'sending' ? (
-                              <div className="flex items-center gap-2">
-                                <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
-                                  <div 
-                                    className="h-full bg-green-500 transition-all"
-                                    style={{ width: `${successRate}%` }}
+                        <Fragment key={broadcast.id}>
+                          <TableRow className={isExpanded ? 'bg-muted/30' : undefined}>
+                            <TableCell className="max-w-[260px]">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    'gap-1',
+                                    isImagemap && 'border-purple-300 bg-purple-50 text-purple-700 dark:border-purple-800 dark:bg-purple-950/40 dark:text-purple-300'
+                                  )}
+                                >
+                                  <MessageTypeIcon className="h-3 w-3" />
+                                  {messageType}
+                                </Badge>
+                                {isImagemap && (
+                                  <BroadcastCtrBadge
+                                    broadcastId={broadcast.id}
+                                    totalRecipients={broadcast.totalRecipients}
                                   />
-                                </div>
-                                <span className="text-sm">{successRate}%</span>
+                                )}
                               </div>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
-                          
-                          <TableCell>
-                            <span className="text-sm text-muted-foreground">
-                              {format(new Date(broadcast.createdAt), 'PP', { locale: th })}
-                            </span>
-                          </TableCell>
-                          
-                          <TableCell>
-                            {broadcast.status === 'scheduled' && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon">
-                                    <MoreVertical className="w-4 h-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem 
-                                    onClick={() => cancelBroadcast.mutate(broadcast.id)}
-                                    className="text-destructive"
+                              <p className="mt-2 truncate font-medium">
+                                {broadcast.content || 'Broadcast message'}
+                              </p>
+                              {broadcast.mediaUrl && !isImagemap && (
+                                <p className="mt-1 truncate text-xs text-muted-foreground">
+                                  media: {broadcast.mediaUrl}
+                                </p>
+                              )}
+                              {broadcast.scheduledAt && broadcast.status === 'scheduled' && (
+                                <p className="text-xs text-muted-foreground">
+                                  จะส่ง: {format(new Date(broadcast.scheduledAt), 'PPp', { locale: th })}
+                                </p>
+                              )}
+                            </TableCell>
+                            
+                            <TableCell>
+                              <Badge className={cn("flex items-center gap-1 w-fit", status.color)}>
+                                <StatusIcon className={cn("w-3 h-3", broadcast.status === 'sending' && 'animate-spin')} />
+                                {status.label}
+                              </Badge>
+                            </TableCell>
+                            
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Users className="w-3 h-3 text-muted-foreground" />
+                                <span>{broadcast.totalRecipients.toLocaleString()}</span>
+                              </div>
+                            </TableCell>
+                            
+                            <TableCell>
+                              {broadcast.status === 'sent' || broadcast.status === 'sending' ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
+                                    <div 
+                                      className="h-full bg-green-500 transition-all"
+                                      style={{ width: `${successRate}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-sm">{successRate}%</span>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                            
+                            <TableCell>
+                              <span className="text-sm text-muted-foreground">
+                                {format(new Date(broadcast.createdAt), 'PP', { locale: th })}
+                              </span>
+                            </TableCell>
+                            
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {isImagemap && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 text-xs gap-1 text-primary hover:text-primary hover:bg-primary/10"
+                                    onClick={() => setExpandedBroadcastId(isExpanded ? null : broadcast.id)}
                                   >
-                                    ยกเลิก
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
-                          </TableCell>
-                        </TableRow>
+                                    <BarChart3 className="h-3.5 w-3.5" />
+                                    {isExpanded ? 'ซ่อน' : 'สถิติ'}
+                                  </Button>
+                                )}
+
+                                {broadcast.status === 'scheduled' && (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                                        <MoreVertical className="w-4 h-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem 
+                                        onClick={() => cancelBroadcast.mutate(broadcast.id)}
+                                        className="text-destructive"
+                                      >
+                                        ยกเลิก
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+
+                          {/* Expanded Imagemap Click Stats row */}
+                          {isExpanded && isImagemap && (
+                            <TableRow className="bg-muted/10 hover:bg-muted/10">
+                              <TableCell colSpan={6} className="p-4">
+                                <BroadcastClickStats
+                                  broadcastId={broadcast.id}
+                                  totalRecipients={broadcast.totalRecipients}
+                                  mediaUrl={broadcast.mediaUrl}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
                       )
                     })
                   )}
