@@ -78,6 +78,9 @@ export function SlipReportClient() {
   const [error, setError] = useState<string | null>(null)
   const [summary, setSummary] = useState<SlipReportSummary | null>(null)
   const [items, setItems] = useState<SlipReportItem[]>([])
+  // The scan is capped server-side. Kept in state so the list can say so rather
+  // than presenting a truncated range as the whole picture.
+  const [hasMore, setHasMore] = useState(false)
   // BDO ที่กำลังเปิดดู — ใช้ panel ตัวเดียวกับ Slip Center ที่ยิงข้อมูลสดจาก Odoo เอง
   const [openBdo, setOpenBdo] = useState<{ id: number; name: string | null } | null>(null)
   // แถวที่กางดูใบแจ้งหนี้ทั้งหมด เก็บเป็น messageId
@@ -101,6 +104,7 @@ export function SlipReportClient() {
       if (!json.success) throw new Error(json.error || 'โหลดข้อมูลไม่สำเร็จ')
       setSummary(json.summary)
       setItems(json.items)
+      setHasMore(Boolean(json.hasMore))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด')
     } finally {
@@ -431,6 +435,14 @@ export function SlipReportClient() {
               )}
               </Fragment>
             ))}
+
+            {hasMore && (
+              <tr>
+                <td colSpan={8} className="px-3 py-3 text-center text-xs text-amber-700">
+                  แสดง {items.length} รายการล่าสุดเท่านั้น — เลือกช่วงวันให้แคบลงเพื่อดูให้ครบ
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

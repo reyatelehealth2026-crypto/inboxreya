@@ -4,7 +4,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Upload, FileJson, Search, Package, X, Send, Check, RefreshCw,
   ShoppingBag, Zap, Tag, Sparkles, TrendingUp, Loader2,
-  LayoutGrid, List,
+  LayoutGrid, List, Percent, AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,11 +22,11 @@ import {
   selectedProductToPreviewProduct,
   type Product,
 } from '@/types/product-catalog';
-import type { ExportPreviewProduct } from '@/lib/flex-builder';
+import type { ExportPreviewProduct, FlexMessageTemplate } from '@/lib/flex-builder';
 import type { CsvProduct } from '@/lib/csv-product';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-type SourceTab = 'csv' | 'json';
+type SourceTab = 'csv' | 'json' | 'wholesale';
 type ViewMode = 'grid' | 'list';
 type FilterType = 'all' | 'flashsale' | 'promotion' | 'new' | 'bestseller';
 
@@ -824,20 +824,314 @@ function CnyCatalogGrid({
   );
 }
 
+// ─── Wholesale Promo Grid ─────────────────────────────────────────────────────
+//
+// The wholesale shop already groups its own promotions, so staff pick a group and
+// trim it, rather than hunting products out of a flat catalogue from another shop
+// that does not contain them at all. Picking a group selects everything in it —
+// sending the whole promotion is the common case, and unticking a few is quicker
+// than ticking 40.
+
+interface WholesalePromoGroup {
+  key: string;
+  label: string;
+  template: FlexMessageTemplate;
+  endsAt: string | null;
+  items: ExportPreviewProduct[];
+  droppedCount: number;
+  /** What the group holds upstream. Absent when the feed does not report it. */
+  totalCount?: number;
+}
+
+/** Display-only view of a feed item, so this tab reuses the card and row the other
+ *  two tabs already render instead of introducing a third product renderer. */
+function toDisplayProduct(product: ExportPreviewProduct): CsvProduct {
+  const money = (value: number | null) =>
+    value === null
+      ? ''
+      : value.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  return {
+    productUrl: product.productUrl ?? '',
+    imageUrl: product.imageUrl ?? '',
+    minQtyLabel: '',
+    maxQtyLabel: '',
+    offerHeader: product.ribbonText ?? '',
+    offerStart: product.offerStart ?? '',
+    offerEnd: product.offerEnd ?? '',
+    skuLabel: 'รหัส',
+    sku: product.sku,
+    productName: product.name,
+    promoCond1: product.promoLine1 ?? '',
+    promoCond2: product.promoLine2 ?? '',
+    pricePerUnit: money(product.basePrice),
+    btnLabel: product.ctaLabel ?? '',
+    priceNumber: String(product.basePrice),
+    priceUnit: product.unitLabel ?? '',
+    priceAfterDiscount: money(product.promotionPrice),
+    specName: '',
+    bulkPrice: '',
+    bulkUnit: '',
+  };
+}
+
+function WholesalePromoGrid({
+  onSelectionChange,
+  onGroupChange,
+  viewMode,
+}: {
+  onSelectionChange: (products: ExportPreviewProduct[]) => void;
+  onGroupChange: (group: WholesalePromoGroup | null, linkHost: string) => void;
+  viewMode: ViewMode;
+}) {
+  const [groups, setGroups] = useState<WholesalePromoGroup[]>([]);
+  const [siteUrl, setSiteUrl] = useState('');
+  // Where the products come from is not where their links go — see the route.
+  const [linkHost, setLinkHost] = useState('');
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [selectedSkus, setSelectedSkus] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const activeGroup = useMemo(
+    () => groups.find((group) => group.key === activeKey) ?? null,
+    [groups, activeKey]
+  );
+
+  const selectGroup = useCallback(
+    (group: WholesalePromoGroup | null, host: string) => {
+      setActiveKey(group?.key ?? null);
+      setSelectedSkus(new Set(group?.items.map((item) => item.sku) ?? []));
+      onSelectionChange(group?.items ?? []);
+      onGroupChange(group, host);
+    },
+    [onSelectionChange, onGroupChange]
+  );
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/inbox/catalog/wholesale-promos', { cache: 'no-store' });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'ดึงโปรโมชันขายส่งไม่สำเร็จ');
+      }
+      const nextGroups: WholesalePromoGroup[] = payload.data.groups;
+      setGroups(nextGroups);
+      setSiteUrl(payload.data.siteUrl);
+      setLinkHost(payload.data.linkHost);
+      selectGroup(
+        nextGroups.find((group) => group.items.length > 0) ?? null,
+        payload.data.linkHost
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ดึงโปรโมชันขายส่งไม่สำเร็จ');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // Load once on mount; the refresh button re-runs it on demand.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const filtered = useMemo(() => {
+    const items = activeGroup?.items ?? [];
+    const term = search.trim().toLowerCase();
+    if (!term) return items;
+    return items.filter(
+      (item) =>
+        item.name.toLowerCase().includes(term) || item.sku.toLowerCase().includes(term)
+    );
+  }, [activeGroup, search]);
+
+  const toggle = useCallback(
+    (sku: string) => {
+      setSelectedSkus((prev) => {
+        const next = new Set(prev);
+        if (next.has(sku)) next.delete(sku);
+        else next.add(sku);
+        onSelectionChange((activeGroup?.items ?? []).filter((item) => next.has(item.sku)));
+        return next;
+      });
+    },
+    [activeGroup, onSelectionChange]
+  );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-400 mr-2" />
+        <span className="text-gray-500">กำลังโหลดโปรโมชันขายส่ง...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="border-gray-200">
+        <CardContent className="p-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">โปรโมชันขายส่ง</p>
+            <p className="text-xs text-gray-500">
+              ดึงสดจากระบบขายส่ง แบ่งตามหมวดโปรที่ตั้งไว้แล้ว
+              {siteUrl && <span className="ml-1">· ข้อมูลจาก {siteUrl}</span>}
+              {/* Links go somewhere else on purpose, so say so where staff can see
+                  it before they send rather than after. */}
+              {linkHost && <span className="ml-1">· ลิงก์ในข้อความไป {linkHost}</span>}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+            <RefreshCw className="w-4 h-4 mr-2" /> ดึงใหม่
+          </Button>
+        </CardContent>
+      </Card>
+
+      {error && (
+        <Alert variant="destructive" className="text-sm py-2">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {groups.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {groups.map((group) => (
+            <button
+              key={group.key}
+              onClick={() => selectGroup(group, linkHost)}
+              disabled={group.items.length === 0}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-all',
+                group.key === activeKey
+                  ? 'bg-white shadow text-green-700 border-green-300'
+                  : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-green-200',
+                group.items.length === 0 && 'opacity-40 cursor-not-allowed'
+              )}
+            >
+              {group.key === 'flash_sale' ? <Zap className="w-3.5 h-3.5" /> : <Percent className="w-3.5 h-3.5" />}
+              {group.label}
+              <Badge variant="secondary" className="ml-1">{group.items.length}</Badge>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activeGroup && (
+        <>
+          {activeGroup.endsAt && (
+            <p className="text-xs text-gray-500">
+              โปรหมดอายุ {new Date(activeGroup.endsAt).toLocaleString('th-TH')}
+            </p>
+          )}
+          {activeGroup.droppedCount > 0 && (
+            <Alert className="text-sm py-2">
+              <AlertDescription>
+                ข้าม {activeGroup.droppedCount} รายการที่ข้อมูลไม่ครบจากระบบขายส่ง
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              placeholder="ค้นหาสินค้าหรือรหัส SKU..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+
+          <p className="text-sm text-gray-500">
+            พบ <strong>{filtered.length}</strong> รายการ
+            {selectedSkus.size > 0 && (
+              <span className="ml-2 text-green-600">
+                | เลือกแล้ว <strong>{selectedSkus.size}</strong> รายการ
+              </span>
+            )}
+            {/* The feed caps what it sends. Showing 60 out of 1324 without saying so
+                is the same silent truncation this tab warns about on send. */}
+            {activeGroup.totalCount !== undefined &&
+              activeGroup.totalCount > activeGroup.items.length && (
+                <span className="ml-2 text-amber-700">
+                  | หมวดนี้มีทั้งหมด <strong>{activeGroup.totalCount}</strong> รายการ
+                  ส่งมาให้เลือก {activeGroup.items.length} รายการ
+                </span>
+              )}
+          </p>
+
+          {viewMode === 'grid' ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              {filtered.map((item) => (
+                <ProductCard
+                  key={item.sku}
+                  product={toDisplayProduct(item)}
+                  selected={selectedSkus.has(item.sku)}
+                  onToggle={() => toggle(item.sku)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+              <table className="w-full text-sm">
+                <tbody className="divide-y divide-gray-100">
+                  {filtered.map((item) => (
+                    <CsvProductListRow
+                      key={item.sku}
+                      product={toDisplayProduct(item)}
+                      selected={selectedSkus.has(item.sku)}
+                      onToggle={() => toggle(item.sku)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {!loading && !error && groups.every((group) => group.items.length === 0) && (
+        <div className="text-center py-16 text-gray-400">
+          <Package className="w-10 h-10 mx-auto mb-3 opacity-40" />
+          <p className="text-sm">ตอนนี้ยังไม่มีโปรโมชันขายส่งที่กำลังใช้งาน</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PromotionsPage() {
   const [sourceTab, setSourceTab] = useState<SourceTab>('csv');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [csvSelected, setCsvSelected] = useState<ExportPreviewProduct[]>([]);
   const [jsonSelected, setJsonSelected] = useState<ExportPreviewProduct[]>([]);
+  const [wholesaleSelected, setWholesaleSelected] = useState<ExportPreviewProduct[]>([]);
+  const [wholesaleGroup, setWholesaleGroup] = useState<WholesalePromoGroup | null>(null);
+  const [wholesaleLinkHost, setWholesaleLinkHost] = useState('');
   const [showSendDialog, setShowSendDialog] = useState(false);
 
-  const selectedProducts = sourceTab === 'csv' ? csvSelected : jsonSelected;
+  const selectedProducts =
+    sourceTab === 'csv' ? csvSelected : sourceTab === 'json' ? jsonSelected : wholesaleSelected;
   const selectedCount = selectedProducts.length;
 
   const clearSelection = () => {
     if (sourceTab === 'csv') setCsvSelected([]);
-    else setJsonSelected([]);
+    else if (sourceTab === 'json') setJsonSelected([]);
+    else setWholesaleSelected([]);
   };
+
+  const handleWholesaleGroup = useCallback((group: WholesalePromoGroup | null, linkHost: string) => {
+    setWholesaleGroup(group);
+    setWholesaleLinkHost(linkHost);
+  }, []);
+
+  // The detail layout fits one product per bubble: 11 in the first carousel (the
+  // cover takes a slot) and 12 in each of the next three. Past that the builder
+  // stops, so say so here rather than letting the tail disappear on send.
+  const detailModeCapacity = 47;
 
   return (
     <div className="h-full overflow-y-auto bg-gray-50">
@@ -855,6 +1149,7 @@ export default function PromotionsPage() {
           <div className="flex items-center gap-2">
             <div className="flex rounded-lg border bg-gray-50 p-0.5 gap-0.5">
               {([
+                { key: 'wholesale' as const, label: 'โปรขายส่ง', icon: Percent },
                 { key: 'csv' as const, label: 'โปรโมชัน CSV', icon: Tag },
                 { key: 'json' as const, label: 'แคตตาล็อค CNY', icon: FileJson },
               ] as const).map(({ key, label, icon: Icon }) => (
@@ -886,31 +1181,47 @@ export default function PromotionsPage() {
         {sourceTab === 'json' && (
           <CnyCatalogGrid onSelectionChange={setJsonSelected} viewMode={viewMode} />
         )}
+        {sourceTab === 'wholesale' && (
+          <WholesalePromoGrid
+            onSelectionChange={setWholesaleSelected}
+            onGroupChange={handleWholesaleGroup}
+            viewMode={viewMode}
+          />
+        )}
       </div>
 
       {/* Floating action bar */}
       {selectedCount > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3">
-          <div className="bg-white rounded-full shadow-lg border px-4 py-2 flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-green-500 text-white flex items-center justify-center font-bold text-sm">
-              {selectedCount}
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2">
+          {selectedCount > detailModeCapacity && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-full shadow px-4 py-1.5 flex items-center gap-2 text-xs">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              เลือก {selectedCount} รายการ — โหมด &quot;รายละเอียด&quot; ส่งได้สูงสุด {detailModeCapacity}
+              รายการ ส่วนที่เกินจะไม่ถูกส่ง (โหมด &quot;ตาราง&quot; ส่งได้ครบ)
             </div>
-            <span className="text-sm font-medium text-gray-700">รายการที่เลือก</span>
-            <button
-              onClick={clearSelection}
-              className="w-5 h-5 rounded-full hover:bg-red-50 hover:text-red-500 flex items-center justify-center"
+          )}
+          <div className="flex items-center gap-3">
+            <div className="bg-white rounded-full shadow-lg border px-4 py-2 flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-green-500 text-white flex items-center justify-center font-bold text-sm">
+                {selectedCount}
+              </div>
+              <span className="text-sm font-medium text-gray-700">รายการที่เลือก</span>
+              <button
+                onClick={clearSelection}
+                className="w-5 h-5 rounded-full hover:bg-red-50 hover:text-red-500 flex items-center justify-center"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <Button
+              size="lg"
+              className="bg-green-600 hover:bg-green-700 text-white shadow-lg rounded-full px-6"
+              onClick={() => setShowSendDialog(true)}
             >
-              <X className="w-3.5 h-3.5" />
-            </button>
+              <Send className="w-5 h-5 mr-2" />
+              ส่งไปยัง LINE
+            </Button>
           </div>
-          <Button
-            size="lg"
-            className="bg-green-600 hover:bg-green-700 text-white shadow-lg rounded-full px-6"
-            onClick={() => setShowSendDialog(true)}
-          >
-            <Send className="w-5 h-5 mr-2" />
-            ส่งไปยัง LINE
-          </Button>
         </div>
       )}
 
@@ -919,9 +1230,21 @@ export default function PromotionsPage() {
         open={showSendDialog}
         onOpenChange={setShowSendDialog}
         products={selectedProducts}
-        defaultConfig={{
-          template: sourceTab === 'csv' ? 'promotion' : 'product_catalog',
-        }}
+        defaultConfig={
+          sourceTab === 'wholesale'
+            ? {
+                // The group carries its own template and ribbon. Product links were
+                // already pointed at the broadcast host by the route, so the SKU
+                // fallback stays off: it rebuilds the path from the SKU, which maps
+                // '90' and 'A-90' onto the same page and a missing SKU onto
+                // /product/0000 — and that host answers 200 for all of them.
+                template: wholesaleGroup?.template ?? 'promotion',
+                title: wholesaleGroup?.label ?? '',
+                actionUrl: wholesaleLinkHost,
+                allowRetailUrlFallback: false,
+              }
+            : { template: sourceTab === 'csv' ? 'promotion' : 'product_catalog' }
+        }
       />
     </div>
   );

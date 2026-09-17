@@ -8,10 +8,6 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
 
-  // jimp is loaded at runtime by the slip-verify route to decode the slip QR.
-  // Keep it external so Next doesn't bundle its dynamic plugin imports.
-  serverExternalPackages: ['jimp'],
-
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',
@@ -60,6 +56,22 @@ const nextConfig = {
       {
         source: '/uploads/:path*',
         destination: '/api/uploads/:path*',
+      },
+    ]
+  },
+  async headers() {
+    // ก่อนหน้านี้ไม่มี frame-ancestors เลย = เว็บไหนก็เอา inbox ไป iframe ได้
+    // อนุญาตเฉพาะตัวเอง + โดเมนหลังบ้านขายส่งที่ตั้งไว้ใน EMBED_ALLOWED_ORIGIN
+    // (เว้นว่าง = อนุญาตเฉพาะตัวเอง ซึ่งจะทำให้หน้า /admin/chat ฝังไม่ขึ้น)
+    const allowed = ["'self'", process.env.EMBED_ALLOWED_ORIGIN]
+      .filter(Boolean)
+      .join(' ')
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'Content-Security-Policy', value: `frame-ancestors ${allowed}` },
+        ],
       },
     ]
   },

@@ -16,6 +16,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { callPhpApi } from '@/lib/php-bridge'
+import {
+  classifyPartnerSyncFailure,
+  recordPartnerSyncIncident,
+  type PartnerSourceCheck,
+} from '@/lib/partner-sync-incident'
 
 type AutoFixCode =
   | 'sync_member_id_from_link'
@@ -37,6 +42,11 @@ interface OdooPartnerPayload {
   source?: 'customer_projection' | 'line_users_cache' | 'odoo_api'
 }
 
+interface PartnerLookupResult {
+  partner: OdooPartnerPayload | null
+  sourceChecks: PartnerSourceCheck[]
+}
+
 /**
  * Look up a partner by customer code using multiple sources, in priority order:
  *  1. `odoo_customer_projection` — local cache rebuilt from Odoo webhooks (authoritative)
@@ -47,7 +57,9 @@ interface OdooPartnerPayload {
  */
 async function lookupOdooPartnerByCode(
   memberCode: string
-): Promise<OdooPartnerPayload | null> {
+): Promise<PartnerLookupResult> {
+  const sourceChecks: PartnerSourceCheck[] = []
+
   // 1) odoo_customer_projection (local, fast, always fresh)
   try {
     const rows = await prisma.$queryRawUnsafe<
@@ -65,15 +77,33 @@ async function lookupOdooPartnerByCode(
       memberCode
     )
     if (rows[0]?.odoo_partner_id) {
+      sourceChecks.push({ source: 'customer_projection', result: 'found' })
       return {
-        id: rows[0].odoo_partner_id,
-        name: rows[0].customer_name || rows[0].partner_name || undefined,
-        partner_code: rows[0].customer_ref || memberCode,
-        source: 'customer_projection',
+        partner: {
+          id: rows[0].odoo_partner_id,
+          name: rows[0].customer_name || rows[0].partner_name || undefined,
+          partner_code: rows[0].customer_ref || memberCode,
+          source: 'customer_projection',
+        },
+        sourceChecks,
       }
     }
+    sourceChecks.push({ source: 'customer_projection', result: 'not_found' })
   } catch (err) {
     console.warn('[odoo-diagnose/fix] customer_projection lookup failed:', err)
+    const failure = classifyPartnerSyncFailure(err)
+    sourceChecks.push({
+      source: 'customer_projection',
+      result: 'failed',
+      reasonCode: failure.reasonCode,
+    })
+    await recordPartnerSyncIncident({
+      stage: 'customer_projection_lookup',
+      reasonCode: 'customer_projection_lookup_failed',
+      severity: 'error',
+      retryable: failure.retryable,
+      sourceChecks: [...sourceChecks],
+    })
   }
 
   // 2) odoo_line_users — another LINE user may already be linked to this partner
@@ -92,15 +122,33 @@ async function lookupOdooPartnerByCode(
       memberCode
     )
     if (rows[0]?.odoo_partner_id) {
+      sourceChecks.push({ source: 'line_users_cache', result: 'found' })
       return {
-        id: rows[0].odoo_partner_id,
-        name: rows[0].odoo_partner_name || undefined,
-        partner_code: rows[0].odoo_customer_code || memberCode,
-        source: 'line_users_cache',
+        partner: {
+          id: rows[0].odoo_partner_id,
+          name: rows[0].odoo_partner_name || undefined,
+          partner_code: rows[0].odoo_customer_code || memberCode,
+          source: 'line_users_cache',
+        },
+        sourceChecks,
       }
     }
+    sourceChecks.push({ source: 'line_users_cache', result: 'not_found' })
   } catch (err) {
     console.warn('[odoo-diagnose/fix] odoo_line_users lookup failed:', err)
+    const failure = classifyPartnerSyncFailure(err)
+    sourceChecks.push({
+      source: 'line_users_cache',
+      result: 'failed',
+      reasonCode: failure.reasonCode,
+    })
+    await recordPartnerSyncIncident({
+      stage: 'link_cache_lookup',
+      reasonCode: 'local_link_lookup_failed',
+      severity: 'error',
+      retryable: failure.retryable,
+      sourceChecks: [...sourceChecks],
+    })
   }
 
   // 3) Live Odoo API (last resort)
@@ -116,13 +164,49 @@ async function lookupOdooPartnerByCode(
       data?: { data?: { partner?: OdooPartnerPayload } }
     })?.data?.data?.partner
     if (partner && partner.id) {
-      return { ...partner, source: 'odoo_api' }
+      sourceChecks.push({ source: 'odoo_live_api', result: 'found' })
+      return {
+        partner: { ...partner, source: 'odoo_api' },
+        sourceChecks,
+      }
     }
+    if (!res.success) {
+      const failure = classifyPartnerSyncFailure(res.error ?? 'Odoo live API failed')
+      sourceChecks.push({
+        source: 'odoo_live_api',
+        result: 'failed',
+        reasonCode: failure.reasonCode,
+      })
+      await recordPartnerSyncIncident({
+        stage: 'odoo_live_api',
+        reasonCode: failure.reasonCode,
+        severity: 'error',
+        retryable: failure.retryable,
+        httpStatus: failure.httpStatus,
+        sourceChecks: [...sourceChecks],
+      })
+      return { partner: null, sourceChecks }
+    }
+    sourceChecks.push({ source: 'odoo_live_api', result: 'not_found' })
   } catch (err) {
     console.error('[odoo-diagnose/fix] Odoo live API lookup failed:', err)
+    const failure = classifyPartnerSyncFailure(err)
+    sourceChecks.push({
+      source: 'odoo_live_api',
+      result: 'failed',
+      reasonCode: failure.reasonCode,
+    })
+    await recordPartnerSyncIncident({
+      stage: 'odoo_live_api',
+      reasonCode: failure.reasonCode,
+      severity: 'error',
+      retryable: failure.retryable,
+      httpStatus: failure.httpStatus,
+      sourceChecks: [...sourceChecks],
+    })
   }
 
-  return null
+  return { partner: null, sourceChecks }
 }
 
 async function upsertOdooLink(
@@ -211,7 +295,17 @@ export async function POST(
         user.lineUserId
       )
       linkRow = rows[0] || null
-    } catch {
+    } catch (linkLookupError) {
+      const failure = classifyPartnerSyncFailure(linkLookupError)
+      await recordPartnerSyncIncident({
+        stage: 'local_link_lookup',
+        reasonCode: 'local_link_lookup_failed',
+        severity: 'error',
+        retryable: failure.retryable,
+        sourceChecks: [
+          { source: 'line_users_cache', result: 'failed', reasonCode: failure.reasonCode },
+        ],
+      })
       // Table missing -> treat as no link
     }
 
@@ -264,6 +358,15 @@ export async function POST(
         const memberCode =
           user.memberId?.trim() || linkRow?.odoo_customer_code?.trim() || null
         if (!memberCode) {
+          await recordPartnerSyncIncident({
+            stage: 'profile_lookup',
+            reasonCode: 'missing_member_id',
+            severity: 'warning',
+            retryable: false,
+            sourceChecks: [
+              { source: 'users_profile', result: 'missing', reasonCode: 'missing_member_id' },
+            ],
+          })
           result = {
             success: false,
             fixCode,
@@ -285,8 +388,17 @@ export async function POST(
           break
         }
 
-        const partner = await lookupOdooPartnerByCode(memberCode)
+        const lookup = await lookupOdooPartnerByCode(memberCode)
+        const partner = lookup.partner
         if (!partner) {
+          const incomplete = lookup.sourceChecks.some((check) => check.result === 'failed')
+          await recordPartnerSyncIncident({
+            stage: 'odoo_live_api',
+            reasonCode: incomplete ? 'partner_lookup_incomplete' : 'partner_not_found_all_sources',
+            severity: incomplete ? 'error' : 'warning',
+            retryable: incomplete,
+            sourceChecks: lookup.sourceChecks,
+          })
           result = {
             success: false,
             fixCode,
@@ -304,7 +416,17 @@ export async function POST(
           user.lineAccountId ?? null,
           partner,
           memberCode
-        )
+        ).catch(async (writeError) => {
+          const failure = classifyPartnerSyncFailure(writeError)
+          await recordPartnerSyncIncident({
+            stage: 'link_write',
+            reasonCode: 'link_write_failed',
+            severity: 'error',
+            retryable: failure.retryable,
+            sourceChecks: [...lookup.sourceChecks],
+          })
+          throw writeError
+        })
         // Also sync memberId if users.member_id is empty or is a MEM placeholder
         const currentMemberId = user.memberId?.trim() || null
         const isPlaceholder = currentMemberId && /^MEM\d+$/i.test(currentMemberId)
@@ -330,6 +452,15 @@ export async function POST(
         const memberCode =
           user.memberId?.trim() || linkRow?.odoo_customer_code?.trim() || null
         if (!memberCode) {
+          await recordPartnerSyncIncident({
+            stage: 'profile_lookup',
+            reasonCode: 'missing_member_id',
+            severity: 'warning',
+            retryable: false,
+            sourceChecks: [
+              { source: 'users_profile', result: 'missing', reasonCode: 'missing_member_id' },
+            ],
+          })
           result = {
             success: false,
             fixCode,
@@ -339,8 +470,17 @@ export async function POST(
           break
         }
 
-        const partner = await lookupOdooPartnerByCode(memberCode)
+        const lookup = await lookupOdooPartnerByCode(memberCode)
+        const partner = lookup.partner
         if (!partner) {
+          const incomplete = lookup.sourceChecks.some((check) => check.result === 'failed')
+          await recordPartnerSyncIncident({
+            stage: 'odoo_live_api',
+            reasonCode: incomplete ? 'partner_lookup_incomplete' : 'partner_not_found_all_sources',
+            severity: incomplete ? 'error' : 'warning',
+            retryable: incomplete,
+            sourceChecks: lookup.sourceChecks,
+          })
           result = {
             success: false,
             fixCode,
@@ -395,6 +535,14 @@ export async function POST(
     return NextResponse.json(result, { status: result.success ? 200 : 422 })
   } catch (error) {
     console.error('[odoo-diagnose/fix] Error:', error)
+    const failure = classifyPartnerSyncFailure(error)
+    await recordPartnerSyncIncident({
+      stage: 'unexpected',
+      reasonCode: failure.reasonCode,
+      severity: 'error',
+      retryable: failure.retryable,
+      httpStatus: failure.httpStatus,
+    })
     return NextResponse.json(
       {
         success: false,

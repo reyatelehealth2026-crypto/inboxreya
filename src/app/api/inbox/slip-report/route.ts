@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { cacheQuery, CACHE_TTL } from '@/lib/redis'
 import { PRIVATE_CARRIER_TAG_ID } from '@/lib/slip-auto-match'
 
 /**
@@ -25,6 +26,13 @@ interface ReportRow {
   display_name: string | null
 }
 
+/** Rows per request. The UI shows a "showing N of more" notice when capped. */
+const DEFAULT_LIMIT = 200
+const MAX_LIMIT = 500
+
+/** Both sweeps read `messages` by date range; 30 days already costs seconds. */
+export const maxDuration = 30
+
 export async function GET(request: NextRequest) {
   try {
     const session = await auth()
@@ -32,36 +40,66 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const parsedDays = Number(new URL(request.url).searchParams.get('days'))
+    const searchParams = new URL(request.url).searchParams
+    const parsedDays = Number(searchParams.get('days'))
     // Clamped to a plain number before interpolation — by the time it reaches the
-    // query it is no longer user text.
-    const days = Number.isFinite(parsedDays) && parsedDays > 0 ? Math.min(Math.floor(parsedDays), 90) : 7
+    // query it is no longer user text. 30 is the widest range the UI offers, and
+    // every extra day is another slice of `messages` scanned for the LIKE below.
+    const days = Number.isFinite(parsedDays) && parsedDays > 0 ? Math.min(Math.floor(parsedDays), 30) : 7
 
-    // Raw SQL on purpose. `metadata` is a JSON string in a LongText column, which
-    // Prisma cannot filter on, and the client extension in @/lib/prisma shifts
-    // Date arguments by +7h inside range filters — `INTERVAL n DAY` sidesteps both.
-    const rows = await prisma.$queryRawUnsafe<ReportRow[]>(
-      `SELECT m.id, m.user_id, m.content, m.media_url, m.metadata, m.created_at,
-              u.display_name
-         FROM messages m
-         LEFT JOIN users u ON u.id = m.user_id
-        WHERE m.message_type = 'image'
-          AND m.metadata LIKE '%"slip":%'
-          AND m.created_at >= NOW() - INTERVAL ${days} DAY
-        ORDER BY m.created_at DESC
-        LIMIT 500`
+    const parsedLimit = Number(searchParams.get('limit'))
+    const limit =
+      Number.isFinite(parsedLimit) && parsedLimit > 0
+        ? Math.min(Math.floor(parsedLimit), MAX_LIMIT)
+        : DEFAULT_LIMIT
+
+    // Both sweeps walk the same date range of `messages` and neither can use an
+    // index for its filter: `message_type` is unindexed and `metadata` is a
+    // LongText the LIKE has to read row by row. At 30 days that was ~6s of the
+    // request, run one after the other, holding a connection the whole time —
+    // which is what took the rest of the app down with it when several reps
+    // opened the page at once. Running them together halves the wall time, and
+    // the cache means the second rep pays nothing at all.
+    const { rows, received } = await cacheQuery(
+      `slipreport:scan:${days}:${limit}`,
+      async () => {
+        // Raw SQL on purpose. `metadata` is a JSON string in a LongText column,
+        // which Prisma cannot filter on, and the client extension in
+        // @/lib/prisma shifts Date arguments by +7h inside range filters —
+        // `INTERVAL n DAY` sidesteps both.
+        const [scanned, images] = await Promise.all([
+          // One extra row over the limit: its presence is how `hasMore` is
+          // known without a second COUNT over the same expensive scan.
+          prisma.$queryRawUnsafe<ReportRow[]>(
+            `SELECT m.id, m.user_id, m.content, m.media_url, m.metadata, m.created_at,
+                    u.display_name
+               FROM messages m
+               LEFT JOIN users u ON u.id = m.user_id
+              WHERE m.message_type = 'image'
+                AND m.metadata LIKE '%"slip":%'
+                AND m.created_at >= NOW() - INTERVAL ${days} DAY
+              ORDER BY m.created_at DESC
+              LIMIT ${limit + 1}`
+          ),
+          // Every image the customers sent in the window, slip or not. Counted
+          // separately because the rows above are already narrowed to the ones
+          // the scanner wrote a result onto — without this the report can say
+          // how many slips passed but not how many pictures it took to get them.
+          prisma.$queryRawUnsafe<Array<{ received: bigint | number }>>(
+            `SELECT COUNT(*) AS received
+               FROM messages
+              WHERE message_type = 'image'
+                AND created_at >= NOW() - INTERVAL ${days} DAY`
+          ),
+        ])
+
+        return { rows: scanned, received: Number(images[0]?.received ?? 0) }
+      },
+      CACHE_TTL.DASHBOARD_STATS
     )
 
-    // Every image the customers sent in the window, slip or not. Counted
-    // separately because the rows above are already narrowed to the ones the
-    // scanner wrote a result onto — without this the report can say how many
-    // slips passed but not how many pictures it took to get them.
-    const [images] = await prisma.$queryRawUnsafe<Array<{ received: bigint | number }>>(
-      `SELECT COUNT(*) AS received
-         FROM messages
-        WHERE message_type = 'image'
-          AND created_at >= NOW() - INTERVAL ${days} DAY`
-    )
+    const hasMore = rows.length > limit
+    if (hasMore) rows.length = limit
 
     const phpBase = process.env.NEXT_PUBLIC_PHP_API_URL || process.env.PHP_API_URL || ''
 
@@ -203,7 +241,7 @@ export async function GET(request: NextRequest) {
     // the scanner actually ruled on, the ones the bank confirmed, and finally
     // what each confirmed slip was filed against.
     const summary = {
-      received: Number(images?.received ?? 0),
+      received,
       checked: rows.length,
       slips: items.length,
       // Filed against a delivery order, the ordinary path.
@@ -219,7 +257,9 @@ export async function GET(request: NextRequest) {
       customers: new Set(items.map((i) => i.userId).filter(Boolean)).size,
     }
 
-    return NextResponse.json({ success: true, days, summary, items: detailed })
+    // `hasMore` says the scan was capped, so the UI can show "แสดง N รายการแรก"
+    // instead of quietly presenting a truncated list as the whole picture.
+    return NextResponse.json({ success: true, days, limit, hasMore, summary, items: detailed })
   } catch (error) {
     console.error('[slip-report] Error:', error)
     return NextResponse.json(
