@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
+import { lastMessagesFor } from '@/lib/last-messages'
 
 // TTL สั้นมาก เพราะ conversation เปลี่ยนบ่อย (ข้อความใหม่เข้าตลอด)
 const CONV_TTL = 20   // วินาที
@@ -229,25 +230,6 @@ export async function GET(request: NextRequest) {
               platformUserId: true,
               createdAt: true,
               updatedAt: true,
-              messages: {
-                orderBy: { createdAt: 'desc' },
-                take: 1,
-                select: {
-                  id: true,
-                  userId: true,
-                  direction: true,
-                  messageType: true,
-                  content: true,
-                  mediaUrl: true,
-                  metadata: true,
-                  isRead: true,
-                  sentBy: true,
-                  replyToId: true,
-                  platform: true,
-                  createdAt: true,
-                  updatedAt: true,
-                },
-              },
               tagAssignments: {
                 select: {
                   tag: {
@@ -285,7 +267,15 @@ export async function GET(request: NextRequest) {
           }),
           prisma.lineUser.count({ where }),
         ])
-        return [rows, cnt] as const
+        // Latest message per user comes from its own indexed query — a nested
+        // `messages: { take: 1 }` here made Prisma fetch every message of every
+        // listed user (see @/lib/last-messages).
+        const last = await lastMessagesFor(rows.map((row) => row.id))
+        const withLastMessage = rows.map((row) => {
+          const message = last.get(row.id)
+          return { ...row, messages: message ? [message] : [] }
+        })
+        return [withLastMessage, cnt] as const
       },
       isDefaultList ? CONV_TTL : 0
     )
