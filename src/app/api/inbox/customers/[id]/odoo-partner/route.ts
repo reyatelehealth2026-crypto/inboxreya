@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { callPhpApi } from '@/lib/php-bridge'
-import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
+import {
+  classifyPartnerSyncFailure,
+  recordPartnerSyncIncident,
+} from '@/lib/partner-sync-incident'
 
 /**
  * GET /api/inbox/customers/[id]/odoo-partner
@@ -42,17 +45,32 @@ export async function GET(
     }
 
     // Step 1: Check odoo_line_users for existing link
-    const existingLink = await prisma.$queryRawUnsafe<Array<{
+    let existingLink: Array<{
       odoo_partner_id: number
       odoo_partner_name: string | null
       odoo_customer_code: string | null
-    }>>(
-      `SELECT odoo_partner_id, odoo_partner_name, odoo_customer_code 
-       FROM odoo_line_users 
-       WHERE line_user_id = ? 
-       LIMIT 1`,
-      user.lineUserId
-    )
+    }>
+    try {
+      existingLink = await prisma.$queryRawUnsafe(
+        `SELECT odoo_partner_id, odoo_partner_name, odoo_customer_code
+         FROM odoo_line_users
+         WHERE line_user_id = ?
+         LIMIT 1`,
+        user.lineUserId
+      )
+    } catch (linkLookupError) {
+      const failure = classifyPartnerSyncFailure(linkLookupError)
+      await recordPartnerSyncIncident({
+        stage: 'local_link_lookup',
+        reasonCode: 'local_link_lookup_failed',
+        severity: 'error',
+        retryable: failure.retryable,
+        sourceChecks: [
+          { source: 'line_users_cache', result: 'failed', reasonCode: failure.reasonCode },
+        ],
+      })
+      return NextResponse.json({ error: 'Partner link lookup failed' }, { status: 503 })
+    }
 
     if (existingLink.length > 0 && existingLink[0].odoo_partner_id) {
       return NextResponse.json({
@@ -68,6 +86,16 @@ export async function GET(
     // Step 2: API Fallback — call Odoo API with memberId
     const memberCode = user.memberId
     if (!memberCode) {
+      await recordPartnerSyncIncident({
+        stage: 'profile_lookup',
+        reasonCode: 'missing_member_id',
+        severity: 'warning',
+        retryable: false,
+        sourceChecks: [
+          { source: 'line_users_cache', result: 'not_found' },
+          { source: 'users_profile', result: 'missing', reasonCode: 'missing_member_id' },
+        ],
+      })
       return NextResponse.json({
         success: true,
         data: { partnerId: null, partnerName: null, customerCode: null },
@@ -107,6 +135,17 @@ export async function GET(
           )
         } catch (storeErr) {
           console.error('[odoo-partner] Error storing link:', storeErr)
+          const failure = classifyPartnerSyncFailure(storeErr)
+          await recordPartnerSyncIncident({
+            stage: 'link_write',
+            reasonCode: 'link_write_failed',
+            severity: 'error',
+            retryable: failure.retryable,
+            sourceChecks: [
+              { source: 'line_users_cache', result: 'not_found' },
+              { source: 'odoo_live_api', result: 'found' },
+            ],
+          })
           // Non-fatal — still return the data
         }
 
@@ -115,8 +154,40 @@ export async function GET(
           data: { partnerId, partnerName, customerCode },
         })
       }
+
+      const failure = classifyPartnerSyncFailure(odooResult.error ?? 'partner not found')
+      const reasonCode = odooResult.success
+        ? 'odoo_partner_not_found'
+        : failure.reasonCode
+      await recordPartnerSyncIncident({
+        stage: 'odoo_live_api',
+        reasonCode,
+        severity: reasonCode === 'odoo_partner_not_found' ? 'warning' : 'error',
+        retryable: failure.retryable,
+        httpStatus: failure.httpStatus,
+        sourceChecks: [
+          { source: 'line_users_cache', result: 'not_found' },
+          {
+            source: 'odoo_live_api',
+            result: reasonCode === 'odoo_partner_not_found' ? 'not_found' : 'failed',
+            reasonCode,
+          },
+        ],
+      })
     } catch (apiErr) {
       console.error('[odoo-partner] Odoo API error:', apiErr)
+      const failure = classifyPartnerSyncFailure(apiErr)
+      await recordPartnerSyncIncident({
+        stage: 'odoo_live_api',
+        reasonCode: failure.reasonCode,
+        severity: 'error',
+        retryable: failure.retryable,
+        httpStatus: failure.httpStatus,
+        sourceChecks: [
+          { source: 'line_users_cache', result: 'not_found' },
+          { source: 'odoo_live_api', result: 'failed', reasonCode: failure.reasonCode },
+        ],
+      })
     }
 
     return NextResponse.json({
@@ -125,6 +196,14 @@ export async function GET(
     })
   } catch (error) {
     console.error('[odoo-partner] Error:', error)
+    const failure = classifyPartnerSyncFailure(error)
+    await recordPartnerSyncIncident({
+      stage: 'unexpected',
+      reasonCode: failure.reasonCode,
+      severity: 'error',
+      retryable: failure.retryable,
+      httpStatus: failure.httpStatus,
+    })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }

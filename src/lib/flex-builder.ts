@@ -20,6 +20,21 @@ export type ExportGlobalConfig = {
   includeIntroBubble?: boolean;
   /** Optional hero image URL for the promo cover bubble */
   heroImageUrl?: string;
+  /**
+   * When a product carries no productUrl, fall back to a link built from its SKU on
+   * www.cnypharmacy.com. True for the CSV and CNY catalogue tabs, whose products come
+   * from there.
+   *
+   * The wholesale promo feed must pass false, for two independent reasons. That host
+   * is a different application from the wholesale shop (wholesale.re-ya.com), and the
+   * formula strips non-digits then pads to four, so '90' and 'A-90' both become '0090'
+   * and a product with no SKU becomes '/product/0000'.
+   *
+   * Neither failure is visible from the outside: both hosts answer 200 on
+   * /product/<sku>, so the wrong link renders, resolves and reads as correct all the
+   * way to the customer's screen.
+   */
+  allowRetailUrlFallback?: boolean;
 };
 
 export type ExportPreviewProduct = {
@@ -115,6 +130,67 @@ function getProductUrlFromSku(sku: string): string {
   return `https://www.cnypharmacy.com/product/${padded}`;
 }
 
+/**
+ * A product's link, or '' when there is none to give.
+ *
+ * The SKU fallback only makes sense for the catalogue tabs, whose products live on
+ * the host it points at. Resolving it here — once, at the entry points — keeps every
+ * card builder below out of the decision.
+ */
+function withResolvedUrl(
+  product: ExportPreviewProduct,
+  config: Required<ExportGlobalConfig>
+): ExportPreviewProduct {
+  const explicit = (product.productUrl || '').trim();
+  if (explicit) {
+    return product.productUrl === explicit ? product : { ...product, productUrl: explicit };
+  }
+  const hasSku = !!(product.sku || '').replace(/\D+/g, '');
+  return {
+    ...product,
+    productUrl: config.allowRetailUrlFallback && hasSku ? getProductUrlFromSku(product.sku) : '',
+  };
+}
+
+/**
+ * LINE rejects an action whose uri is empty, and sanitizeFlexActionUris() in
+ * broadcast-runtime rewrites anything that is not http(s) to null — so "no link"
+ * has to mean no action at all, never a button that quietly does nothing.
+ */
+function uriActionProps(uri: string, label?: string): object {
+  if (!uri) return {};
+  return { action: label ? { type: 'uri', label, uri } : { type: 'uri', uri } };
+}
+
+/**
+ * Offer dates arrive already formatted from the CSV catalogue, and as ISO 8601 from
+ * the wholesale promo feed. Printing the ISO form raw put
+ * "เริ่ม 2026-08-20T00:00:00.000Z" on the bubble, so parse real timestamps and pass
+ * anything that is already display text through untouched.
+ */
+function formatOfferDate(value: string | undefined): string {
+  const raw = (value || '').trim();
+  if (!raw || !/^\d{4}-\d{2}-\d{2}([T ]|$)/.test(raw)) return raw;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleDateString('th-TH', {
+    day: 'numeric',
+    month: 'short',
+    year: '2-digit',
+    timeZone: 'Asia/Bangkok',
+  });
+}
+
+/** Keeps a 2-col grid row aligned when a product has no photo. A blank block is
+ *  honest about a missing image; a logo would read as the product itself. */
+const GRID_IMAGE_PLACEHOLDER = {
+  type: 'box',
+  layout: 'vertical',
+  backgroundColor: '#F1F5F9',
+  height: '78px',
+  contents: [],
+};
+
 function getResolvedConfig(config: ExportGlobalConfig): Required<ExportGlobalConfig> {
   const defaults = TEMPLATE_DEFAULTS[config.template];
   return {
@@ -129,6 +205,7 @@ function getResolvedConfig(config: ExportGlobalConfig): Required<ExportGlobalCon
     includeIntroBubble:
       config.includeIntroBubble ?? config.template !== 'product_catalog',
     heroImageUrl: config.heroImageUrl || '',
+    allowRetailUrlFallback: config.allowRetailUrlFallback ?? true,
   };
 }
 
@@ -264,8 +341,9 @@ export function buildProductCard(
   config: ExportGlobalConfig
 ): object {
   const resolvedConfig = getResolvedConfig(config);
+  product = withResolvedUrl(product, resolvedConfig);
   const themeColor = resolvedConfig.accentColor || THEME_COLORS[resolvedConfig.theme];
-  const productUrl = product.productUrl || getProductUrlFromSku(product.sku);
+  const productUrl = product.productUrl || '';
   const salePrice = product.promotionPrice ?? product.basePrice;
   const originalPrice = product.basePrice;
   const hasDiscount = originalPrice > salePrice;
@@ -287,16 +365,18 @@ export function buildProductCard(
   return {
     type: 'bubble',
     size: 'micro',
-    hero: {
-      type: 'image',
-      url:
-        product.imageUrl ||
-        'https://manager.cnypharmacy.com/uploads/product_photo/placeholder.jpg',
-      size: 'full',
-      aspectMode: 'cover',
-      aspectRatio: '4:3',
-      action: { type: 'uri', uri: productUrl },
-    },
+    ...(product.imageUrl
+      ? {
+          hero: {
+            type: 'image',
+            url: product.imageUrl,
+            size: 'full',
+            aspectMode: 'cover',
+            aspectRatio: '4:3',
+            ...uriActionProps(productUrl),
+          },
+        }
+      : {}),
     body: {
       type: 'box',
       layout: 'vertical',
@@ -415,18 +495,22 @@ export function buildProductCard(
           : []),
       ],
     },
-    footer: {
-      type: 'box',
-      layout: 'vertical',
-      contents: [
-        {
-          type: 'button',
-          style: 'primary',
-          color: themeColor,
-          action: { type: 'uri', label: ctaLabel, uri: productUrl },
-        },
-      ],
-    },
+    ...(productUrl
+      ? {
+          footer: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              {
+                type: 'button',
+                style: 'primary',
+                color: themeColor,
+                ...uriActionProps(productUrl, ctaLabel),
+              },
+            ],
+          },
+        }
+      : {}),
   };
 }
 
@@ -480,7 +564,7 @@ const MAX_PRODUCTS_PER_GRID_BUBBLE = 6;
 
 /** Single mini-card rendered inside a 2-col grid row */
 function buildPromoMiniCard(product: ExportPreviewProduct, themeColor: string): object {
-  const productUrl = product.productUrl || getProductUrlFromSku(product.sku);
+  const productUrl = product.productUrl || '';
   const salePrice = product.promotionPrice ?? product.basePrice;
   const hasDiscount = product.basePrice > salePrice && product.basePrice > 0;
 
@@ -490,18 +574,18 @@ function buildPromoMiniCard(product: ExportPreviewProduct, themeColor: string): 
     flex: 1,
     spacing: 'none',
     paddingAll: '3px',
-    action: { type: 'uri', uri: productUrl },
+    ...uriActionProps(productUrl),
     contents: [
-      {
-        type: 'image',
-        url:
-          product.imageUrl ||
-          'https://manager.cnypharmacy.com/uploads/product_photo/placeholder.jpg',
-        size: 'full',
-        aspectMode: 'cover',
-        aspectRatio: '1:1',
-        action: { type: 'uri', uri: productUrl },
-      },
+      product.imageUrl
+        ? {
+            type: 'image',
+            url: product.imageUrl,
+            size: 'full',
+            aspectMode: 'cover',
+            aspectRatio: '1:1',
+            ...uriActionProps(productUrl),
+          }
+        : GRID_IMAGE_PLACEHOLDER,
       {
         type: 'text',
         text: product.name,
@@ -735,6 +819,7 @@ export function buildPromoCarouselContents(
   const resolvedConfig = getResolvedConfig(config);
   // Allow per-call heroImageUrl override (used in preview when URL changes live)
   if (options.heroImageUrl !== undefined) resolvedConfig.heroImageUrl = options.heroImageUrl;
+  products = products.map((product) => withResolvedUrl(product, resolvedConfig));
   const themeColor = resolvedConfig.accentColor || THEME_COLORS[resolvedConfig.theme];
   const { includeCover = true, productsPerBubble = 6, startBubbleNum = 1, totalProducts, bubbleSize = 'giga' } = options;
 
@@ -839,7 +924,7 @@ function buildDetailProductBubble(
   themeColor: string,
   size: BubbleSizeKey = 'kilo'
 ): object {
-  const productUrl = product.productUrl || getProductUrlFromSku(product.sku);
+  const productUrl = product.productUrl || '';
   const salePrice = product.promotionPrice ?? product.basePrice;
   const hasDiscount = product.basePrice > salePrice && product.basePrice > 0;
   const badgeText = product.ribbonText || getTemplateRibbonText(config.template);
@@ -850,16 +935,18 @@ function buildDetailProductBubble(
   return {
     type: 'bubble',
     size,
-    hero: {
-      type: 'image',
-      url:
-        product.imageUrl ||
-        'https://manager.cnypharmacy.com/uploads/product_photo/placeholder.jpg',
-      size: 'full',
-      aspectMode: 'cover',
-      aspectRatio: '4:3',
-      action: { type: 'uri', uri: productUrl },
-    },
+    ...(product.imageUrl
+      ? {
+          hero: {
+            type: 'image',
+            url: product.imageUrl,
+            size: 'full',
+            aspectMode: 'cover',
+            aspectRatio: '4:3',
+            ...uriActionProps(productUrl),
+          },
+        }
+      : {}),
     body: {
       type: 'box',
       layout: 'vertical',
@@ -964,8 +1051,8 @@ function buildDetailProductBubble(
               {
                 type: 'text',
                 text: [
-                  product.offerStart ? `เริ่ม ${product.offerStart}` : '',
-                  product.offerEnd ? `ถึง ${product.offerEnd}` : '',
+                  product.offerStart ? `เริ่ม ${formatOfferDate(product.offerStart)}` : '',
+                  product.offerEnd ? `ถึง ${formatOfferDate(product.offerEnd)}` : '',
                 ]
                   .filter(Boolean)
                   .join(' — '),
@@ -977,19 +1064,23 @@ function buildDetailProductBubble(
           : []),
       ],
     },
-    footer: {
-      type: 'box',
-      layout: 'vertical',
-      paddingAll: '12px',
-      contents: [
-        {
-          type: 'button',
-          style: 'primary',
-          color: themeColor,
-          action: { type: 'uri', label: ctaLabel, uri: productUrl },
-        },
-      ],
-    },
+    ...(productUrl
+      ? {
+          footer: {
+            type: 'box',
+            layout: 'vertical',
+            paddingAll: '12px',
+            contents: [
+              {
+                type: 'button',
+                style: 'primary',
+                color: themeColor,
+                ...uriActionProps(productUrl, ctaLabel),
+              },
+            ],
+          },
+        }
+      : {}),
   };
 }
 
@@ -1111,6 +1202,7 @@ export function buildDetailCarouselContents(
 ): object {
   const resolvedConfig = getResolvedConfig(config);
   if (options.heroImageUrl !== undefined) resolvedConfig.heroImageUrl = options.heroImageUrl;
+  products = products.map((product) => withResolvedUrl(product, resolvedConfig));
   const themeColor = resolvedConfig.accentColor || THEME_COLORS[resolvedConfig.theme];
   const { includeCover = true, totalProducts, bubbleSize = 'kilo' } = options;
 

@@ -31,11 +31,14 @@ import {
   Briefcase,
   Send,
   ShoppingBag,
-  Tag,
   Receipt,
   CalendarDays,
   Sparkles,
   Bot,
+  Activity,
+  ExternalLink,
+  Wallet,
+  Gift,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -64,6 +67,7 @@ interface SidebarProps {
 // build-arg ใน Dockerfile อีก) ไม่คุ้มกับลิงก์เมนูอันเดียว
 // ฝั่งหลังบ้านไม่ต้องฝัง เพราะวิ่งผ่าน /api/admin/wholesale-sso ที่อ่าน env ฝั่ง server
 const WHOLESALE_STOREFRONT_URL = 'https://wholesale.re-ya.com'
+const OPS_MONITOR_URL = 'https://ops.re-ya.com'
 
 // ปักหมุดไว้เหนือทุกกลุ่ม — ทีมเปิดดูทุกวันจนไม่ควรต้องไล่หาในกลุ่มที่พับอยู่
 const PINNED_MENU: MenuItem = {
@@ -92,6 +96,7 @@ const menuGroups: MenuGroup[] = [
       { title: 'งานของฉัน', icon: <Briefcase className="h-4 w-4" />, href: '/dashboard/my-work' },
       { title: 'Admin Dashboard', icon: <UserCog className="h-4 w-4" />, href: '/dashboard/admin' },
       { title: 'Customer Dashboard', icon: <Users className="h-4 w-4" />, href: '/dashboard/customers' },
+      { title: 'สถานะ OA', icon: <Activity className="h-4 w-4" />, href: '/oa-status' },
     ],
   },
   {
@@ -106,6 +111,8 @@ const menuGroups: MenuGroup[] = [
       { title: 'แคตตาล็อค & โปรโมชัน', icon: <ShoppingBag className="h-4 w-4" />, href: '/inbox/promotions' },
       { title: 'ปฏิทินการส่ง', icon: <CalendarDays className="h-4 w-4" />, href: '/inbox/calendar' },
       { title: 'Slip Center', icon: <Receipt className="h-4 w-4" />, href: '/dashboard/slip-center' },
+      { title: 'ติดตามยอดชำระ', icon: <Wallet className="h-4 w-4" />, href: '/inbox/payment-chase' },
+      { title: 'รางวัลแลกแต้ม', icon: <Gift className="h-4 w-4" />, href: '/inbox/rewards' },
     ],
   },
   {
@@ -149,6 +156,8 @@ export function Sidebar({ className }: SidebarProps) {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('sidebar-collapsed');
       if (saved === 'true') {
+        // Restore the user's persisted UI preference after client hydration.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setCollapsed(true);
       }
     }
@@ -306,6 +315,30 @@ export function Sidebar({ className }: SidebarProps) {
             </div>
           );
         })}
+
+        <a
+          href={OPS_MONITOR_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="มอนิเตอร์ระบบ"
+          aria-label="เปิดมอนิเตอร์ระบบในแท็บใหม่"
+          className={cn(
+            'mt-2 flex items-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 transition-colors hover:border-emerald-300 hover:bg-emerald-100',
+            collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2'
+          )}
+        >
+          <Activity className="h-4 w-4" />
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-sm font-semibold">มอนิเตอร์ระบบ</span>
+              <span className="flex items-center gap-2 text-[10px] font-medium text-emerald-700">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+                LIVE
+                <ExternalLink className="h-3 w-3" aria-hidden="true" />
+              </span>
+            </>
+          )}
+        </a>
       </nav>
     </aside>
   );
