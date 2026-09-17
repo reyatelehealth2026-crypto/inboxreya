@@ -4,13 +4,11 @@ import { auth } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { cacheQuery, cacheInvalidate, CACHE_TTL } from '@/lib/redis'
 import { lastMessagesFor } from '@/lib/last-messages'
+import { isInternalRequest } from '@/lib/api-utils'
 
 // TTL สั้นมาก เพราะ conversation เปลี่ยนบ่อย (ข้อความใหม่เข้าตลอด)
 const CONV_TTL = 20   // วินาที
 const ADMIN_TTL = CACHE_TTL.TAGS  // 5 นาที — admin list เปลี่ยนนาน
-
-const isInternalRequest = (request: NextRequest) =>
-  request.headers.get('x-internal-request') === 'true'
 
 const normalizePictureUrl = (value: string | null) => {
   if (!value) return null
