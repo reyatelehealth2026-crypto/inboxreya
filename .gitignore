@@ -13,3 +13,10 @@ yarn-error.log*
 
 # Local Netlify folder
 .netlify
+
+# line-broadcast plugin runtime artifacts
+.auth-cookie
+.tmp/
+.claude/plugins/marketplaces/line-broadcast-local/line-broadcast/.cache/
+.claude/plugins/marketplaces/line-broadcast-local/line-broadcast/.tmp/
+.claude/plugins/marketplaces/line-broadcast-local/line-broadcast/node_modules/

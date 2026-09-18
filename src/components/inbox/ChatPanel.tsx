@@ -18,6 +18,7 @@ import { TemplatePickerModal } from '@/components/inbox/TemplatePickerModal'
 import { SummaryModal } from '@/components/inbox/SummaryModal'
 import { OrderDraftModal } from '@/components/inbox/OrderDraftModal'
 import { ActionSuggestCard } from '@/components/inbox/ActionSuggestCard'
+import { SlipCheckTips } from '@/components/inbox/SlipCheckTips'
 import { useInboxStore } from '@/stores/inbox'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
@@ -233,12 +234,41 @@ function MessageBubble({
   const isOutgoing = message.direction === 'outgoing'
   const { setReplyToMessage, setLightboxImage } = useChatStore()
   const { toast } = useToast()
-  const [slipForwardState, setSlipForwardState] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle')
+  // A slip that was verified and matched to a BDO is recorded on the message
+  // itself, so "done" survives a refresh or another rep opening the same chat —
+  // before this it lived only in this component's state.
+  const savedSlip = (message.metadata as any)?.slip as
+    | {
+        verified?: boolean
+        bdoId?: number | null
+        bdoName?: string | null
+        amount?: number | null
+        ref?: string | null
+        points?: number
+        at?: string
+      }
+    | undefined
+  const isSlipDone = Boolean(savedSlip?.verified)
+
+  const [slipForwardState, setSlipForwardState] = useState<'idle' | 'loading' | 'sent' | 'error'>(
+    isSlipDone ? 'sent' : 'idle'
+  )
   const [showSlipModal, setShowSlipModal] = useState(false)
   const [slipAmount, setSlipAmount] = useState('')
   const [slipDate, setSlipDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [slipVerifying, setSlipVerifying] = useState(false)
   const [slipVerifyResult, setSlipVerifyResult] = useState<any>(null)
+  // slip-c can take the better part of a minute. Without a visible counter the
+  // rep cannot tell a slow check from a frozen one, and gives up on a request
+  // that was about to answer.
+  const [slipVerifySeconds, setSlipVerifySeconds] = useState(0)
+
+  useEffect(() => {
+    if (!slipVerifying) return
+    setSlipVerifySeconds(0)
+    const timer = setInterval(() => setSlipVerifySeconds((s) => s + 1), 1000)
+    return () => clearInterval(timer)
+  }, [slipVerifying])
 
   // Check if this message is a quote reply (has replyTo relation)
   const isQuoteReply = !!message.replyTo
@@ -461,6 +491,19 @@ function MessageBubble({
                 </button>
               )
             })()}
+            {isSlipDone && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-[11px] leading-tight text-green-800">
+                <span className="font-semibold">✓ แนบสลิปแล้ว</span>
+                {savedSlip?.bdoName && <span className="font-mono">{savedSlip.bdoName}</span>}
+                {typeof savedSlip?.amount === 'number' && savedSlip.amount > 0 && (
+                  <span>฿{savedSlip.amount.toLocaleString()}</span>
+                )}
+                {typeof savedSlip?.points === 'number' && savedSlip.points > 0 && (
+                  <span className="text-green-700">+{savedSlip.points} แต้ม</span>
+                )}
+              </div>
+            )}
+
             {!isOutgoing && (
               <div className="mt-1.5">
                 <Button
@@ -501,14 +544,30 @@ function MessageBubble({
                     </DialogHeader>
 
                     <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-600 mb-1">วันที่โอน</label>
-                          <input
-                            type="date"
-                            value={slipDate}
-                            onChange={(e) => setSlipDate(e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                          />
+                        <SlipCheckTips />
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-600 mb-1">จำนวนเงิน</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={slipAmount}
+                              onChange={(e) => setSlipAmount(e.target.value)}
+                              placeholder="ใส่ก่อนตรวจ = เร็วขึ้น"
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-600 mb-1">วันที่โอน</label>
+                            <input
+                              type="date"
+                              value={slipDate}
+                              onChange={(e) => setSlipDate(e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            />
+                          </div>
                         </div>
 
                         {/* Verification Result Panel */}
@@ -580,6 +639,18 @@ function MessageBubble({
                               <span className="text-sm font-semibold text-red-600">ตรวจสอบสลิปไม่ผ่าน</span>
                             </div>
                             <p className="text-xs text-red-500 mt-1">{slipVerifyResult.error || 'กรุณาตรวจสอบสลิปอีกครั้ง'}</p>
+                            {/* The bank only keeps recent transfers, so an older slip
+                                cannot be verified at all — the rep still has to be
+                                able to file it. */}
+                            {slipVerifyResult.status === 'slip-not-found' && (
+                              <p className="mt-2 text-xs text-red-500">
+                                ถ้าสลิปโอนมาหลายวันแล้ว ระบบธนาคารมักไม่มีข้อมูลให้ตรวจ — กรณีนี้ตรวจไม่ผ่านถือว่าปกติ
+                              </p>
+                            )}
+                            <p className="mt-2 rounded-lg bg-white/70 px-2 py-1.5 text-xs font-medium text-gray-700">
+                              กด &quot;บันทึกสลิป&quot; ต่อได้เลย ระบบจะบันทึกให้โดยไม่ต้องผ่านการตรวจ
+                              (แต่จะไม่ให้แต้มและไม่แจ้งลูกค้า)
+                            </p>
                           </div>
                         )}
                       </div>
@@ -611,7 +682,9 @@ function MessageBubble({
                               const res = await fetch('/api/inbox/verify-slip', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ imageUrl: imgUrl }),
+                                // Sending the amount lets slip-c skip OCR (~3x faster).
+                                // It falls back on its own when the amount does not match.
+                                body: JSON.stringify({ imageUrl: imgUrl, amount: parseFloat(slipAmount) || undefined }),
                               })
                               const result = await res.json()
                               setSlipVerifyResult(result)
@@ -639,7 +712,7 @@ function MessageBubble({
                           }}
                         >
                           {slipVerifying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-                          {slipVerifying ? 'กำลังตรวจ...' : 'ตรวจสอบสลิป'}
+                          {slipVerifying ? `กำลังตรวจ... ${slipVerifySeconds} วิ` : 'ตรวจสอบสลิป'}
                         </button>
 
                         <button
@@ -653,6 +726,11 @@ function MessageBubble({
                               const body: Record<string, any> = {
                                 messageId: message.id,
                                 userId: message.userId,
+                                // Tell the customer their slip cleared, the same
+                                // way the BDO screen does — same endpoint, same
+                                // flex, with the transfer details and the points.
+                                notifyCustomer: true,
+                                customerName: user?.displayName || null,
                               }
                               if (slipAmount) body.amount = parseFloat(slipAmount)
                               if (slipDate) body.transferDate = slipDate

@@ -1,0 +1,13 @@
+{
+  "name": "line-broadcast-local",
+  "owner": {
+    "name": "inboxreya team"
+  },
+  "plugins": [
+    {
+      "name": "line-broadcast",
+      "source": "./line-broadcast",
+      "description": "LINE Broadcast plugin — สร้าง Flex broadcast จาก CNY products และ submit ผ่าน inbox.re-ya.com"
+    }
+  ]
+}

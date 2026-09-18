@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import type { Session } from 'next-auth'
 import prisma from '@/lib/prisma'
 import { sendFlexMessage } from '@/lib/line-api'
 import { broadcastRealtimeEvent } from '@/lib/realtime'
@@ -240,9 +241,22 @@ function buildSlipVerifyFlex(params: {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Two ways in: a signed-in rep, or an internal caller holding CRON_SECRET.
+    // The slip pre-scan matches and notifies with no session at all, and that
+    // notification is the only way the customer hears their slip cleared.
+    const cronSecret = process.env.CRON_SECRET
+    const isInternalCall =
+      Boolean(cronSecret) && request.headers.get('authorization') === `Bearer ${cronSecret}`
+
+    // Null for an internal call: nobody pressed a button, so the outgoing flex
+    // is recorded with no admin against it.
+    let session: Session | null = null
+
+    if (!isInternalCall) {
+      session = await auth()
+      if (!session?.user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
     }
 
     const body = await request.json()
@@ -319,7 +333,7 @@ export async function POST(request: NextRequest) {
         messageType: 'flex',
         content: altText,
         metadata: JSON.stringify(metadata),
-        sentBy: session.user.id ?? null,
+        sentBy: session?.user?.id ?? null,
         isRead: true,
         platform: 'line',
         createdAt: now,

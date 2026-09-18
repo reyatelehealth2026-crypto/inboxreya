@@ -1,0 +1,9 @@
+{
+  "name": "line-broadcast-plugin-runtime",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Runtime deps for the line-broadcast Claude Code plugin (scripts/*.cjs and scripts/*.ts).",
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  }
+}

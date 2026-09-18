@@ -8,6 +8,10 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
 
+  // jimp is loaded at runtime by the slip-verify route to decode the slip QR.
+  // Keep it external so Next doesn't bundle its dynamic plugin imports.
+  serverExternalPackages: ['jimp'],
+
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',

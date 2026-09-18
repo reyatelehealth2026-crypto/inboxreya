@@ -33,7 +33,11 @@ export default function InboxLayoutClient({ children }: { children: ReactNode })
       <main 
         id="main-content"
         className={cn(
-          "flex-1 min-w-0 h-screen overflow-hidden transition-all duration-300",
+          // `overflow-hidden` here silently clipped every page taller than the
+          // viewport — the chat pins its own height and scrolls inside itself,
+          // but a plain long page (the slip report) had its bottom cut off with
+          // no way to reach it.
+          "flex-1 min-w-0 h-screen overflow-y-auto transition-all duration-300",
           sidebarCollapsed ? "ml-16" : "ml-64"
         )}
       >

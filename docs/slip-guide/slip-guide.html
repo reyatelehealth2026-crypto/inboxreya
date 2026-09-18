@@ -1,0 +1,714 @@
+<title>เส้นทางสลิปลูกค้า</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@500;600;700&family=Sarabun:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --paper:      #FBFAF8;
+    --surface:    #FFFFFF;
+    --surface-2:  #F4F5F2;
+    --ink:        #17201C;
+    --ink-2:      #5A6B63;
+    --line:       #E2E6E1;
+    --line-2:     #CDD4CE;
+    --auto:       #0E7C68;
+    --auto-bg:    #E6F4F0;
+    --manual:     #B25409;
+    --manual-bg:  #FBEEE1;
+    --alert:      #A32B2B;
+    --alert-bg:   #FAEBE9;
+    --shadow:     0 1px 2px rgba(23,32,28,.06), 0 8px 24px -16px rgba(23,32,28,.28);
+
+    --display: 'Bai Jamjuree', 'Segoe UI', system-ui, sans-serif;
+    --body:    'Sarabun', 'Segoe UI', system-ui, sans-serif;
+    --mono:    'IBM Plex Mono', ui-monospace, 'Cascadia Mono', monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:     #0F1512;
+      --surface:   #161D19;
+      --surface-2: #1C2521;
+      --ink:       #E7EEE9;
+      --ink-2:     #93A49B;
+      --line:      #26302B;
+      --line-2:    #35423B;
+      --auto:      #43C7AC;
+      --auto-bg:   #10302A;
+      --manual:    #E0964A;
+      --manual-bg: #33220F;
+      --alert:     #E4756D;
+      --alert-bg:  #331A18;
+      --shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:     #0F1512;
+    --surface:   #161D19;
+    --surface-2: #1C2521;
+    --ink:       #E7EEE9;
+    --ink-2:     #93A49B;
+    --line:      #26302B;
+    --line-2:    #35423B;
+    --auto:      #43C7AC;
+    --auto-bg:   #10302A;
+    --manual:    #E0964A;
+    --manual-bg: #33220F;
+    --alert:     #E4756D;
+    --alert-bg:  #331A18;
+    --shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.72;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 40px 24px 96px;
+    display: flex;
+    flex-direction: column;
+    gap: 52px;
+  }
+
+  .prose { max-width: 68ch; }
+
+  .masthead {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-bottom: 28px;
+    border-bottom: 2px solid var(--ink);
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+  }
+  h1 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(30px, 5.2vw, 46px);
+    line-height: 1.18;
+    letter-spacing: -.015em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .standfirst {
+    margin: 0;
+    max-width: 62ch;
+    font-size: 17.5px;
+    color: var(--ink-2);
+  }
+
+  section { display: flex; flex-direction: column; gap: 18px; }
+  h2 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: clamp(21px, 3vw, 27px);
+    line-height: 1.3;
+    letter-spacing: -.01em;
+    margin: 0;
+    text-wrap: balance;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  h2::before {
+    content: "";
+    flex: none;
+    width: 22px;
+    height: 3px;
+    background: var(--auto);
+    transform: translateY(-6px);
+  }
+  h3 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 17px;
+    margin: 0;
+    letter-spacing: -.005em;
+  }
+  p { margin: 0; }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 12px;
+    line-height: 1;
+    padding: 5px 9px;
+    border-radius: 3px;
+    white-space: nowrap;
+    letter-spacing: .01em;
+  }
+  .tag--auto   { background: var(--auto-bg);   color: var(--auto);   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--auto) 26%, transparent); }
+  .tag--manual { background: var(--manual-bg); color: var(--manual); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--manual) 30%, transparent); }
+  .tag--both   { background: var(--surface-2); color: var(--ink-2);  box-shadow: inset 0 0 0 1px var(--line-2); }
+
+  .board {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: var(--shadow);
+  }
+  .card--auto   { border-top: 3px solid var(--auto); }
+  .card--manual { border-top: 3px solid var(--manual); }
+  .card--alert  { border-top: 3px solid var(--alert); }
+  .card p { font-size: 15px; color: var(--ink-2); }
+  .card ul { margin: 0; padding-left: 1.1em; font-size: 15px; color: var(--ink-2); }
+  .card li { margin-bottom: 4px; }
+  .card li::marker { color: var(--line-2); }
+
+  figure {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .figure-frame {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 22px 18px;
+    overflow-x: auto;
+  }
+  .flow {
+    display: block;
+    width: 100%;
+    min-width: 720px;
+    max-width: 100%;
+    height: auto;
+    color: var(--ink-2);
+    font-family: var(--body);
+  }
+  figcaption {
+    font-size: 14.5px;
+    color: var(--ink-2);
+    max-width: 68ch;
+  }
+
+  .n-box   { fill: var(--surface); stroke: var(--line-2); stroke-width: 1.5; }
+  .n-decide{ fill: var(--surface-2); stroke: var(--ink-2); stroke-width: 1.5; stroke-dasharray: 5 3; }
+  .n-auto  { fill: var(--auto-bg); stroke: var(--auto); stroke-width: 1.5; }
+  .n-man   { fill: var(--manual-bg); stroke: var(--manual); stroke-width: 1.5; }
+  .n-exit  { fill: none; stroke: var(--line-2); stroke-width: 1.5; stroke-dasharray: 4 3; }
+
+  .t-main  { fill: var(--ink); font-size: 13.5px; font-weight: 600; }
+  .t-sub   { fill: var(--ink-2); font-size: 12px; }
+  .t-edge  { fill: var(--ink-2); font-size: 11.5px; }
+  .t-auto  { fill: var(--auto); font-size: 13.5px; font-weight: 600; }
+  .t-man   { fill: var(--manual); font-size: 13.5px; font-weight: 600; }
+  .edge    { stroke: var(--ink-2); stroke-width: 1.5; fill: none; }
+  .edge-x  { stroke: var(--line-2); stroke-width: 1.5; fill: none; stroke-dasharray: 4 3; }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    font-size: 13.5px;
+    color: var(--ink-2);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .swatch { width: 13px; height: 13px; border-radius: 2px; flex: none; }
+  .swatch--auto { background: var(--auto-bg); box-shadow: inset 0 0 0 1.5px var(--auto); }
+  .swatch--man  { background: var(--manual-bg); box-shadow: inset 0 0 0 1.5px var(--manual); }
+  .swatch--exit { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line-2); }
+
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 15px; }
+  thead th {
+    text-align: left;
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 12.5px;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    background: var(--surface-2);
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  tbody td { padding: 13px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  td.who { white-space: nowrap; }
+  td.note { color: var(--ink-2); font-size: 14.5px; }
+  td.msg { font-weight: 500; }
+
+  ol.steps {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: step;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  ol.steps li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 14px;
+    padding: 13px 16px 13px 0;
+    border-bottom: 1px solid var(--line);
+    align-items: baseline;
+  }
+  ol.steps li:last-child { border-bottom: none; }
+  ol.steps li::before {
+    content: counter(step);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--auto);
+    text-align: right;
+  }
+  ol.steps b { font-weight: 600; }
+  /* ลูกของ li มี 3 ตัว (::before, b, .hint) แต่กริดมี 2 คอลัมน์
+     ถ้าไม่ปักคอลัมน์ให้ .hint มันจะตกไปอยู่คอลัมน์ 34px แล้วข้อความแตกเป็นแนวตั้ง */
+  ol.steps .hint { grid-column: 2; display: block; font-size: 14.5px; color: var(--ink-2); }
+
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .fact { background: var(--surface); padding: 16px; display: flex; flex-direction: column; gap: 3px; }
+  .fact dt { font-size: 13px; color: var(--ink-2); order: 2; }
+  .fact dd {
+    margin: 0;
+    order: 1;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 21px;
+    font-weight: 500;
+    letter-spacing: -.02em;
+    color: var(--ink);
+  }
+
+  .callout {
+    background: var(--alert-bg);
+    border-left: 3px solid var(--alert);
+    border-radius: 0 5px 5px 0;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .callout h3 { color: var(--alert); }
+  .callout p { font-size: 15px; }
+  .acct { font-family: var(--mono); font-size: 14px; font-weight: 500; }
+
+  .stack { display: flex; flex-direction: column; gap: 0; }
+  .row {
+    display: grid;
+    grid-template-columns: minmax(120px, 200px) 1fr;
+    gap: 8px 20px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .row:last-child { border-bottom: none; }
+  .row dt { font-family: var(--display); font-weight: 600; font-size: 15px; }
+  .row dd { margin: 0; font-size: 15px; color: var(--ink-2); }
+  dl { margin: 0; }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 20px;
+    font-size: 13.5px;
+    color: var(--ink-2);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+  }
+  footer .mono { font-family: var(--mono); }
+
+  @media (max-width: 560px) {
+    .row { grid-template-columns: 1fr; }
+    .wrap { gap: 42px; padding: 28px 16px 72px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">
+      <span>คู่มือทีมเซล</span>
+      <span>CNY Healthcare</span>
+      <span>อัปเดต 23 ส.ค. 2569</span>
+    </div>
+    <h1>เส้นทางสลิปลูกค้า</h1>
+    <p class="standfirst">
+      ตั้งแต่ลูกค้าส่งรูปเข้าแชท จนสลิปไปนั่งอยู่ในบิลที่ถูกใบ — ตอนนี้ระบบเดินเองได้เกือบตลอดทาง
+      หน้านี้บอกว่ามันหยุดตรงไหน แล้วตรงนั้นเซลต้องทำอะไร
+    </p>
+  </header>
+
+  <section>
+    <h2>สรุปให้ก่อน 30 วินาที</h2>
+    <div class="board">
+
+      <div class="card card--auto">
+        <span class="tag tag--auto">ระบบทำเอง</span>
+        <p>ทุก 5 นาที ระบบกวาดรูปในแชทเองโดยไม่ต้องมีใครกด แล้วทำจนจบให้เลยถ้าเคสไม่กำกวม</p>
+        <ul>
+          <li>ดูว่ารูปนี้เป็นสลิปจริงไหม</li>
+          <li>ยืนยันรายการกับธนาคาร</li>
+          <li>ผูกเข้าบิล — เฉพาะตอนยอดตรงพอดีใบเดียว</li>
+          <li>ให้แต้ม แล้วส่ง LINE บอกลูกค้า</li>
+        </ul>
+      </div>
+
+      <div class="card card--manual">
+        <span class="tag tag--manual">เซลต้องทำ</span>
+        <p>ระบบจะไม่เดาเรื่องเงิน ถ้าตอบไม่ได้แน่ ๆ มันจะปล่อยค้างไว้ให้คนตัดสิน</p>
+        <ul>
+          <li>ลูกค้ามีบิลค้างยอดเท่ากันหลายใบ</li>
+          <li>ยอดที่โอนมาไม่ตรงกับบิลค้างใบไหนเลย</li>
+          <li>จ่ายมัดจำ จ่ายบางส่วน หรือโอนรวมหลายบิล</li>
+          <li>สลิปที่ตรวจไม่ผ่านครบ 3 ครั้ง</li>
+        </ul>
+      </div>
+
+      <div class="card card--alert">
+        <span class="tag tag--both">จุดที่ต้องมองด้วยตา</span>
+        <p>ระบบยืนยันได้แค่ว่ารายการโอนนี้มีจริงที่ธนาคาร ไม่ได้แปลว่าเงินเข้าบัญชีเรา</p>
+        <ul>
+          <li>ถ้าขึ้นเตือนบัญชีหรือชื่อผู้รับไม่ตรง อย่าเพิ่งกดบันทึก</li>
+          <li>เลือกบิลผิด เท่ากับเงินไปลงผิดใบ แก้ทีหลังยาก</li>
+        </ul>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>ภาพรวม: ระบบเดินเองถึงไหน แล้วส่งงานกลับมาตอนไหน</h2>
+
+    <figure>
+      <div class="figure-frame">
+        <svg class="flow" viewBox="0 0 1040 730" role="img"
+             aria-label="แผนผังเส้นทางสลิป: ระบบกวาดรูปทุก 5 นาที อ่าน QR ในเครื่อง ดึงบิลค้าง แล้วยืนยันกับธนาคาร ถ้ายอดตรงกับบิลค้างพอดีใบเดียว ระบบผูกบิล ให้แต้ม และแจ้งลูกค้าเอง แต่ถ้าตรงหลายใบหรือไม่ตรงเลย ระบบจะหยุดและส่งงานให้เซลตัดสิน">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 1 L 9 5 L 0 9 z" fill="currentColor"></path>
+            </marker>
+            <marker id="ah-x" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 1 L 9 5 L 0 9 z" fill="currentColor" opacity=".6"></path>
+            </marker>
+          </defs>
+
+          <rect class="n-box" x="180" y="24" width="400" height="52" rx="4"></rect>
+          <text class="t-main" x="380" y="56" text-anchor="middle">ลูกค้าส่งรูปสลิปเข้ามาในแชท</text>
+
+          <line class="edge" x1="380" y1="76" x2="380" y2="112" marker-end="url(#ah)"></line>
+
+          <rect class="n-box" x="180" y="116" width="400" height="52" rx="4"></rect>
+          <text class="t-main" x="380" y="138" text-anchor="middle">อ่าน QR ในรูป</text>
+          <text class="t-sub"  x="380" y="156" text-anchor="middle">ทำในเครื่องเรา ไม่เสียค่าตรวจ</text>
+
+          <line class="edge" x1="380" y1="168" x2="380" y2="204" marker-end="url(#ah)"></line>
+
+          <rect class="n-box" x="180" y="208" width="400" height="52" rx="4"></rect>
+          <text class="t-main" x="380" y="230" text-anchor="middle">ดึงบิลค้าง (BDO) ของลูกค้าคนนี้</text>
+          <text class="t-sub"  x="380" y="248" text-anchor="middle">จากระบบ Odoo</text>
+
+          <line class="edge" x1="380" y1="260" x2="380" y2="296" marker-end="url(#ah)"></line>
+
+          <rect class="n-box" x="180" y="300" width="400" height="52" rx="4"></rect>
+          <text class="t-main" x="380" y="322" text-anchor="middle">ยืนยันรายการกับธนาคาร</text>
+          <text class="t-sub"  x="380" y="340" text-anchor="middle">ลองยอดบิลค้างก่อน 3 ยอด แล้วค่อยให้อ่านยอดเอง</text>
+
+          <line class="edge" x1="380" y1="352" x2="380" y2="388" marker-end="url(#ah)"></line>
+
+          <rect class="n-decide" x="180" y="392" width="400" height="52" rx="4"></rect>
+          <text class="t-main" x="380" y="424" text-anchor="middle">ยอดที่ธนาคารยืนยัน ตรงกับบิลค้างกี่ใบ?</text>
+
+          <line class="edge-x" x1="580" y1="142" x2="676" y2="142" marker-end="url(#ah-x)"></line>
+          <text class="t-edge" x="628" y="134" text-anchor="middle">ไม่มี QR</text>
+          <rect class="n-exit" x="680" y="116" width="340" height="52" rx="4"></rect>
+          <text class="t-main" x="850" y="138" text-anchor="middle">ไม่ใช่สลิปโอนเงิน</text>
+          <text class="t-sub"  x="850" y="156" text-anchor="middle">ระบบเลิกดูรูปนี้ถาวร</text>
+
+          <line class="edge-x" x1="580" y1="234" x2="676" y2="234" marker-end="url(#ah-x)"></line>
+          <text class="t-edge" x="628" y="226" text-anchor="middle">ไม่มีบิลค้าง</text>
+          <rect class="n-exit" x="680" y="208" width="340" height="52" rx="4"></rect>
+          <text class="t-main" x="850" y="230" text-anchor="middle">ไม่มีอะไรให้จับคู่</text>
+          <text class="t-sub"  x="850" y="248" text-anchor="middle">หยุด ไม่ส่งตรวจ ไม่เสียค่าใช้จ่าย</text>
+
+          <line class="edge-x" x1="580" y1="326" x2="676" y2="326" marker-end="url(#ah-x)"></line>
+          <text class="t-edge" x="628" y="318" text-anchor="middle">ตรวจไม่ผ่าน</text>
+          <rect class="n-man" x="680" y="300" width="340" height="52" rx="4"></rect>
+          <text class="t-man" x="850" y="322" text-anchor="middle">ลองซ้ำอีก ครบ 3 ครั้งแล้วหยุด</text>
+          <text class="t-sub" x="850" y="340" text-anchor="middle">เหลือให้เซลตรวจเอง</text>
+
+          <polyline class="edge" points="380,444 380,470 90,470 90,662"></polyline>
+          <line class="edge" x1="90" y1="514" x2="176" y2="514" marker-end="url(#ah)"></line>
+          <line class="edge" x1="90" y1="594" x2="176" y2="594" marker-end="url(#ah)"></line>
+          <line class="edge" x1="90" y1="662" x2="176" y2="662" marker-end="url(#ah)"></line>
+          <text class="t-edge" x="133" y="506" text-anchor="middle">1 ใบ</text>
+          <text class="t-edge" x="133" y="586" text-anchor="middle">หลายใบ</text>
+          <text class="t-edge" x="133" y="654" text-anchor="middle">ไม่ตรงเลย</text>
+
+          <rect class="n-auto" x="180" y="486" width="400" height="56" rx="4"></rect>
+          <text class="t-auto" x="380" y="508" text-anchor="middle">ตรงพอดีใบเดียว — ระบบทำจนจบ</text>
+          <text class="t-sub"  x="380" y="527" text-anchor="middle">ผูกบิล · ให้แต้ม · ส่ง LINE แจ้งลูกค้า</text>
+
+          <rect class="n-man" x="180" y="566" width="400" height="56" rx="4"></rect>
+          <text class="t-man" x="380" y="588" text-anchor="middle">ตรงพอดีหลายใบ</text>
+          <text class="t-sub" x="380" y="607" text-anchor="middle">ระบบไม่เดา — เซลเลือกว่าใบไหน</text>
+
+          <rect class="n-man" x="180" y="636" width="400" height="56" rx="4"></rect>
+          <text class="t-man" x="380" y="658" text-anchor="middle">ไม่มีใบไหนยอดตรง</text>
+          <text class="t-sub" x="380" y="677" text-anchor="middle">เซลเลือกบิลเอง เช่น จ่ายมัดจำ จ่ายบางส่วน</text>
+        </svg>
+      </div>
+
+      <div class="legend">
+        <span><i class="swatch swatch--auto"></i>ระบบทำเองจนจบ</span>
+        <span><i class="swatch swatch--man"></i>ต้องให้เซลตัดสิน</span>
+        <span><i class="swatch swatch--exit"></i>จบเงียบ ๆ ไม่มีงานตามมา</span>
+      </div>
+
+      <figcaption>
+        ทั้งเส้นนี้เดินเองทุก 5 นาที ไม่ต้องมีใครกดอะไร จุดตัดสินอยู่ที่กล่องเส้นประ:
+        ระบบจะผูกบิลให้ก็ต่อเมื่อยอดที่ธนาคารยืนยัน ตรงกับบิลค้างของลูกค้าพอดีใบเดียวเท่านั้น
+        นอกนั้นมันหยุดแล้วรอคน
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>อันไหนออโต้ อันไหนไม่ออโต้</h2>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>ขั้นตอน</th>
+            <th>ใครทำ</th>
+            <th>หมายเหตุ</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>ดูว่ารูปที่ส่งมาเป็นสลิปจริงไหม</td>
+            <td class="who"><span class="tag tag--auto">ระบบ</span></td>
+            <td class="note">อ่าน QR ในเครื่องเรา รูปทั่วไปถูกคัดทิ้งฟรี</td>
+          </tr>
+          <tr>
+            <td>ยืนยันว่ารายการโอนนี้มีจริง</td>
+            <td class="who"><span class="tag tag--auto">ระบบ</span></td>
+            <td class="note">เช็คกับธนาคารผ่านบริการตรวจสลิป</td>
+          </tr>
+          <tr>
+            <td>อ่านยอดเงิน วันเวลา เลขอ้างอิง</td>
+            <td class="who"><span class="tag tag--auto">ระบบ</span></td>
+            <td class="note">เติมลงฟอร์มให้เอง เซลไม่ต้องพิมพ์</td>
+          </tr>
+          <tr>
+            <td>เช็คว่าเงินเข้าบัญชีบริษัทหรือเปล่า</td>
+            <td class="who"><span class="tag tag--both">ระบบเตือน · เซลตัดสิน</span></td>
+            <td class="note">ขึ้นข้อความเตือนถ้าบัญชีหรือชื่อผู้รับไม่ตรง แต่ไม่บล็อกให้</td>
+          </tr>
+          <tr>
+            <td>ผูกสลิปเข้าบิล เมื่อยอดตรงพอดีใบเดียว</td>
+            <td class="who"><span class="tag tag--auto">ระบบ</span></td>
+            <td class="note">ผูกให้เลยไม่ต้องรอใคร เทียบยอดถึงระดับสตางค์</td>
+          </tr>
+          <tr>
+            <td>ผูกสลิปเข้าบิล เมื่อยอดตรงหลายใบ</td>
+            <td class="who"><span class="tag tag--manual">เซล</span></td>
+            <td class="note">ลูกค้าสั่งของชุดเดิมซ้ำได้ ระบบเดาแล้วลงผิดใบ จึงไม่เดา</td>
+          </tr>
+          <tr>
+            <td>ผูกสลิปเข้าบิล เมื่อไม่มีใบไหนยอดตรง</td>
+            <td class="who"><span class="tag tag--manual">เซล</span></td>
+            <td class="note">มัดจำ จ่ายบางส่วน หรือโอนรวมหลายบิล</td>
+          </tr>
+          <tr>
+            <td>ให้แต้มลูกค้า</td>
+            <td class="who"><span class="tag tag--auto">ระบบ</span></td>
+            <td class="note">1,000 บาท = 1 แต้ม ปัดลง คิดจากยอดที่ธนาคารยืนยัน</td>
+          </tr>
+          <tr>
+            <td>แจ้งผลลูกค้าทาง LINE</td>
+            <td class="who"><span class="tag tag--both">ทั้งคู่</span></td>
+            <td class="note">เคสออโต้ส่งให้เอง เคสที่เซลบันทึกเองมีช่องติ๊กเลือกได้</td>
+          </tr>
+          <tr>
+            <td>สลิปที่ตรวจไม่ผ่าน</td>
+            <td class="who"><span class="tag tag--manual">เซล</span></td>
+            <td class="note">ระบบลองซ้ำให้ 3 ครั้งแล้วเลิก ที่เหลือเป็นงานคน</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>เมื่องานถูกส่งกลับมาให้เซล</h2>
+    <p class="prose">
+      กรณีที่ระบบไม่กล้าตัดสิน สลิปจะยังอยู่ในแชทเฉย ๆ ไม่มีแต้ม ไม่มีการแจ้งลูกค้า และบิลยังขึ้นว่าค้างจ่าย
+      เซลจัดการแบบนี้:
+    </p>
+    <ol class="steps">
+      <li><b>เปิดแชทลูกค้า แล้วกดปุ่มตรวจสลิป</b><span class="hint">เลือกรูปสลิปจากในแชทได้เลย ไม่ต้องดาวน์โหลดออกมา</span></li>
+      <li><b>กดตรวจสอบสลิป</b><span class="hint">ปกติผลขึ้นทันที เพราะระบบตรวจเก็บไว้ให้แล้วภายในชั่วโมงที่ผ่านมา</span></li>
+      <li><b>ดูยอดกับวันที่ที่เติมมาให้</b><span class="hint">ถ้ามีข้อความเตือนเรื่องผู้รับ หยุดอ่านให้จบก่อน อย่าเพิ่งบันทึก</span></li>
+      <li><b>เลือกบิล BDO ที่จะผูก</b><span class="hint">นี่คือขั้นที่ระบบทำแทนไม่ได้ ดูยอดค้างกับวันที่สั่งประกอบ</span></li>
+      <li><b>ติ๊กช่องแจ้งลูกค้า ถ้าต้องการให้ส่ง LINE แล้วกดบันทึก</b><span class="hint">แต้มจะถูกให้ตอนกดบันทึก ไม่ใช่ตอนกดตรวจ</span></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>ข้อความที่ขึ้นบ่อย แปลว่าอะไร</h2>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>ที่เห็นบนจอ</th>
+            <th>แปลว่า</th>
+            <th>ทำยังไงต่อ</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="msg">ไม่พบรายการนี้ในระบบธนาคาร</td>
+            <td class="note">สลิปเพิ่งโอน ธนาคารยังไม่ขึ้นระบบ</td>
+            <td class="note">รอ 1–3 นาที แล้วกดตรวจใหม่</td>
+          </tr>
+          <tr>
+            <td class="msg">อ่าน QR จากสลิปไม่สำเร็จ</td>
+            <td class="note">รูปเบลอ หรือครอบตัดจน QR ขาด</td>
+            <td class="note">ขอรูปเต็มใบที่ชัดกว่าเดิมจากลูกค้า</td>
+          </tr>
+          <tr>
+            <td class="msg">QR ในสลิปไม่ถูกต้อง</td>
+            <td class="note">อาจไม่ใช่สลิปโอนเงิน</td>
+            <td class="note">เช็คว่าลูกค้าส่งรูปถูกใบหรือเปล่า</td>
+          </tr>
+          <tr>
+            <td class="msg">ยอดเงินในสลิปตรวจกับธนาคารไม่ผ่าน</td>
+            <td class="note">ยอดที่กรอกไว้ไม่ตรงกับสลิป</td>
+            <td class="note">ล้างช่องยอดให้ว่าง แล้วตรวจใหม่ ให้ระบบอ่านยอดเอง</td>
+          </tr>
+          <tr>
+            <td class="msg">อ่านยอดเงินจากสลิปไม่ได้</td>
+            <td class="note">ภาพไม่ชัดพอให้อ่านตัวเลข</td>
+            <td class="note">ขอรูปใหม่ที่ความละเอียดสูงกว่าเดิม</td>
+          </tr>
+          <tr>
+            <td class="msg">ตรวจผ่าน แต่มีข้อสังเกต</td>
+            <td class="note">รายการมีจริง แต่ผู้รับไม่ใช่บัญชีบริษัท</td>
+            <td class="note">อ่านหัวข้อถัดไปก่อนตัดสินใจ</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <h3>เตือนเรื่องบัญชีผู้รับ อย่าผ่านตาไป</h3>
+      <p>
+        คำว่าตรวจผ่าน แปลว่ารายการโอนนี้มีอยู่จริงในระบบธนาคาร ไม่ได้แปลว่าเงินเข้าบัญชีเรา
+        ลูกค้าที่โอนผิดบัญชีจะได้สลิปที่ตรวจผ่านเหมือนกันทุกอย่าง
+      </p>
+      <p>
+        ระบบจะขึ้นเตือนให้เมื่อผู้รับไม่ตรงกับ
+        <span class="acct">068-3-84622-8</span> ชื่อบัญชี บริษัท ซี เอ็น วาย เฮลท์แคร์ จำกัด
+        เจอเตือนเมื่อไหร่ ให้เช็คกับบัญชีก่อน แล้วค่อยตัดสินใจว่าจะบันทึกไหม
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>หน้าสรุปสลิปที่ตรวจ — คิวงานของเซล</h2>
+    <p class="prose">
+      เมนูนี้ถูกย้ายขึ้นไปปักหมุดไว้บนสุดของแถบซ้าย กรอบเขียว หาไม่ยาก
+      มันตอบคำถามเดียวคือ สลิปที่ตรวจผ่านแล้ว ใบไหนยังไม่ได้ผูกบิล
+    </p>
+    <dl class="stack">
+      <div class="row">
+        <dt>ตัวเลขที่ต้องดู</dt>
+        <dd>แถบเตือนสีเหลืองใต้การ์ดสรุป บอกจำนวนสลิปที่ตรวจผ่านแล้วแต่ยังไม่ได้ผูกบิล นั่นคือคิวงานที่รอเซลอยู่</dd>
+      </div>
+      <div class="row">
+        <dt>กดชื่อบิล BDO</dt>
+        <dd>เปิดรายละเอียดบิลจาก Odoo สด ๆ ทางขวาจอ เห็นรายการสั่งของ ยอดค้าง มัดจำ ใบลดหนี้ และสลิปที่ผูกไว้แล้ว</dd>
+      </div>
+      <div class="row">
+        <dt>กดชื่อลูกค้า</dt>
+        <dd>เปิดหน้าลูกค้าในแท็บใหม่ ดูประวัติ บิลค้าง และแต้มได้ โดยไม่เสียหน้ารายงานที่เปิดค้างไว้</dd>
+      </div>
+      <div class="row">
+        <dt>ช่วงเวลา</dt>
+        <dd>สลับดูได้ วันนี้ / 7 วัน / 30 วัน ค่าเริ่มต้นคือ 7 วัน</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section>
+    <h2>ตัวเลขที่ควรรู้</h2>
+    <dl class="facts">
+      <div class="fact">
+        <dd>5 นาที</dd>
+        <dt>รอบที่ระบบกวาดสลิปใหม่</dt>
+      </div>
+      <div class="fact">
+        <dd>3 ชม.</dd>
+        <dt>ย้อนหลังที่กวาดในแต่ละรอบ</dt>
+      </div>
+      <div class="fact">
+        <dd>3 ครั้ง</dd>
+        <dt>จำนวนครั้งที่ลองซ้ำก่อนเลิก</dt>
+      </div>
+      <div class="fact">
+        <dd>1 ชม.</dd>
+        <dt>ผลตรวจถูกเก็บไว้ กดซ้ำได้ทันที</dt>
+      </div>
+      <div class="fact">
+        <dd>1,000 ฿</dd>
+        <dt>ต่อ 1 แต้ม ปัดลง</dt>
+      </div>
+    </dl>
+  </section>
+
+  <footer>
+    <span>คู่มือทีมเซล · การตรวจสลิปและการจับคู่บิล</span>
+    <span class="mono">23.08.2569</span>
+  </footer>
+
+</div>

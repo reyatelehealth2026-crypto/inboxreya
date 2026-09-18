@@ -3,5 +3,16 @@
     "allow": [
       "Bash(ls:*)"
     ]
+  },
+  "extraKnownMarketplaces": {
+    "line-broadcast-local": {
+      "source": {
+        "source": "directory",
+        "path": "./.claude/plugins/marketplaces/line-broadcast-local"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "line-broadcast@line-broadcast-local": true
   }
 }

@@ -1,0 +1,16 @@
+{
+  "name": "line-broadcast",
+  "version": "0.1.0",
+  "description": "สร้าง LINE Broadcast จาก Claude Code chat — fetch CNY products, ถาม title+CTA, สร้าง Flex (template substitution), preview, POST prod /api/inbox/broadcasts → cron ส่งจริง",
+  "author": {
+    "name": "inboxreya team"
+  },
+  "license": "Internal",
+  "keywords": [
+    "line",
+    "broadcast",
+    "flex",
+    "cnypharmacy",
+    "inboxreya"
+  ]
+}
