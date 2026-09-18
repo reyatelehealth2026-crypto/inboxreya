@@ -1,8 +1,8 @@
 "use client"
 
-import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery, keepPreviousData } from '@tanstack/react-query'
 import type { Conversation, PaginatedResponse, CustomerProfile, AdminUser } from '@/types'
-import { useInboxStore } from '@/stores/inbox'
+import { useInboxStore, CONVERSATION_PAGE_SIZE } from '@/stores/inbox'
 import { queryKeys } from '@/lib/query-keys'
 
 async function fetchConversations(params: {
@@ -49,11 +49,32 @@ async function fetchConversations(params: {
   return response.json()
 }
 
-export function useConversations() {
+/**
+ * Current page size for the active filters, plus the "load more" action.
+ * One growing `limit` rather than an infinite query: the 15 s poll stays a
+ * single request however far a rep has scrolled, and the default list keeps
+ * hitting the shared Redis entry for its limit.
+ */
+export function useConversationPaging() {
   const filters = useInboxStore((state) => state.filters)
+  const paging = useInboxStore((state) => state.conversationPaging)
+  const loadMoreConversations = useInboxStore((state) => state.loadMoreConversations)
+
+  const filtersKey = JSON.stringify(filters)
+  const limit = paging.filtersKey === filtersKey ? paging.limit : CONVERSATION_PAGE_SIZE
+
+  return { limit, loadMore: () => loadMoreConversations(filtersKey) }
+}
+
+export function useConversations(options?: { limit?: number }) {
+  const filters = useInboxStore((state) => state.filters)
+  const paging = useConversationPaging()
+  const limit = options?.limit ?? paging.limit
 
   return useQuery({
-    queryKey: queryKeys.conversations(filters),
+    queryKey: [...queryKeys.conversations(filters), limit] as const,
+    // Keep the rows on screen while a bigger page loads instead of blanking the list.
+    placeholderData: keepPreviousData,
     queryFn: () => fetchConversations({
       status: filters.status,
       tagId: filters.tagId,
@@ -65,10 +86,13 @@ export function useConversations() {
       startDate: filters.startDate,
       endDate: filters.endDate,
       platform: filters.platform,
-      limit: 1000, // No practical limit - show all conversations
+      limit,
     }),
     staleTime: 10 * 1000, // 10 seconds
-    refetchInterval: 15 * 1000, // 15s polling for near real-time
+    // 15s polling for near real-time — but not while a search term is active:
+    // 72% of search requests were the same term re-polled or retried. Pusher
+    // still invalidates the list when a message arrives.
+    refetchInterval: filters.search ? false : 15 * 1000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     retry: (failureCount, error) => {

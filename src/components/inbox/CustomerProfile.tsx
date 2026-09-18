@@ -8,6 +8,7 @@ import {
   Calendar,
   Star,
   Plus,
+  Minus,
   X,
   ChevronDown,
   ChevronUp,
@@ -668,6 +669,10 @@ export function CustomerProfile() {
   const [orderAmount, setOrderAmount] = useState('')
   const [pointsReason, setPointsReason] = useState('')
   const [isAddingPoints, setIsAddingPoints] = useState(false)
+  const [isDeductPointsOpen, setIsDeductPointsOpen] = useState(false)
+  const [deductAmount, setDeductAmount] = useState('')
+  const [deductReason, setDeductReason] = useState('')
+  const [isDeductingPoints, setIsDeductingPoints] = useState(false)
   const [isManageAssigneesOpen, setIsManageAssigneesOpen] = useState(false)
   const [selectedAdminIds, setSelectedAdminIds] = useState<string[]>([])
 
@@ -700,6 +705,71 @@ export function CustomerProfile() {
   const { data: admins } = useAdmins()
   const assignConversation = useAssignConversation()
   const unassignConversation = useUnassignConversation()
+
+  /**
+   * Take points back off a customer — a correction the shop is making, not
+   * something the customer did.
+   *
+   * It posts to /points/adjust rather than /points/add on purpose. That other
+   * route exists to reward a purchase and pushes a Flex card to the customer's
+   * LINE on the way through; a correction the customer never asked about has no
+   * business arriving on their phone. /points/adjust only moves the balance and
+   * writes the reason into the history the staff read.
+   *
+   * The reason is required here even though the API treats it as optional: a
+   * deduction nobody can explain later is worse than one that never happened.
+   */
+  const handleDeductPoints = async () => {
+    const amount = Number(deductAmount)
+    if (!user || !deductAmount || amount <= 0) return
+
+    if (!deductReason.trim()) {
+      toast({
+        title: 'กรุณาระบุเหตุผล',
+        description: 'เหตุผลจะถูกบันทึกไว้ให้ทีมงานตรวจสอบย้อนหลังได้',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsDeductingPoints(true)
+    try {
+      const response = await fetch(`/api/customers/${user.id}/points/adjust`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          points: -amount,
+          reason: deductReason.trim(),
+          type: 'redeem',
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Failed to deduct points')
+      }
+
+      toast({
+        title: 'หักแต้มเรียบร้อย',
+        description: `หัก ${amount.toLocaleString()} point — ลูกค้าไม่ได้รับการแจ้งเตือน`,
+      })
+
+      setIsDeductPointsOpen(false)
+      setDeductAmount('')
+      setDeductReason('')
+
+      queryClient.invalidateQueries({ queryKey: queryKeys.customerProfile(selectedConversationId) })
+    } catch (error) {
+      console.error('Error deducting points:', error)
+      toast({
+        title: 'เกิดข้อผิดพลาด',
+        description: error instanceof Error ? error.message : 'ไม่สามารถหักแต้มได้',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsDeductingPoints(false)
+    }
+  }
 
   const handleAddPoints = async () => {
     const amount = Number(orderAmount)
@@ -923,14 +993,27 @@ export function CustomerProfile() {
                         </div>
                       </div>
                     </div>
-                    <button
-                      onClick={() => setIsAddPointsOpen(true)}
-                      className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors duration-200 cursor-pointer"
-                      title="เพิ่มแต้ม"
-                      aria-label="เพิ่มแต้มให้ลูกค้า"
-                    >
-                      <Plus className="h-4 w-4 text-white" />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setIsAddPointsOpen(true)}
+                        className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors duration-200 cursor-pointer"
+                        title="เพิ่มแต้ม"
+                        aria-label="เพิ่มแต้มให้ลูกค้า"
+                      >
+                        <Plus className="h-4 w-4 text-white" />
+                      </button>
+                      {/* Deducting is the rarer, harder-to-undo direction, so it is
+                          not the button a thumb lands on by accident. */}
+                      <button
+                        onClick={() => setIsDeductPointsOpen(true)}
+                        disabled={!user.points}
+                        className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/25 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors duration-200 cursor-pointer"
+                        title="หักแต้ม (ลูกค้าไม่เห็น)"
+                        aria-label="หักแต้มของลูกค้า ไม่แจ้งเตือนลูกค้า"
+                      >
+                        <Minus className="h-4 w-4 text-white" />
+                      </button>
+                    </div>
                   </div>
                   <div className="flex items-center justify-between gap-2 text-white/90 rounded-md bg-white/10 px-3 py-2">
                     <div className="text-center flex-1">
@@ -1264,6 +1347,90 @@ export function CustomerProfile() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Deduct Points Dialog — internal correction, never shown to the customer */}
+      <Dialog open={isDeductPointsOpen} onOpenChange={setIsDeductPointsOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>หักแต้มลูกค้า</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 leading-relaxed">
+                รายการนี้เห็นเฉพาะเซลและแอดมิน <strong>ลูกค้าจะไม่ได้รับการแจ้งเตือน</strong>
+                และไม่เห็นหมายเหตุที่บันทึกไว้
+              </p>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-2 block">จำนวนแต้มที่หัก</label>
+              <Input
+                type="number"
+                placeholder="เช่น 5"
+                value={deductAmount}
+                onChange={(e) => setDeductAmount(e.target.value)}
+                min="1"
+                step="1"
+                className="text-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1.5">
+                แต้มคงเหลือปัจจุบัน {user?.points?.toLocaleString() ?? 0} point
+              </p>
+            </div>
+
+            {deductAmount && Number(deductAmount) > 0 && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 flex items-center justify-between">
+                <span className="text-sm text-gray-600">คงเหลือหลังหัก</span>
+                <span className="text-xl font-bold text-red-600">
+                  {((user?.points ?? 0) - Number(deductAmount)).toLocaleString()} point
+                </span>
+              </div>
+            )}
+
+            {/* Balances are allowed to go negative rather than silently clamped:
+                the number staff see should be the number the shop actually owes. */}
+            {Number(deductAmount) > (user?.points ?? 0) && (
+              <p className="text-xs text-red-600 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                หักเกินแต้มที่มีอยู่ ยอดคงเหลือจะติดลบ
+              </p>
+            )}
+
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                เหตุผล <span className="text-red-500">*</span>
+              </label>
+              <Textarea
+                placeholder="เช่น ยกเลิกออเดอร์ #12345 / คืนสินค้า / ปรับแก้ที่บันทึกผิด"
+                value={deductReason}
+                onChange={(e) => setDeductReason(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeductPointsOpen(false)
+                setDeductAmount('')
+                setDeductReason('')
+              }}
+              disabled={isDeductingPoints}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={handleDeductPoints}
+              disabled={isDeductingPoints || !deductAmount || Number(deductAmount) <= 0 || !deductReason.trim()}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {isDeductingPoints ? 'กำลังหักแต้ม...' : 'ยืนยันหักแต้ม'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add Points Dialog */}
       <Dialog open={isAddPointsOpen} onOpenChange={setIsAddPointsOpen}>

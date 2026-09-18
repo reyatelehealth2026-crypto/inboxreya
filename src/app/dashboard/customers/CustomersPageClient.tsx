@@ -15,7 +15,9 @@ import { MessageSquare, User } from "lucide-react"
 import { useAssignees } from "@/hooks/use-assignees"
 
 export default function CustomersPageClient() {
-  const { data, isLoading, error } = useConversations()
+  // This page searches/filters in the browser, so it still needs the whole
+  // list; the inbox pages it (cheap now that last messages are one indexed query).
+  const { data, isLoading, error } = useConversations({ limit: 1000 })
   const { data: tags } = useTags()
   const { data: assignees } = useAssignees()
   const router = useRouter()
