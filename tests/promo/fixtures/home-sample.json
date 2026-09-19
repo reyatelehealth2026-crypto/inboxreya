@@ -1,0 +1,258 @@
+{
+ "news": [
+  {
+   "id": 12,
+   "title": "รวมโปรโมชั่น",
+   "intro": "รวมโปรโมชั่น",
+   "photo_path": "uploads/news/สิงหาพาคุ้ม.png",
+   "content": "<see news-12.html>"
+  }
+ ],
+ "product_brand": [
+  {
+   "id": 1,
+   "brand": "เอนชัวร์",
+   "brand_en": "ENSURE",
+   "logo_path": "uploads/brand/20190828165829.jpg",
+   "enable": 1
+  },
+  {
+   "id": 3,
+   "brand": "เทพไทย",
+   "brand_en": "TEPTHAI",
+   "logo_path": "uploads/brand/20190920135419.jpg",
+   "enable": 1
+  },
+  {
+   "id": 4,
+   "brand": "ACNE-AID",
+   "brand_en": "ACNE-AID",
+   "logo_path": "uploads/brand/20190826170059.jpg",
+   "enable": 1
+  },
+  {
+   "id": 6,
+   "brand": "AMSEL",
+   "brand_en": "AMSEL",
+   "logo_path": "uploads/brand/amsel.png",
+   "enable": 1
+  },
+  {
+   "id": 7,
+   "brand": "BANNER",
+   "brand_en": "BANNER",
+   "logo_path": "uploads/brand/banner.png",
+   "enable": 1
+  },
+  {
+   "id": 8,
+   "brand": "BEROCCA",
+   "brand_en": "BEROCCA",
+   "logo_path": "uploads/brand/BEROCCA.png",
+   "enable": 1
+  },
+  {
+   "id": 9,
+   "brand": "BLACKMORES",
+   "brand_en": "BLACKMORES",
+   "logo_path": "uploads/brand/blackmores.png",
+   "enable": 1
+  },
+  {
+   "id": 10,
+   "brand": "BOONE",
+   "brand_en": "BOONE",
+   "logo_path": "uploads/brand/BOONE.png",
+   "enable": 1
+  },
+  {
+   "id": 11,
+   "brand": "BRAND'S",
+   "brand_en": "BRAND'S",
+   "logo_path": "uploads/brand/BRAND.png",
+   "enable": 1
+  },
+  {
+   "id": 12,
+   "brand": "CALTRATE",
+   "brand_en": "CALTRATE",
+   "logo_path": "uploads/brand/CALTRATE.png",
+   "enable": 1
+  },
+  {
+   "id": 13,
+   "brand": "CENTRUM",
+   "brand_en": "CENTRUM",
+   "logo_path": "uploads/brand/CENTRUM.png",
+   "enable": 1
+  },
+  {
+   "id": 14,
+   "brand": "CETAPHIL",
+   "brand_en": "CETAPHIL",
+   "logo_path": "uploads/brand/CETAPHIL.png",
+   "enable": 1
+  },
+  {
+   "id": 18,
+   "brand": "DUREX",
+   "brand_en": "DUREX",
+   "logo_path": "uploads/brand/DUREX.png",
+   "enable": 1
+  },
+  {
+   "id": 19,
+   "brand": "EUCERIN",
+   "brand_en": "EUCERIN",
+   "logo_path": "uploads/brand/EUCERIN.png",
+   "enable": 1
+  },
+  {
+   "id": 20,
+   "brand": "FITNE",
+   "brand_en": "FITNE",
+   "logo_path": "uploads/brand/FITNE'.png",
+   "enable": 1
+  },
+  {
+   "id": 21,
+   "brand": "FUTURO",
+   "brand_en": "FUTURO",
+   "logo_path": "uploads/brand/LOGO .png",
+   "enable": 1
+  },
+  {
+   "id": 23,
+   "brand": "GLUCERNA",
+   "brand_en": "GLUCERNA",
+   "logo_path": "uploads/brand/GLUCERNA.png",
+   "enable": 1
+  },
+  {
+   "id": 26,
+   "brand": "HERBAL ONE",
+   "brand_en": "HERBAL ONE",
+   "logo_path": "uploads/brand/HER.png",
+   "enable": 1
+  },
+  {
+   "id": 27,
+   "brand": "HIRUDOID",
+   "brand_en": "HIRUDOID",
+   "logo_path": "uploads/brand/HIRUDOID.png",
+   "enable": 1
+  },
+  {
+   "id": 31,
+   "brand": "MEGA WECARE",
+   "brand_en": "MEGA WECARE",
+   "logo_path": "uploads/brand/MEGA WECARE.png",
+   "enable": 1
+  },
+  {
+   "id": 35,
+   "brand": "NEOCA",
+   "brand_en": "NEOCA",
+   "logo_path": "uploads/brand/NEOCA.png",
+   "enable": 1
+  },
+  {
+   "id": 39,
+   "brand": "OXE CURE",
+   "brand_en": "OXE CURE",
+   "logo_path": "uploads/brand/OXECURE.png",
+   "enable": 1
+  },
+  {
+   "id": 40,
+   "brand": "PACIFIC HEALTHCARE",
+   "brand_en": "PACIFIC HEALTHCARE",
+   "logo_path": "uploads/brand/PAC.png",
+   "enable": 1
+  },
+  {
+   "id": 41,
+   "brand": "PHYSIOGEL",
+   "brand_en": "PHYSIOGEL",
+   "logo_path": "uploads/brand/PHY.png",
+   "enable": 1
+  },
+  {
+   "id": 43,
+   "brand": "POLIDENT",
+   "brand_en": "POLIDENT",
+   "logo_path": "uploads/brand/POLI.png",
+   "enable": 1
+  },
+  {
+   "id": 44,
+   "brand": "PREME",
+   "brand_en": "PREME",
+   "logo_path": "uploads/brand/preme.png",
+   "enable": 1
+  },
+  {
+   "id": 45,
+   "brand": "PROPOLIZ",
+   "brand_en": "PROPOLIZ",
+   "logo_path": "uploads/brand/PROPOLIZ.png",
+   "enable": 1
+  },
+  {
+   "id": 46,
+   "brand": "PROVAMED",
+   "brand_en": "PROVAMED",
+   "logo_path": "uploads/brand/PRO.png",
+   "enable": 1
+  },
+  {
+   "id": 47,
+   "brand": "PURICAS",
+   "brand_en": "PURICAS",
+   "logo_path": "uploads/brand/puricas.png",
+   "enable": 1
+  },
+  {
+   "id": 49,
+   "brand": "SCAGEL",
+   "brand_en": "SCAGEL",
+   "logo_path": "uploads/brand/scargel.png",
+   "enable": 1
+  },
+  {
+   "id": 54,
+   "brand": "SMOOTH E",
+   "brand_en": "SMOOTH E",
+   "logo_path": "uploads/brand/smoothe.png",
+   "enable": 1
+  },
+  {
+   "id": 58,
+   "brand": "TUBIGRIP",
+   "brand_en": "TUBIGRIP",
+   "logo_path": "uploads/brand/tubigrip.png",
+   "enable": 1
+  },
+  {
+   "id": 60,
+   "brand": "VISTRA",
+   "brand_en": "VISTRA",
+   "logo_path": "uploads/brand/vistra.png",
+   "enable": 1
+  },
+  {
+   "id": 61,
+   "brand": "VITARA",
+   "brand_en": "VITARA",
+   "logo_path": "uploads/brand/LOGO  (1).png",
+   "enable": 1
+  },
+  {
+   "id": 63,
+   "brand": "บางกอกแล็บ",
+   "brand_en": "BANGKOK LAB",
+   "logo_path": "uploads/brand/bangkok-lab-logo.png",
+   "enable": 1
+  }
+ ]
+}

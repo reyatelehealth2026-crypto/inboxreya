@@ -81,6 +81,7 @@ const menuGroups: MenuGroup[] = [
       { title: 'Broadcast', icon: <Send className="h-4 w-4" />, href: '/inbox/broadcasts' },
       { title: 'AI Agent', icon: <Bot className="h-4 w-4" />, href: '/ai-agent' },
       { title: 'แคตตาล็อค & โปรโมชัน', icon: <ShoppingBag className="h-4 w-4" />, href: '/inbox/promotions' },
+      { title: 'หน้ารวมโปร', icon: <ShoppingBag className="h-4 w-4" />, href: '/inbox/promo-page' },
       { title: 'ปฏิทินการส่ง', icon: <CalendarDays className="h-4 w-4" />, href: '/inbox/calendar' },
       { title: 'Slip Center', icon: <Receipt className="h-4 w-4" />, href: '/dashboard/slip-center' },
       { title: 'รางวัลแลกแต้ม', icon: <Gift className="h-4 w-4" />, href: '/inbox/rewards' },

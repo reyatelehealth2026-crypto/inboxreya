@@ -10,6 +10,9 @@ const publicRoutes = [
   '/api/auth',
   '/api/webhook',
   '/api/health',
+  '/r/',
+  '/promo',
+  '/api/imagemap/',
 ]
 
 // Define API routes that require authentication

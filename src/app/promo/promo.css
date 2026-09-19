@@ -1,0 +1,126 @@
+/* /promo — Archivo/Anuphan, light rules, one red accent, soft cards. */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Anuphan:wght@400;500;600;700&display=swap');
+
+.ph {
+  --bg: #f5f4f3;
+  --ink: #201e1d;
+  --accent: #ec3013;
+  --accent-700: #ae1800;
+  --n400: #bab6b6;
+  --n600: #7d7979;
+  --n700: #605d5d;
+  --line: #e6e3e1;
+  --rule: 1px solid var(--line);
+  --display: 'Archivo', 'Anuphan', system-ui, sans-serif;
+  --text: 'Anuphan', 'Archivo', system-ui, sans-serif;
+  --mono: 'Archivo', monospace;
+  --radius: 10px;
+  --shadow: 0 1px 3px rgba(45, 43, 43, 0.12);
+  --cw: 148px;
+  --gap: 10px;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.ph a { color: inherit; text-decoration: none; }
+.ph :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ph img { display: block; }
+.ph-shell { max-width: 720px; margin: 0 auto; background: var(--bg); }
+@media (min-width: 720px) {
+  .ph { --cw: 188px; --gap: 14px; }
+  .ph-shell { border-left: var(--rule); border-right: var(--rule); }
+}
+.scr { scrollbar-width: none; }
+.scr::-webkit-scrollbar { width: 0; height: 0; }
+
+/* Sticky header: mark + search, then the section tabs. */
+.ph-top { position: sticky; top: 0; z-index: 6; background: var(--bg); border-bottom: var(--rule); }
+.ph-top-row { display: flex; align-items: center; gap: var(--gap); padding: 10px 12px; }
+.ph-mark {
+  flex: none; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff; font: 800 12px var(--display); border-radius: 8px;
+}
+.ph-search { flex: 1; display: flex; align-items: center; gap: 8px; border: var(--rule); border-radius: 8px; background: #fff; padding: 7px 10px; color: var(--n600); }
+.ph-search input { flex: 1; min-width: 0; border: 0; background: transparent; font: 500 13px var(--text); color: var(--ink); outline: none; }
+.ph-tabs { display: flex; gap: 4px; overflow-x: auto; padding: 0 8px 8px; }
+.ph-tabs a { flex: none; padding: 6px 12px; font: 600 12px var(--text); border-radius: 999px; background: #fff; border: var(--rule); white-space: nowrap; }
+
+/* Hero slider. */
+.ph-hero { position: relative; overflow: hidden; background: #fff; }
+.ph-hero-track { display: flex; transition: transform 0.45s ease; }
+.ph-hero-slide { flex: none; width: 100%; }
+.ph-hero-slide img { width: 100%; height: auto; }
+.ph-hero-stmt { background: var(--accent); color: #fff; padding: 22px 16px; min-height: 140px; box-sizing: border-box; }
+.ph-kicker { font: 600 10px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; }
+.ph-hero-stmt .ph-kicker { opacity: 0.9; }
+.ph-hero-title { font: 800 30px/1.02 var(--display); letter-spacing: -0.02em; margin-top: 8px; white-space: pre-line; }
+.ph-hero-note { font: 500 12px var(--text); margin-top: 10px; }
+.ph-hero-label { position: absolute; top: 8px; right: 8px; background: rgba(32, 30, 29, 0.75); color: #fff; font: 600 10px var(--mono); padding: 3px 7px; border-radius: 999px; }
+/* min-* overrides the app's global 44px touch-target rule for these small controls. */
+.ph-hero-btn {
+  position: absolute; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92); color: var(--ink); box-shadow: var(--shadow); display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.ph-hero-btn.prev { left: 8px; }
+.ph-hero-btn.next { right: 8px; }
+.ph-hero-dots { position: absolute; bottom: 8px; left: 0; right: 0; display: flex; justify-content: center; gap: 5px; }
+.ph-dot { width: 7px; height: 7px; min-width: 0; min-height: 0; border: 0; padding: 0; cursor: pointer; border-radius: 999px; background: rgba(255, 255, 255, 0.7); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15); transition: width 0.2s; }
+.ph-dot.on { width: 20px; background: var(--accent); }
+
+/* Countdown deals. */
+.ph-deal { border-bottom: var(--rule); }
+.ph-deal-bar { background: var(--ink); color: #f3f2f2; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; }
+.ph-deal-title { font: 800 17px/1 var(--display); }
+.ph-deal-sub { font: 500 11px var(--text); color: var(--n400); margin-top: 3px; }
+.ph-chips { display: flex; gap: 4px; flex: none; }
+.ph-chip { background: var(--accent); color: #fff; font: 700 14px var(--mono); padding: 5px 7px; min-width: 1.6em; text-align: center; border-radius: 4px; }
+
+/* Campaign rows. */
+.ph-row, .ph-deal { scroll-margin-top: 96px; }
+.ph-row { border-bottom: var(--rule); padding-bottom: 14px; }
+.ph-row-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; padding: 14px 12px 10px; }
+.ph-row-title { font: 800 17px/1.1 var(--display); }
+.ph-row-sub { font: 500 11px var(--text); color: var(--n700); margin-top: 3px; }
+.ph-more { flex: none; display: inline-flex; align-items: center; gap: 4px; font: 600 12px var(--text); color: var(--accent-700); }
+.ph-rail { display: flex; gap: var(--gap); overflow-x: auto; padding: 2px 12px 4px; }
+.ph-rail .ph-card { flex: none; width: var(--cw); }
+.ph-banner img { width: 100%; height: auto; }
+
+/* Card: artwork, short name, price line, chat strip. */
+.ph-card { background: #fff; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column; }
+/* Natural height: the artwork is the content, so it is never cropped or letterboxed. */
+.ph-card-img { width: 100%; height: auto; background: #fff; }
+.ph-card-body { padding: 8px 8px 0; flex: 1; }
+.ph-card-brand { font: 600 12px/1.3 var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ph-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; padding: 4px 8px 8px; color: var(--ink); }
+.ph-price-big { font: 800 15px var(--display); color: var(--accent-700); }
+.ph-price-unit { font: 500 10px var(--text); color: var(--n700); }
+.ph-price-off { margin-left: auto; font: 700 11px var(--display); color: #fff; background: var(--accent); padding: 1px 5px; border-radius: 4px; }
+.ph-chat { display: block; margin-top: auto; padding: 8px; background: var(--accent); color: #fff; font: 600 12px var(--text); text-align: center; }
+
+/* Wide strip cards (alone on their CMS row): full width, name and chat on one line under the image. */
+.ph-wide { display: flex; flex-direction: column; gap: var(--gap); padding: 2px 12px 12px; }
+.ph-card-wide { display: grid; grid-template-columns: 1fr auto; align-items: center; }
+.ph-card-wide > a:first-child, .ph-card-wide > img:first-child { grid-column: 1 / -1; }
+.ph-card-wide .ph-card-body { padding: 8px; }
+.ph-card-wide .ph-price { padding: 8px; }
+.ph-card-wide .ph-chat { margin: 6px 8px; padding: 6px 14px; border-radius: 999px; }
+.ph-grid .ph-card-wide { grid-column: 1 / -1; }
+
+/* Section page (ดูเพิ่มเติม / search). */
+.ph-cat-head { display: flex; align-items: center; gap: var(--gap); padding: 11px 12px; border-bottom: var(--rule); }
+.ph-back { display: inline-flex; flex: none; }
+.ph-cat-title { font: 800 15px/1.1 var(--display); }
+.ph-cat-sub { font: 500 11px var(--text); color: var(--n700); }
+.ph-sort { display: flex; gap: 6px; padding: 8px 12px; border-bottom: var(--rule); }
+.ph-sort a { flex: 1; padding: 7px 8px; font: 600 12px var(--text); text-align: center; border-radius: 999px; background: #fff; border: var(--rule); }
+.ph-sort a.on { background: var(--ink); color: #f3f2f2; border-color: var(--ink); }
+.ph-grid { display: grid; grid-template-columns: repeat(var(--promo-cols), minmax(0, 1fr)); gap: var(--gap); padding: 12px; }
+@media (min-width: 1024px) {
+  .ph-grid { grid-template-columns: repeat(var(--promo-cols-lg), minmax(0, 1fr)); }
+}
+.ph-empty { padding: 28px 12px; font: 500 13px var(--text); color: var(--n700); }
+.ph-foot { padding: 14px 12px; font: 500 11px var(--text); color: var(--n700); }
