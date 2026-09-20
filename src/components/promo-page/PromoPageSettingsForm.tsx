@@ -34,6 +34,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { orderByIds } from '@/lib/promo-rows'
+import type { RegionClickSummary } from '@/lib/promo-clicks'
 import type {
   PromoHeroBanner,
   PromoPageSettings,
@@ -44,6 +45,8 @@ const MOBILE_COLS = [1, 2] as const
 const DESKTOP_COLS = [3, 4, 5] as const
 const MAX_HERO_BANNERS = 8
 const PREVIEW_DEBOUNCE_MS = 500
+const CLICK_DAYS = 30
+const CLICK_ROWS = 10
 
 /** A CMS section as the settings API describes it: what the admin can order and re-banner. */
 interface SectionMeta {
@@ -86,6 +89,7 @@ export function PromoPageSettingsForm() {
   const [refreshing, setRefreshing] = useState(false)
   const [previewToken, setPreviewToken] = useState<string | null>(null)
   const [previewView, setPreviewView] = useState<PreviewView>('home')
+  const [clicks, setClicks] = useState<RegionClickSummary | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -97,6 +101,14 @@ export function PromoPageSettingsForm() {
     } catch (error) {
       console.error('[promo-page] load settings failed', error)
       toast({ title: 'โหลดการตั้งค่าไม่สำเร็จ', variant: 'destructive' })
+    }
+    // Click stats are a nice-to-have: a failure here must not block the form.
+    try {
+      const response = await fetch(`/api/inbox/promo-page-settings/clicks?days=${CLICK_DAYS}`)
+      const payload = await response.json()
+      if (response.ok && payload.success) setClicks(payload.data as RegionClickSummary)
+    } catch (error) {
+      console.error('[promo-page] load clicks failed', error)
     }
   }, [toast])
 
@@ -310,6 +322,20 @@ export function PromoPageSettingsForm() {
             />
           </div>
 
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label htmlFor="showQuickReply">ปุ่มลัดโปรใต้ข้อความที่บอทตอบ (quick reply)</Label>
+              <p className="text-xs text-gray-500">
+                &quot;โปรทั้งหมด&quot; + แบรนด์พาร์ทเนอร์ สูงสุด 13 ปุ่ม แนบทุกครั้งที่บอทตอบอัตโนมัติ
+              </p>
+            </div>
+            <Switch
+              id="showQuickReply"
+              checked={settings.showQuickReply}
+              onCheckedChange={(checked) => patch({ showQuickReply: checked })}
+            />
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="chatText">ข้อความที่ลูกค้าจะส่งเข้าแชท</Label>
             <Input
@@ -430,6 +456,8 @@ export function PromoPageSettingsForm() {
           )}
         </Card>
 
+        <ClickStats summary={clicks} />
+
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={save} disabled={saving}>
             {saving ? (
@@ -458,6 +486,45 @@ export function PromoPageSettingsForm() {
 
       <PreviewFrame src={previewSrc} view={previewView} onView={setPreviewView} />
     </div>
+  )
+}
+
+/** Imagemap taps per brand over the last CLICK_DAYS days — which regions people actually press. */
+function ClickStats({ summary }: { summary: RegionClickSummary | null }) {
+  const rows = summary?.brands.slice(0, CLICK_ROWS) ?? []
+  const max = rows[0]?.clicks ?? 0
+  const pct = (value: number) => `${(value * 100).toFixed(1)}%`
+  return (
+    <Card className="space-y-3 p-4">
+      <div>
+        <Label>คลิกจาก imagemap ({CLICK_DAYS} วันล่าสุด)</Label>
+        <p className="text-xs text-gray-500">
+          {summary
+            ? `${summary.totals.broadcasts} บรอดแคสต์ · ส่งถึง ${summary.totals.recipients.toLocaleString('th-TH')} คน · กด ${summary.totals.clicks.toLocaleString('th-TH')} ครั้ง` +
+              (summary.totals.recipients > 0 ? ` · CTR ${pct(summary.totals.clicks / summary.totals.recipients)}` : '')
+            : 'กำลังโหลด...'}
+        </p>
+      </div>
+      {summary && rows.length === 0 && (
+        <p className="text-sm text-gray-400">ยังไม่มีบรอดแคสต์ imagemap ในช่วงนี้</p>
+      )}
+      {rows.map((row) => (
+        <div key={row.label} className="space-y-1">
+          <div className="flex items-baseline justify-between gap-2 text-sm">
+            <span className="truncate font-medium text-gray-800">{row.label}</span>
+            <span className="shrink-0 text-xs text-gray-500">
+              {row.clicks.toLocaleString('th-TH')} ครั้ง · CTR {pct(row.ctr)}
+            </span>
+          </div>
+          <div className="h-1.5 rounded bg-gray-100">
+            <div
+              className="h-1.5 rounded bg-[#ec3013]"
+              style={{ width: max > 0 ? `${Math.max(2, (row.clicks / max) * 100)}%` : '0%' }}
+            />
+          </div>
+        </div>
+      ))}
+    </Card>
   )
 }
 

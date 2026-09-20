@@ -1,5 +1,6 @@
 'use client'
 
+import { IMAGEMAP_MAX_REGIONS } from '@/lib/imagemap-limits'
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import {
   Trash2,
@@ -21,7 +22,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
-import type { ImagemapRegion } from '@/lib/imagemap-types'
+import { imagemapRegionSchema, type ImagemapRegion } from '@/lib/imagemap-types'
 import type { UserTag } from '@/types'
 
 const LOCAL_STORAGE_LAYOUTS_KEY = 'reya_imagemap_saved_layouts_v1'
@@ -83,6 +84,39 @@ export function ImagemapRegionEditor({
   const [customLayouts, setCustomLayouts] = useState<SavedLayout[]>([])
   const [layoutNameInput, setLayoutNameInput] = useState('')
   const [showSaveLayout, setShowSaveLayout] = useState(false)
+  // Paste a regions JSON array (from a generated layout) instead of drawing each box
+  const [showImport, setShowImport] = useState(false)
+  const [importText, setImportText] = useState('')
+
+  const importRegionsJson = () => {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(importText)
+    } catch {
+      toast({ title: 'JSON ไม่ถูกต้อง', variant: 'destructive' })
+      return
+    }
+    const list = Array.isArray(parsed) ? parsed : (parsed as { regions?: unknown })?.regions
+    if (!Array.isArray(list) || list.length === 0 || list.length > IMAGEMAP_MAX_REGIONS) {
+      toast({ title: `ต้องเป็น array ของจุดกด 1–${IMAGEMAP_MAX_REGIONS} ช่อง`, variant: 'destructive' })
+      return
+    }
+    const next: ImagemapRegion[] = []
+    for (const [i, raw] of list.entries()) {
+      const result = imagemapRegionSchema.safeParse(raw)
+      const r = result.success ? result.data : null
+      if (!r || r.x + r.w > imageWidth || r.y + r.h > imageHeight) {
+        toast({ title: `ช่องที่ ${i + 1} ไม่ถูกต้องหรืออยู่นอกภาพ`, variant: 'destructive' })
+        return
+      }
+      next.push(r)
+    }
+    onChangeRegions(next)
+    setSelectedIndex(0)
+    setShowImport(false)
+    setImportText('')
+    toast({ title: `นำเข้า ${next.length} จุดกดเรียบร้อย` })
+  }
 
   // New tag inline state
   const [newTagName, setNewTagName] = useState('')
@@ -229,8 +263,8 @@ export function ImagemapRegionEditor({
     const coords = clientToImageCoords(e.clientX, e.clientY)
     ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
 
-    if (regions.length >= 12) {
-      toast({ title: 'สร้างได้สูงสุด 12 กรอบเท่านั้น', variant: 'destructive' })
+    if (regions.length >= IMAGEMAP_MAX_REGIONS) {
+      toast({ title: `สร้างได้สูงสุด ${IMAGEMAP_MAX_REGIONS} กรอบเท่านั้น`, variant: 'destructive' })
       return
     }
 
@@ -455,12 +489,22 @@ export function ImagemapRegionEditor({
 
   return (
     <div className="space-y-4">
+      {/* LINE draws every imagemap at the chat-bubble width, so a landscape image is just short and hard to read. */}
+      {imageHeight < imageWidth && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            ภาพนี้กว้างกว่าสูง ({imageWidth}×{imageHeight}) — LINE แสดง imagemap กว้างเท่าบับเบิลแชทเสมอ
+            ภาพเตี้ยจึงเห็นเล็กและตัวหนังสืออ่านยาก แนะนำอัตราส่วน 1:1 ขึ้นไป (1040×1040 ถึง 1040×2500)
+          </span>
+        </div>
+      )}
       {/* Top Bar: Layouts & Region count */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
         <div className="flex items-center gap-2">
           <Badge variant={regions.length > 0 ? 'default' : 'outline'} className="gap-1">
             <LayoutGrid className="h-3.5 w-3.5" />
-            จุดกด: {regions.length}/12 ช่อง
+            จุดกด: {regions.length}/{IMAGEMAP_MAX_REGIONS} ช่อง
           </Badge>
           <span className="text-xs text-muted-foreground hidden sm:inline">
             (ลากเมาส์บนภาพเพื่อวาดกรอบ หรือเลือก Layout สำเร็จรูป)
@@ -516,6 +560,16 @@ export function ImagemapRegionEditor({
             </Button>
           )}
 
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => setShowImport((v) => !v)}
+          >
+            นำเข้า JSON
+          </Button>
+
           {regions.length > 0 && (
             <Button
               type="button"
@@ -532,6 +586,29 @@ export function ImagemapRegionEditor({
           )}
         </div>
       </div>
+
+      {showImport && (
+        <div className="space-y-2 rounded-md border p-3">
+          <Label className="text-xs">
+            วาง JSON ของจุดกด (array ของ {'{'}x, y, w, h, url, keyword?, tagId?{'}'} ในพิกัดภาพ {imageWidth}×{imageHeight})
+          </Label>
+          <textarea
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+            rows={5}
+            className="w-full rounded-md border bg-background p-2 font-mono text-xs"
+            placeholder='[{"x":0,"y":0,"w":260,"h":230,"url":"https://..."}]'
+          />
+          <div className="flex gap-2">
+            <Button type="button" size="sm" className="h-8 text-xs" onClick={importRegionsJson} disabled={!importText.trim()}>
+              นำเข้า (แทนที่จุดกดเดิม)
+            </Button>
+            <Button type="button" size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setShowImport(false)}>
+              ยกเลิก
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Main Workspace: Left Image Canvas + Right Inspector */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">

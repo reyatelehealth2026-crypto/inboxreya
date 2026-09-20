@@ -12,6 +12,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { verifyLink, type BroadcastLinkPayload } from '@/lib/broadcast-link'
 import { imagemapRegionSchema, type ImagemapRegion } from '@/lib/imagemap-types'
+import { IMAGEMAP_MAX_REGIONS } from '@/lib/imagemap-limits'
 import { getPublicOrigin } from '@/lib/broadcast-runtime'
 
 export const runtime = 'nodejs'
@@ -21,7 +22,7 @@ export const dynamic = 'force-dynamic'
 // stored data written by another code path, never trusted blindly here.
 const imagemapMetaSchema = z.object({
   baseKey: z.string().min(1),
-  regions: z.array(imagemapRegionSchema).min(1).max(12),
+  regions: z.array(imagemapRegionSchema).min(1).max(IMAGEMAP_MAX_REGIONS),
 })
 
 interface RouteContext {

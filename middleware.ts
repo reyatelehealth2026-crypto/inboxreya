@@ -13,6 +13,7 @@ const publicRoutes = [
   '/r/',
   '/promo',
   '/api/imagemap/',
+  '/api/promo/',
 ]
 
 // Define API routes that require authentication

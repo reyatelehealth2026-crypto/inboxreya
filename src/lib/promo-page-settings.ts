@@ -19,6 +19,8 @@ export const promoPageSettingsSchema = z.object({
   showTabs: z.boolean().default(true),
   showChatButton: z.boolean().default(true),
   chatText: z.string().trim().min(1).max(200).default('สนใจโปร {partner}'),
+  /** Promo chips under every bot reply (served to the PHP webhook by /api/promo/quick-reply). */
+  showQuickReply: z.boolean().default(true),
   /**
    * Slides for the banner at the top of the page. Empty means "use the full-width
    * banners the CMS article opens with". Links land in a public <a href>, so only

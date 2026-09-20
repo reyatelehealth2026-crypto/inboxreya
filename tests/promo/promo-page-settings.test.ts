@@ -15,6 +15,7 @@ describe('getPromoPageSettings', () => {
       showTabs: true,
       showChatButton: true,
       chatText: 'สนใจโปร {partner}',
+      showQuickReply: true,
       heroBanners: [],
       sections: [],
     });
