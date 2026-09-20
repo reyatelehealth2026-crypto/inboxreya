@@ -16,6 +16,7 @@ describe('getPromoPageSettings', () => {
       showChatButton: true,
       chatText: 'สนใจโปร {partner}',
       heroBanners: [],
+      sections: [],
     });
     expect(getPromoPageSettings({})).toEqual(DEFAULT_PROMO_PAGE_SETTINGS);
     expect(getPromoPageSettings({ settings: { other: 1 } })).toEqual(DEFAULT_PROMO_PAGE_SETTINGS);

@@ -13,6 +13,8 @@ vi.mock('@/lib/prisma', () => ({
 import PromoPage from '@/app/promo/page';
 import { clearCnyNewsPromoCache } from '@/lib/cny-news-promo';
 import { clearCnyPromoOfferCaches, refreshPrices } from '@/lib/cny-promo-offers';
+import { DEFAULT_PROMO_PAGE_SETTINGS } from '@/lib/promo-page-settings';
+import { signPreview } from '@/lib/promo-preview';
 
 const FIXTURE = readFileSync(path.join(__dirname, 'fixtures', 'news-12.html'), 'utf8');
 
@@ -168,6 +170,55 @@ describe('/promo home', () => {
       container.querySelector('.ph-hero a[href="https://www.cnypharmacy.com/promo"] img[src="https://cdn.example.com/a.png"]')
     ).not.toBeNull();
     expect(container.querySelector('.ph-hero img[src*="1236432404"]')).toBeNull();
+  });
+
+  it('shows the real logo and a quiet outlined chat pill', async () => {
+    mockApis();
+    const { container } = await renderPromoPage();
+
+    expect(container.querySelector('.ph-mark img[src="/promo/cny-logo.png"]')).not.toBeNull();
+    expect(container.querySelector('#card-section-5-0 .ph-chat svg')).not.toBeNull();
+  });
+
+  it('orders the rows and swaps a section banner from the admin settings', async () => {
+    mockApis();
+    findFirst.mockResolvedValue({
+      ...ACCOUNT,
+      settings: {
+        ...ACCOUNT.settings,
+        promoPage: {
+          ...ACCOUNT.settings.promoPage,
+          sections: [{ id: 'section-6', imageUrl: 'https://cdn.example.com/b.png', href: 'https://www.cnypharmacy.com/b' }],
+        },
+      },
+    });
+    const { container } = await renderPromoPage();
+
+    const rows = container.querySelectorAll('section.ph-row');
+    expect([...rows].map((row) => row.id)).toEqual(['section-6', 'section-5']);
+    expect(
+      rows[0].querySelector('.ph-banner a[href="https://www.cnypharmacy.com/b"] img[src="https://cdn.example.com/b.png"]')
+    ).not.toBeNull();
+    // The untouched row keeps the banner the CMS gave it.
+    expect(rows[1].querySelector('.ph-banner img[src*="1115835357"]')).not.toBeNull();
+  });
+
+  it('renders the draft a signed ?preview= token carries, and ignores a forged one', async () => {
+    vi.stubEnv('NEXTAUTH_SECRET', 'test-secret');
+    mockApis();
+    const draft = {
+      ...DEFAULT_PROMO_PAGE_SETTINGS,
+      heroBanners: [{ imageUrl: 'https://cdn.example.com/draft.png', href: '' }],
+    };
+    const token = signPreview(draft)!;
+
+    const { container, unmount } = await renderPromoPage({ preview: token });
+    expect(container.querySelector('.ph-hero img[src="https://cdn.example.com/draft.png"]')).not.toBeNull();
+    unmount();
+
+    const forged = await renderPromoPage({ preview: `${token.split('.')[0]}.forged` });
+    expect(forged.container.querySelector('.ph-hero img[src="https://cdn.example.com/draft.png"]')).toBeNull();
+    expect(forged.container.querySelectorAll('.ph-hero-slide')).toHaveLength(5);
   });
 
   it('links each partner card to the OA chat with the configured message', async () => {

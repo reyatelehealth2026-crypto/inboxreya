@@ -10,6 +10,8 @@ import { httpsUrl } from '@/lib/wholesale-promos';
  */
 export const PROMO_PAGE_SETTINGS_KEY = 'promoPage';
 
+const optionalHttpsUrl = z.union([z.literal(''), httpsUrl]).default('');
+
 export const promoPageSettingsSchema = z.object({
   newsId: z.coerce.number().int().positive().default(12),
   colsMobile: z.union([z.literal(1), z.literal(2)]).default(2),
@@ -26,14 +28,29 @@ export const promoPageSettingsSchema = z.object({
     .array(
       z.object({
         imageUrl: httpsUrl,
-        href: z.union([z.literal(''), httpsUrl]).default(''),
+        href: optionalHttpsUrl,
       })
     )
     .max(8)
     .default([]),
+  /**
+   * Per-section overrides keyed by the CMS section id (the same id /promo?s= uses).
+   * Listed sections render first, in this order; an imageUrl replaces the CMS banner.
+   */
+  sections: z
+    .array(
+      z.object({
+        id: z.string().trim().min(1).max(64),
+        imageUrl: optionalHttpsUrl,
+        href: optionalHttpsUrl,
+      })
+    )
+    .max(20)
+    .default([]),
 });
 
 export type PromoHeroBanner = PromoPageSettings['heroBanners'][number];
+export type PromoSectionSetting = PromoPageSettings['sections'][number];
 
 export type PromoPageSettings = z.infer<typeof promoPageSettingsSchema>;
 

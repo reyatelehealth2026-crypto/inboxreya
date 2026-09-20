@@ -4,13 +4,14 @@ import {
   fetchCnyNewsPromo,
   findCardIndexForKeyword,
   type PromoCard as PromoCardData,
-  type PromoSection,
 } from '@/lib/cny-news-promo';
 import {
   getPromoPageSettings,
   type PromoHeroBanner,
   type PromoPageSettings,
 } from '@/lib/promo-page-settings';
+import { readPreview } from '@/lib/promo-preview';
+import { orderByIds, partnerNames, rowTitle } from '@/lib/promo-rows';
 import {
   buildOffer,
   fetchCnyCampaigns,
@@ -59,12 +60,15 @@ interface Row {
   /** Distinct partner brands in the row — every partner card is a brand deal. */
   brands: number;
   headerImageUrl: string | null;
+  headerHref: string | null;
   items: Item[];
 }
 
 interface PromoSearch {
   /** Broadcast keyword — scroll to and ring that card. */
   k?: string;
+  /** Signed draft settings from the admin page's live preview. */
+  preview?: string;
   /** Section id — the full grid of one row. */
   s?: string;
   /** Free-text search across every card. */
@@ -92,7 +96,7 @@ export default async function PromoPage({ searchParams }: { searchParams: Promis
       return null;
     });
 
-  const settings = getPromoPageSettings(lineAccount);
+  const settings = readPreview(params.preview) ?? getPromoPageSettings(lineAccount);
   const basicId = lineAccount?.basicId ?? null;
   const promo = await fetchCnyNewsPromo(settings.newsId);
 
@@ -114,21 +118,30 @@ export default async function PromoPage({ searchParams }: { searchParams: Promis
   );
   const prices = getCachedPrices(skus);
 
-  const rows: Row[] = promo.sections.map((section, index) => ({
-    id: section.id,
-    title: rowTitle(section, index),
-    brands: partnerNames(section).size,
-    headerImageUrl: section.headerImageUrl,
-    items: section.cards.map((card, cardIndex) => ({
-      id: cardDomId(section.id, cardIndex),
-      card,
-      offer: buildOffer(card, campaigns, prices),
-      chatUrl:
-        settings.showChatButton && card.kind === 'partner'
-          ? chatUrl(card, basicId, settings.chatText)
-          : null,
-    })),
-  }));
+  // Admin overrides per section: listed ones come first in that order, and their banner wins.
+  const overrides = new Map(settings.sections.map((section) => [section.id, section]));
+  const rows: Row[] = orderByIds(
+    promo.sections.map((section, index) => {
+      const custom = overrides.get(section.id);
+      return {
+        id: section.id,
+        title: rowTitle(section, index),
+        brands: partnerNames(section).size,
+        headerImageUrl: custom?.imageUrl || section.headerImageUrl,
+        headerHref: custom?.href || null,
+        items: section.cards.map((card, cardIndex) => ({
+          id: cardDomId(section.id, cardIndex),
+          card,
+          offer: buildOffer(card, campaigns, prices),
+          chatUrl:
+            settings.showChatButton && card.kind === 'partner'
+              ? chatUrl(card, basicId, settings.chatText)
+              : null,
+        })),
+      };
+    }),
+    settings.sections.map((section) => section.id)
+  );
   const cardRows = rows.filter((row) => row.items.length > 0);
 
   const section = params.s ? cardRows.find((row) => row.id === params.s) : undefined;
@@ -181,8 +194,15 @@ export default async function PromoPage({ searchParams }: { searchParams: Promis
             <section key={row.id} id={row.id} className="ph-row">
               {row.headerImageUrl && (
                 <div className="ph-banner">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={row.headerImageUrl} alt="" loading="lazy" decoding="async" />
+                  {row.headerHref ? (
+                    <a href={row.headerHref}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={row.headerImageUrl} alt="" loading="lazy" decoding="async" />
+                    </a>
+                  ) : (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={row.headerImageUrl} alt="" loading="lazy" decoding="async" />
+                  )}
                 </div>
               )}
               <div className="ph-row-head">
@@ -301,7 +321,8 @@ function Header({ tabs, q }: { tabs: Row[]; q: string }) {
     <header className="ph-top">
       <div className="ph-top-row">
         <a href="/promo" className="ph-mark" aria-label="รวมโปรโมชัน">
-          CNY
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/promo/cny-logo.png" alt="CNY Health Care" width="168" height="81" />
         </a>
         <form action="/promo" method="get" className="ph-search" role="search">
           <SearchIcon />
@@ -362,17 +383,6 @@ function soonestEnd(items: Item[], now: number): Date | null {
 
 function cardDomId(sectionId: string, cardIndex: number): string {
   return `card-${sectionId}-${cardIndex}`;
-}
-
-function partnerNames(section: PromoSection): Set<string> {
-  return new Set(section.cards.flatMap((card) => (card.partner ? [card.partner] : [])));
-}
-
-/** Every partner card is a brand deal, so the row is named for the group, not its first brands. */
-function rowTitle(section: PromoSection, index: number): string {
-  if (partnerNames(section).size > 0) return 'ดีลแบรนด์พาร์ทเนอร์';
-  if (section.cards.some((card) => card.kind === 'product')) return 'สินค้าราคาพิเศษ';
-  return `ส่วนที่ ${index + 1}`;
 }
 
 /** The LINE deep link that opens the OA chat with the message pre-filled. */

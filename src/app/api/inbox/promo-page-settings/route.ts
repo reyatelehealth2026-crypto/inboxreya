@@ -6,6 +6,8 @@ import {
   mergePromoPageSettings,
   promoPageSettingsSchema,
 } from '@/lib/promo-page-settings'
+import { fetchCnyNewsPromo } from '@/lib/cny-news-promo'
+import { rowTitle } from '@/lib/promo-rows'
 import type { Prisma } from '@prisma/client'
 
 // /promo is one public page served from the default LINE account, so its settings
@@ -17,7 +19,8 @@ function defaultAccount() {
   })
 }
 
-// GET /api/inbox/promo-page-settings - display settings for the public /promo page
+// GET /api/inbox/promo-page-settings - display settings for the public /promo page, plus
+// the CMS sections it currently has (so the admin can order them and swap their banners)
 export async function GET(req: NextRequest) {
   try {
     const authResult = await requireAuth(req)
@@ -26,8 +29,18 @@ export async function GET(req: NextRequest) {
     }
 
     const account = await defaultAccount()
+    const settings = getPromoPageSettings(account)
+    const promo = await fetchCnyNewsPromo(settings.newsId)
+    const sections = (promo?.sections ?? [])
+      .map((section, index) => ({
+        id: section.id,
+        title: rowTitle(section, index),
+        bannerUrl: section.headerImageUrl,
+        cards: section.cards.length,
+      }))
+      .filter((section) => section.cards > 0)
 
-    return NextResponse.json({ success: true, data: getPromoPageSettings(account) })
+    return NextResponse.json({ success: true, data: settings, sections })
   } catch (error) {
     console.error('[promo-page-settings] GET failed', error)
     return NextResponse.json({ success: false, error: 'โหลดการตั้งค่าไม่สำเร็จ' }, { status: 500 })

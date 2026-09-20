@@ -39,10 +39,8 @@
 /* Sticky header: mark + search, then the section tabs. */
 .ph-top { position: sticky; top: 0; z-index: 6; background: var(--bg); border-bottom: var(--rule); }
 .ph-top-row { display: flex; align-items: center; gap: var(--gap); padding: 10px 12px; }
-.ph-mark {
-  flex: none; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
-  background: var(--accent); color: #fff; font: 800 12px var(--display); border-radius: 8px;
-}
+.ph-mark { flex: none; display: flex; align-items: center; }
+.ph-mark img { height: 30px; width: auto; }
 .ph-search { flex: 1; display: flex; align-items: center; gap: 8px; border: var(--rule); border-radius: 8px; background: #fff; padding: 7px 10px; color: var(--n600); }
 .ph-search input { flex: 1; min-width: 0; border: 0; background: transparent; font: 500 13px var(--text); color: var(--ink); outline: none; }
 .ph-tabs { display: flex; gap: 4px; overflow-x: auto; padding: 0 8px 8px; }
@@ -87,6 +85,7 @@
 .ph-more { flex: none; display: inline-flex; align-items: center; gap: 4px; font: 600 12px var(--text); color: var(--accent-700); }
 .ph-rail { display: flex; gap: var(--gap); overflow-x: auto; padding: 2px 12px 4px; }
 .ph-rail .ph-card { flex: none; width: var(--cw); }
+.ph-banner a { display: block; }
 .ph-banner img { width: 100%; height: auto; }
 
 /* Card: artwork, short name, price line, chat strip. */
@@ -99,7 +98,14 @@
 .ph-price-big { font: 800 15px var(--display); color: var(--accent-700); }
 .ph-price-unit { font: 500 10px var(--text); color: var(--n700); }
 .ph-price-off { margin-left: auto; font: 700 11px var(--display); color: #fff; background: var(--accent); padding: 1px 5px; border-radius: 4px; }
-.ph-chat { display: block; margin-top: auto; padding: 8px; background: var(--accent); color: #fff; font: 600 12px var(--text); text-align: center; }
+/* Chat: a quiet outlined pill in the card's own ink, not a second red block under the price. */
+.ph-chat {
+  display: inline-flex; align-self: flex-start; align-items: center; gap: 5px; margin: 0 8px 8px; padding: 0 11px;
+  height: 28px; min-width: 0; min-height: 0; border: 1px solid var(--n400); border-radius: 999px; background: #fff;
+  color: var(--ink); font: 600 11px var(--text); white-space: nowrap;
+}
+.ph-chat svg { flex: none; color: var(--accent); }
+.ph-chat:hover { border-color: var(--ink); }
 
 /* Wide strip cards (alone on their CMS row): full width, name and chat on one line under the image. */
 .ph-wide { display: flex; flex-direction: column; gap: var(--gap); padding: 2px 12px 12px; }
@@ -107,7 +113,7 @@
 .ph-card-wide > a:first-child, .ph-card-wide > img:first-child { grid-column: 1 / -1; }
 .ph-card-wide .ph-card-body { padding: 8px; }
 .ph-card-wide .ph-price { padding: 8px; }
-.ph-card-wide .ph-chat { margin: 6px 8px; padding: 6px 14px; border-radius: 999px; }
+.ph-card-wide .ph-chat { align-self: center; margin: 8px; }
 .ph-grid .ph-card-wide { grid-column: 1 / -1; }
 
 /* Section page (ดูเพิ่มเติม / search). */
