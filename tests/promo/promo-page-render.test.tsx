@@ -246,16 +246,17 @@ describe('/promo home', () => {
     expect(card.textContent).not.toContain('ซื้อ 3');
   });
 
-  it('prints the price line once the store price is cached', async () => {
+  it('shows the name only, even once the store price is cached', async () => {
     mockApis();
     await refreshPrices(['6117']);
     const { container } = await renderPromoPage();
 
     const card = container.querySelector('#card-section-6-0') as HTMLElement;
     expect(card.querySelector('.ph-card-brand')?.textContent).toBe('ดีเดย์ ไนท์ สตอรี่ 30เม็ด');
-    expect(card.querySelector('.ph-price-big')?.textContent).toBe('฿399');
-    expect(card.querySelector('.ph-price-off')?.textContent).toBe('-7%');
-    expect(card.querySelector('.ph-price-unit')?.textContent).toBe('ต่อกล่อง[30เม็ด]');
+    // The artwork carries the price; the card never prints one.
+    expect(card.textContent).not.toContain('฿');
+    expect(card.textContent).not.toContain('-7%');
+    expect(card.textContent).not.toContain('ต่อกล่อง');
   });
 
   it('renders cards without figures when the store API is down', async () => {

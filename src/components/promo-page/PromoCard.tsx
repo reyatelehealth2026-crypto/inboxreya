@@ -2,8 +2,8 @@ import type { PromoCard as PromoCardData } from '@/lib/cny-news-promo'
 import type { PromoOffer } from '@/lib/cny-promo-offers'
 
 /**
- * One card on /promo. The artwork already states the promo, so below it there is
- * only the short name, the store price when known, and the chat strip for partners.
+ * One card on /promo. The artwork already states the promo and its price, so below
+ * it there is only the short name and, for partners, the chat pill.
  */
 export function PromoCard({
   id,
@@ -34,13 +34,6 @@ export function PromoCard({
         <div className="ph-card-body">
           <div className="ph-card-brand">{offer.brand}</div>
         </div>
-      )}
-      {offer.price && (
-        <a href={card.href ?? undefined} className="ph-price">
-          <span className="ph-price-big">{offer.price}</span>
-          {offer.unitLine && <span className="ph-price-unit">{offer.unitLine}</span>}
-          {offer.off && <span className="ph-price-off">{offer.off}</span>}
-        </a>
       )}
       {chatUrl && (
         <a href={chatUrl} className="ph-chat">

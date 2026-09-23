@@ -88,17 +88,13 @@
 .ph-banner a { display: block; }
 .ph-banner img { width: 100%; height: auto; }
 
-/* Card: artwork, short name, price line, chat strip. */
+/* Card: artwork, short name, chat pill for partners. The artwork carries the price. */
 .ph-card { background: #fff; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column; }
 /* Natural height: the artwork is the content, so it is never cropped or letterboxed. */
 .ph-card-img { width: 100%; height: auto; background: #fff; }
-.ph-card-body { padding: 8px 8px 0; flex: 1; }
+.ph-card-body { padding: 8px; flex: 1; }
 .ph-card-brand { font: 600 12px/1.3 var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.ph-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; padding: 4px 8px 8px; color: var(--ink); }
-.ph-price-big { font: 800 15px var(--display); color: var(--accent-700); }
-.ph-price-unit { font: 500 10px var(--text); color: var(--n700); }
-.ph-price-off { margin-left: auto; font: 700 11px var(--display); color: #fff; background: var(--accent); padding: 1px 5px; border-radius: 4px; }
-/* Chat: a quiet outlined pill in the card's own ink, not a second red block under the price. */
+/* Chat: a quiet outlined pill in the card's own ink. */
 .ph-chat {
   display: inline-flex; align-self: flex-start; align-items: center; gap: 5px; margin: 0 8px 8px; padding: 0 11px;
   height: 28px; min-width: 0; min-height: 0; border: 1px solid var(--n400); border-radius: 999px; background: #fff;
@@ -112,7 +108,6 @@
 .ph-card-wide { display: grid; grid-template-columns: 1fr auto; align-items: center; }
 .ph-card-wide > a:first-child, .ph-card-wide > img:first-child { grid-column: 1 / -1; }
 .ph-card-wide .ph-card-body { padding: 8px; }
-.ph-card-wide .ph-price { padding: 8px; }
 .ph-card-wide .ph-chat { align-self: center; margin: 8px; }
 .ph-grid .ph-card-wide { grid-column: 1 / -1; }
 
