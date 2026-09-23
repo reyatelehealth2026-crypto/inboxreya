@@ -14,6 +14,7 @@ import {
   flexImageUrls,
   heroImageUrl,
   imageSize,
+  lineUri,
   selectFlexItems,
   toAspectRatio,
   type FlexMessage,
@@ -163,6 +164,20 @@ describe('buildPromoFlexMessages', () => {
     expect(stackedTexts).toEqual(expect.arrayContaining(['VISTRA']));
     // The regular cards follow, one per bubble, each with a hero image.
     expect(bubbles[2].hero).toBeDefined();
+  });
+
+  it('sends LINE only encoded links and non-empty texts (what the test push tripped on)', () => {
+    const problems: string[] = [];
+    messages.forEach((m, i) =>
+      walk(m.contents, (n) => {
+        if (n.type === 'text' && !String(n.text ?? '').trim()) problems.push(`message ${i}: empty text`);
+        if (n.type === 'uri' && new URL(String(n.uri)).href !== n.uri) problems.push(`message ${i}: ${n.uri}`);
+      })
+    );
+    expect(problems).toEqual([]);
+    expect(lineUri('https://www.cnypharmacy.com/auth/partner?name=SMOOTH E')).toBe(
+      'https://www.cnypharmacy.com/auth/partner?name=SMOOTH%20E'
+    );
   });
 
   it('tracks every link except the LINE chat links', () => {

@@ -66,8 +66,10 @@ export async function POST(request: NextRequest) {
 
     if (!result.success) {
       return NextResponse.json(
+        // 422, not 502: the CDN in front replaces a 5xx body with its own HTML page,
+        // and LINE's reason (which message, which field) is what the admin needs.
         { success: false, error: result.error || 'ส่งข้อความทดสอบไม่สำเร็จ' },
-        { status: 502 }
+        { status: 422 }
       );
     }
 

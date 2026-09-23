@@ -74,7 +74,8 @@ function stripUnsupportedFlexFields<T>(node: T): T {
   const result: Record<string, any> = {}
   for (const key in obj) {
     if (!Object.prototype.hasOwnProperty.call(obj, key)) continue
-    if (key === 'opacity' || key === 'cornerRadius') {
+    // LINE has no opacity at all, and cornerRadius only on boxes (rounded panels, pills).
+    if (key === 'opacity' || (key === 'cornerRadius' && obj.type !== 'box')) {
       logger.warn('Flex payload contained unsupported style field; removing before LINE push', {
         scope: 'line-api',
         field: key,

@@ -251,16 +251,22 @@ function wideGroupBubble(items: PromoItem[], size: string, ratios: Map<string, s
               backgroundColor: '#FFFFFF',
               ...(item.card.href ? { action: uri('ดูโปร', item.card.href) } : {}),
             },
-            {
-              type: 'box',
-              layout: 'horizontal',
-              spacing: 'sm',
-              alignItems: 'center',
-              contents: [
-                { type: 'text', text: item.offer.brand, size: 'xs', weight: 'bold', color: INK, flex: 1, maxLines: 1 },
-                ...(action ? [{ ...action, flex: 0, paddingStart: '10px', paddingEnd: '10px' }] : []),
-              ],
-            },
+            ...(item.offer.brand || action
+              ? [
+                  {
+                    type: 'box',
+                    layout: 'horizontal',
+                    spacing: 'sm',
+                    alignItems: 'center',
+                    contents: [
+                      item.offer.brand
+                        ? { type: 'text', text: item.offer.brand, size: 'xs', weight: 'bold', color: INK, flex: 1, maxLines: 1 }
+                        : { type: 'filler' },
+                      ...(action ? [{ ...action, flex: 0, paddingStart: '10px', paddingEnd: '10px' }] : []),
+                    ],
+                  },
+                ]
+              : []),
           ],
         };
       }),
@@ -283,24 +289,33 @@ function cardBubble(item: PromoItem, size: string, ratio: string): Json {
       backgroundColor: '#FFFFFF',
       ...(card.href ? { action: uri('ดูโปร', card.href) } : {}),
     },
-    body: {
-      type: 'box',
-      layout: 'vertical',
-      spacing: 'xs',
-      paddingAll: '10px',
-      contents: [
-        {
-          type: 'text',
-          text: offer.brand,
-          size: size === 'micro' ? 'xs' : 'sm',
-          weight: 'bold',
-          color: INK,
-          wrap: true,
-          maxLines: 2,
-        },
-        ...(offer.price ? [priceLine(offer.price, offer.unitLine, offer.off)] : []),
-      ],
-    },
+    // LINE rejects an empty text, and a card without a name or price has no body at all.
+    ...(offer.brand || offer.price
+      ? {
+          body: {
+            type: 'box',
+            layout: 'vertical',
+            spacing: 'xs',
+            paddingAll: '10px',
+            contents: [
+              ...(offer.brand
+                ? [
+                    {
+                      type: 'text',
+                      text: offer.brand,
+                      size: size === 'micro' ? 'xs' : 'sm',
+                      weight: 'bold',
+                      color: INK,
+                      wrap: true,
+                      maxLines: 2,
+                    },
+                  ]
+                : []),
+              ...(offer.price ? [priceLine(offer.price, offer.unitLine, offer.off)] : []),
+            ],
+          },
+        }
+      : {}),
     ...(action
       ? { footer: { type: 'box', layout: 'vertical', paddingAll: '10px', paddingTop: '0px', contents: [action] } }
       : {}),
@@ -356,7 +371,16 @@ function pill(label: string, link: string, onDark = false): Json {
 }
 
 function uri(label: string, link: string): Json {
-  return { type: 'uri', label: label.slice(0, LABEL_MAX), uri: link };
+  return { type: 'uri', label: label.slice(0, LABEL_MAX), uri: lineUri(link) };
+}
+
+/** LINE rejects a raw space or Thai letter in a URI; the CMS links carry both (?name=SMOOTH E). */
+export function lineUri(link: string): string {
+  try {
+    return new URL(link).href;
+  } catch {
+    return link;
+  }
 }
 
 /* ---------- image ratios (server only: fetches the artwork) ---------- */

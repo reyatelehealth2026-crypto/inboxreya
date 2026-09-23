@@ -115,9 +115,10 @@ export function ImagemapTestSendModal({
         }),
       })
 
-      const data = await res.json()
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'ส่งข้อความทดสอบไม่สำเร็จ')
+      // A gateway error page is HTML, not JSON: report the status instead of a parse error.
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || `ส่งข้อความทดสอบไม่สำเร็จ (HTTP ${res.status})`)
       }
 
       toast({
