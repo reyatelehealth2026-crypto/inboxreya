@@ -22,6 +22,8 @@ export interface BroadcastEnvelopeV2 {
   target: BroadcastTarget
   /** imagemap only: baseKey + region metadata (destination url / tag / keyword), read by /r/[token]. */
   imagemapMeta?: ImagemapMeta
+  /** https links inside flex messages, tracked through /r/ after the imagemap regions. */
+  flexLinks?: string[]
   template?: {
     id?: number
     sourceTable?: 'quick_reply_templates' | 'flex_templates' | 'templates'
@@ -33,6 +35,7 @@ export interface BuiltBroadcastMessages {
   messageType: BroadcastMessageType
   messages: LinePayloadMessage[]
   imagemapMeta?: ImagemapMeta
+  flexLinks?: string[]
 }
 
 /** Public origin of this app — same resolution order as phpApiRequest() in api-utils.ts. */
@@ -48,6 +51,41 @@ export function getPublicOrigin(): string {
 /** LINE clients append /1040, /700, /460, /300, /240 to this. */
 export function imagemapBaseUrl(baseKey: string): string {
   return `${getPublicOrigin()}/api/imagemap/${baseKey}`
+}
+
+const MAX_FLEX_LINKS = 100
+
+/** LINE deep links (chat, LIFF) must reach LINE as-is; a 302 hop through /r/ breaks them. */
+function isTrackableUri(uri: unknown): uri is string {
+  return typeof uri === 'string' && uri.startsWith('https://') && !/^https:\/\/(liff\.)?line\.me\//.test(uri)
+}
+
+/** Every distinct trackable uri action inside the flex messages, in document order. */
+export function collectFlexLinks(messages: LinePayloadMessage[]): string[] {
+  const links: string[] = []
+  const walk = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) return node.forEach(walk)
+    const obj = node as Record<string, unknown>
+    if (obj.type === 'uri' && isTrackableUri(obj.uri) && !links.includes(obj.uri)) links.push(obj.uri)
+    Object.values(obj).forEach(walk)
+  }
+  messages.filter((message) => message?.type === 'flex').forEach(walk)
+  return links.slice(0, MAX_FLEX_LINKS)
+}
+
+/** Copy of `node` with every uri action whose uri `rewrite` maps to a new value replaced. */
+function rewriteUris(node: unknown, rewrite: (uri: string) => string | null): unknown {
+  if (!node || typeof node !== 'object') return node
+  if (Array.isArray(node)) return node.map((item) => rewriteUris(item, rewrite))
+  const obj = node as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(obj)) out[key] = rewriteUris(value, rewrite)
+  if (obj.type === 'uri' && typeof obj.uri === 'string') {
+    const next = rewrite(obj.uri)
+    if (next) out.uri = next
+  }
+  return out
 }
 
 function sanitizeFlexActionUris(obj: any, path = ''): any {
@@ -129,6 +167,11 @@ export function normalizeFlexMessagePayload(input: unknown, fallbackAltText = 'F
   return null
 }
 
+function withFlexLinks(messages: LinePayloadMessage[]): { flexLinks?: string[] } {
+  const flexLinks = collectFlexLinks(messages)
+  return flexLinks.length > 0 ? { flexLinks } : {}
+}
+
 export function buildBroadcastMessages(input: {
   content?: string
   mediaUrl?: string
@@ -173,6 +216,7 @@ export function buildBroadcastMessages(input: {
       messageType: 'imagemap',
       messages,
       imagemapMeta: { baseKey: imagemap.baseKey, regions: imagemap.regions },
+      ...withFlexLinks(messages),
     }
   }
 
@@ -190,6 +234,7 @@ export function buildBroadcastMessages(input: {
       summaryText: content || flexMessages[0].altText || 'Flex Message',
       messageType: flexMessages.length > 1 ? 'multi' as const : 'flex' as const,
       messages: flexMessages,
+      ...withFlexLinks(flexMessages),
     }
   }
 
@@ -258,6 +303,7 @@ export function buildBroadcastEnvelope(input: {
     messages: built.messages,
     target,
     imagemapMeta: built.imagemapMeta,
+    flexLinks: built.flexLinks,
     template: input.templateId || input.templateSourceTable
       ? {
           id: input.templateId,
@@ -286,6 +332,7 @@ export function parseStoredBroadcast(content: string, mediaUrl?: string | null) 
         messages: envelope.messages,
         target: envelope.target,
         imagemapMeta: envelope.imagemapMeta,
+        flexLinks: Array.isArray(envelope.flexLinks) ? envelope.flexLinks : undefined,
         raw: envelope,
       }
     }
@@ -302,6 +349,7 @@ export function parseStoredBroadcast(content: string, mediaUrl?: string | null) 
         messages,
         target: { mode: 'tags', tagIds: parsed.tagIds as number[] } as BroadcastTarget,
         imagemapMeta: undefined as ImagemapMeta | undefined,
+        flexLinks: undefined as string[] | undefined,
         raw: parsed,
       }
     }
@@ -322,31 +370,44 @@ export function parseStoredBroadcast(content: string, mediaUrl?: string | null) 
     messages: built.messages,
     target: { mode: 'all' } as BroadcastTarget,
     imagemapMeta: undefined as ImagemapMeta | undefined,
+    flexLinks: undefined as string[] | undefined,
     raw: null,
   }
 }
 
 /**
- * Rewrite imagemap action link URIs to per-user tracking links (`/r/<signed token>`).
- * Returns new objects; non-imagemap messages are passed through untouched.
+ * Rewrite tracked link URIs to per-user tracking links (`/r/<signed token>`): the
+ * imagemap's actions by region index, then any `flexLinks` inside flex messages at
+ * index regionCount + position. Returns new objects; other messages pass through.
  * `userPk` is the internal LineUser.id — 0 for the anonymous `all` broadcast path.
  */
 export function personalizeMessages(
   messages: LinePayloadMessage[],
   broadcastId: number,
-  userPk: number
+  userPk: number,
+  flexLinks: string[] = []
 ): LinePayloadMessage[] {
+  const origin = getPublicOrigin()
+  const track = (r: number) => `${origin}/r/${signLink({ b: broadcastId, r, u: userPk })}`
+  const imagemap = messages.find((message) => message?.type === 'imagemap')
+  const regionCount = Array.isArray(imagemap?.actions) ? imagemap.actions.length : 0
+
   return messages.map((message) => {
-    if (message?.type !== 'imagemap' || !Array.isArray(message.actions)) return message
-    const origin = getPublicOrigin()
-    return {
-      ...message,
-      actions: (message.actions as LinePayloadMessage[]).map((action, index) =>
-        action?.type === 'uri'
-          ? { ...action, linkUri: `${origin}/r/${signLink({ b: broadcastId, r: index, u: userPk })}` }
-          : action
-      ),
+    if (message?.type === 'imagemap' && Array.isArray(message.actions)) {
+      return {
+        ...message,
+        actions: (message.actions as LinePayloadMessage[]).map((action, index) =>
+          action?.type === 'uri' ? { ...action, linkUri: track(index) } : action
+        ),
+      }
     }
+    if (message?.type === 'flex' && flexLinks.length > 0) {
+      return rewriteUris(message, (uri) => {
+        const index = flexLinks.indexOf(uri)
+        return index >= 0 ? track(regionCount + index) : null
+      }) as LinePayloadMessage
+    }
+    return message
   })
 }
 
@@ -462,7 +523,7 @@ export async function sendBroadcastRecord(broadcast: {
       throw new Error('No target users found for this broadcast')
     }
     // No per-recipient identity in a native broadcast → sign the links anonymously (u=0).
-    const messages = personalizeMessages(parsed.messages, broadcast.id, 0)
+    const messages = personalizeMessages(parsed.messages, broadcast.id, 0, parsed.flexLinks)
     const result = await broadcastLineMessage(
       messages as Parameters<typeof broadcastLineMessage>[0],
       broadcast.lineAccountId
@@ -501,7 +562,7 @@ export async function sendBroadcastRecord(broadcast: {
       batch.map((targetUser) =>
         pushLineMessage(
           targetUser.lineUserId,
-          personalizeMessages(parsed.messages, broadcast.id, targetUser.id) as Parameters<typeof pushLineMessage>[1],
+          personalizeMessages(parsed.messages, broadcast.id, targetUser.id, parsed.flexLinks) as Parameters<typeof pushLineMessage>[1],
           targetUser.lineAccountId ?? broadcast.lineAccountId
         )
       )

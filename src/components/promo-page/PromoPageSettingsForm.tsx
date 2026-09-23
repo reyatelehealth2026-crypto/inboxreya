@@ -1,24 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import {
-  SortableContext,
-  arrayMove,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { ExternalLink, GripVertical, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { arrayMove } from '@dnd-kit/sortable'
+import { ExternalLink, Loader2, Plus, RefreshCw, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -32,9 +16,18 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
-import { cn } from '@/lib/utils'
 import { orderByIds } from '@/lib/promo-rows'
 import type { RegionClickSummary } from '@/lib/promo-clicks'
+import { PromoClickStats } from '@/components/promo-page/PromoClickStats'
+import { PromoFlexCard } from '@/components/promo-page/PromoFlexCard'
+import {
+  PreviewFrame,
+  SortableList,
+  SortableRow,
+  Thumb,
+  isHttps,
+  type PreviewView,
+} from '@/components/promo-page/PromoFormParts'
 import type {
   PromoHeroBanner,
   PromoPageSettings,
@@ -46,7 +39,6 @@ const DESKTOP_COLS = [3, 4, 5] as const
 const MAX_HERO_BANNERS = 8
 const PREVIEW_DEBOUNCE_MS = 500
 const CLICK_DAYS = 30
-const CLICK_ROWS = 10
 
 /** A CMS section as the settings API describes it: what the admin can order and re-banner. */
 interface SectionMeta {
@@ -55,10 +47,6 @@ interface SectionMeta {
   bannerUrl: string | null
   cards: number
 }
-
-type PreviewView = 'home' | 'grid'
-
-const isHttps = (value: string) => /^https:\/\/\S+$/.test(value.trim())
 
 /** The draft as the page would show it now: half-typed URLs are left out, not rejected. */
 function previewable(settings: PromoPageSettings): PromoPageSettings {
@@ -456,7 +444,9 @@ export function PromoPageSettingsForm() {
           )}
         </Card>
 
-        <ClickStats summary={clicks} />
+        <PromoFlexCard settings={previewable(settings)} />
+
+        <PromoClickStats summary={clicks} days={CLICK_DAYS} />
 
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={save} disabled={saving}>
@@ -487,156 +477,4 @@ export function PromoPageSettingsForm() {
       <PreviewFrame src={previewSrc} view={previewView} onView={setPreviewView} />
     </div>
   )
-}
-
-/** Imagemap taps per brand over the last CLICK_DAYS days — which regions people actually press. */
-function ClickStats({ summary }: { summary: RegionClickSummary | null }) {
-  const rows = summary?.brands.slice(0, CLICK_ROWS) ?? []
-  const max = rows[0]?.clicks ?? 0
-  const pct = (value: number) => `${(value * 100).toFixed(1)}%`
-  return (
-    <Card className="space-y-3 p-4">
-      <div>
-        <Label>คลิกจาก imagemap ({CLICK_DAYS} วันล่าสุด)</Label>
-        <p className="text-xs text-gray-500">
-          {summary
-            ? `${summary.totals.broadcasts} บรอดแคสต์ · ส่งถึง ${summary.totals.recipients.toLocaleString('th-TH')} คน · กด ${summary.totals.clicks.toLocaleString('th-TH')} ครั้ง` +
-              (summary.totals.recipients > 0 ? ` · CTR ${pct(summary.totals.clicks / summary.totals.recipients)}` : '')
-            : 'กำลังโหลด...'}
-        </p>
-      </div>
-      {summary && rows.length === 0 && (
-        <p className="text-sm text-gray-400">ยังไม่มีบรอดแคสต์ imagemap ในช่วงนี้</p>
-      )}
-      {rows.map((row) => (
-        <div key={row.label} className="space-y-1">
-          <div className="flex items-baseline justify-between gap-2 text-sm">
-            <span className="truncate font-medium text-gray-800">{row.label}</span>
-            <span className="shrink-0 text-xs text-gray-500">
-              {row.clicks.toLocaleString('th-TH')} ครั้ง · CTR {pct(row.ctr)}
-            </span>
-          </div>
-          <div className="h-1.5 rounded bg-gray-100">
-            <div
-              className="h-1.5 rounded bg-[#ec3013]"
-              style={{ width: max > 0 ? `${Math.max(2, (row.clicks / max) * 100)}%` : '0%' }}
-            />
-          </div>
-        </div>
-      ))}
-    </Card>
-  )
-}
-
-/** The real /promo page in a phone-sized frame, rendered from the unsaved draft. */
-function PreviewFrame({
-  src,
-  view,
-  onView,
-}: {
-  src: string | null
-  view: PreviewView
-  onView: (view: PreviewView) => void
-}) {
-  return (
-    <div className="mt-6 lg:sticky lg:top-4 lg:mt-0 lg:flex-1">
-      <div className="mx-auto flex max-w-[400px] items-center justify-between gap-2 pb-2">
-        <span className="text-sm font-medium text-gray-700">ตัวอย่างสด (ยังไม่บันทึก)</span>
-        <div className="flex gap-1">
-          <Button size="sm" variant={view === 'home' ? 'default' : 'outline'} onClick={() => onView('home')}>
-            หน้าแรก
-          </Button>
-          <Button size="sm" variant={view === 'grid' ? 'default' : 'outline'} onClick={() => onView('grid')}>
-            หน้าหมวด
-          </Button>
-        </div>
-      </div>
-      <div className="mx-auto w-full max-w-[400px] overflow-hidden rounded-[28px] border-[6px] border-gray-900 bg-white shadow-xl">
-        {src ? (
-          <iframe key={src} src={src} title="ตัวอย่างหน้า /promo" className="block h-[78vh] w-full" />
-        ) : (
-          <div className="flex h-[78vh] items-center justify-center text-sm text-gray-400">
-            กำลังสร้างตัวอย่าง...
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function SortableList({
-  id,
-  ids,
-  onMove,
-  children,
-}: {
-  id: string
-  ids: string[]
-  onMove: (from: number, to: number) => void
-  children: ReactNode
-}) {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  )
-  const onDragEnd = ({ active, over }: DragEndEvent) => {
-    if (!over || active.id === over.id) return
-    onMove(ids.indexOf(String(active.id)), ids.indexOf(String(over.id)))
-  }
-  return (
-    <DndContext id={id} sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        <div className="space-y-2">{children}</div>
-      </SortableContext>
-    </DndContext>
-  )
-}
-
-function SortableRow({
-  id,
-  thumb,
-  children,
-  onRemove,
-  removeLabel,
-}: {
-  id: string
-  thumb: ReactNode
-  children: ReactNode
-  onRemove?: () => void
-  removeLabel?: string
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn(
-        'flex items-start gap-2 rounded-lg border bg-white p-2',
-        isDragging && 'opacity-60 shadow-lg'
-      )}
-    >
-      <button
-        type="button"
-        {...attributes}
-        {...listeners}
-        aria-label="ลากเพื่อจัดลำดับ"
-        className="flex shrink-0 cursor-grab touch-none items-center justify-center self-center text-gray-400 hover:text-gray-600"
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      {thumb}
-      <div className="min-w-0 flex-1 space-y-1">{children}</div>
-      {onRemove && (
-        <Button type="button" variant="ghost" size="icon" aria-label={removeLabel} onClick={onRemove}>
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      )}
-    </div>
-  )
-}
-
-function Thumb({ src }: { src: string }) {
-  if (!isHttps(src)) return <div className="h-10 w-16 shrink-0 rounded bg-gray-100" aria-hidden="true" />
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={src} alt="" className="h-10 w-16 shrink-0 rounded bg-gray-100 object-cover" />
 }

@@ -89,8 +89,8 @@ describe('buildBroadcastMessages - imagemap', () => {
     expect(built.summaryText).toBe('สนใจสอบถามได้เลยค่ะ')
   })
 
-  it('rejects more than 12 regions', () => {
-    const regions = Array.from({ length: 13 }, (_, i) => region({ x: 0, y: i * 10, w: 100, h: 10 }))
+  it('rejects more than 50 regions (LINE limit)', () => {
+    const regions = Array.from({ length: 51 }, (_, i) => region({ x: 0, y: i * 10, w: 100, h: 10 }))
     expect(() => buildBroadcastMessages({ imagemap: imagemap({ regions }) })).toThrow()
   })
 
@@ -166,6 +166,58 @@ describe('personalizeMessages', () => {
 
     const image = buildBroadcastMessages({ mediaUrl: 'https://cdn.example.com/a.jpg' })
     expect(personalizeMessages(image.messages, 1, 2)).toEqual(image.messages)
+  })
+})
+
+describe('flex link tracking', () => {
+  const flexCarousel = {
+    type: 'carousel',
+    contents: [
+      {
+        type: 'bubble',
+        hero: { type: 'image', url: 'https://cdn.example.com/a.png', action: { type: 'uri', uri: 'https://shop.example.com/p/1' } },
+        footer: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            { type: 'box', layout: 'vertical', action: { type: 'uri', label: 'ดูโปร', uri: 'https://shop.example.com/p/1' }, contents: [] },
+            { type: 'box', layout: 'vertical', action: { type: 'uri', label: 'แชท', uri: 'https://line.me/R/oaMessage/@x/?hi' }, contents: [] },
+            { type: 'button', action: { type: 'uri', label: 'ทั้งหมด', uri: `${ORIGIN}/promo` } },
+          ],
+        },
+      },
+    ],
+  }
+
+  it('records each distinct https link once, skipping LINE deep links', () => {
+    const built = buildBroadcastMessages({ flexContents: [flexCarousel] })
+    expect(built.flexLinks).toEqual(['https://shop.example.com/p/1', `${ORIGIN}/promo`])
+    expect(buildBroadcastEnvelope({ flexContents: [flexCarousel] }).flexLinks).toEqual(built.flexLinks)
+  })
+
+  it('rewrites tracked flex links to /r/ tokens numbered after the imagemap regions', () => {
+    const built = buildBroadcastMessages({ imagemap: imagemap(), flexContent: flexCarousel })
+    const personalized = personalizeMessages(built.messages, 9, 4, built.flexLinks)
+    const bubble = (personalized[1].contents as { contents: Array<Record<string, any>> }).contents[0]
+
+    const heroUri = bubble.hero.action.uri as string
+    const [pill, chat, all] = bubble.footer.contents
+    expect(verifyLink(heroUri.split('/r/')[1])).toEqual({ b: 9, r: 2, u: 4 })
+    expect(pill.action.uri).toBe(heroUri)
+    expect(verifyLink((all.action.uri as string).split('/r/')[1])).toEqual({ b: 9, r: 3, u: 4 })
+    expect(chat.action.uri).toBe('https://line.me/R/oaMessage/@x/?hi')
+    // the stored message is untouched
+    expect((built.messages[1].contents as any).contents[0].hero.action.uri).toBe('https://shop.example.com/p/1')
+  })
+
+  it('leaves flex messages alone when nothing is tracked', () => {
+    const built = buildBroadcastMessages({ flexContents: [flexCarousel] })
+    expect(personalizeMessages(built.messages, 1, 2)).toEqual(built.messages)
+  })
+
+  it('round-trips flexLinks through the stored envelope', () => {
+    const envelope = buildBroadcastEnvelope({ flexContents: [flexCarousel] })
+    expect(parseStoredBroadcast(JSON.stringify(envelope)).flexLinks).toEqual(envelope.flexLinks)
   })
 })
 

@@ -1,4 +1,4 @@
-// GET /r/[token] — imagemap broadcast click redirect.
+// GET /r/[token] — imagemap / flex broadcast click redirect.
 //
 // Public route (see middleware.ts publicRoutes: '/r/'). Verifies the signed
 // token, logs a click, optionally tags the clicking user with the region's
@@ -24,6 +24,7 @@ const imagemapMetaSchema = z.object({
   baseKey: z.string().min(1),
   regions: z.array(imagemapRegionSchema).min(1).max(IMAGEMAP_MAX_REGIONS),
 })
+const flexLinksSchema = z.array(z.string().max(1000)).max(100)
 
 interface RouteContext {
   params: Promise<{ token: string }>
@@ -54,13 +55,16 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
     })
     if (!broadcast) return redirectToPromo()
 
-    const parsedContent = JSON.parse(broadcast.content) as unknown
-    const metaResult = imagemapMetaSchema.safeParse(
-      (parsedContent as { imagemapMeta?: unknown } | null)?.imagemapMeta
-    )
-    if (!metaResult.success) return redirectToPromo()
+    const parsedContent = JSON.parse(broadcast.content) as { imagemapMeta?: unknown; flexLinks?: unknown } | null
+    const metaResult = imagemapMetaSchema.safeParse(parsedContent?.imagemapMeta)
+    const linksResult = flexLinksSchema.safeParse(parsedContent?.flexLinks)
+    const regions = metaResult.success ? metaResult.data.regions : []
+    const flexLinks = linksResult.success ? linksResult.data : []
 
-    const candidate = metaResult.data.regions[payload.r]
+    // Token index: imagemap regions first, then flex links (see personalizeMessages).
+    const flexUrl = payload.r >= regions.length ? flexLinks[payload.r - regions.length] : undefined
+    const candidate: ImagemapRegion | undefined =
+      payload.r < regions.length ? regions[payload.r] : flexUrl ? { x: 0, y: 0, w: 1, h: 1, url: flexUrl } : undefined
     if (!candidate || !candidate.url.startsWith('https://')) return redirectToPromo()
 
     region = candidate

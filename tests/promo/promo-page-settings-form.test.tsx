@@ -35,8 +35,8 @@ describe('PromoPageSettingsForm', () => {
           success: true,
           days: 30,
           data: {
-            totals: { clicks: 12, recipients: 400, broadcasts: 2 },
-            brands: [{ label: 'VISTRA', clicks: 9, recipients: 400, ctr: 0.0225 }],
+            totals: { clicks: 12, people: 9, recipients: 400, broadcasts: 2 },
+            brands: [{ label: 'VISTRA', clicks: 12, people: 9, recipients: 400, ctr: 0.0225 }],
           },
         });
       }
@@ -60,7 +60,7 @@ describe('PromoPageSettingsForm', () => {
     expect(preview.body).toMatchObject({ sections: [{ id: 'section-6' }] });
 
     await screen.findByText('VISTRA');
-    expect(screen.getByText('9 ครั้ง · CTR 2.3%')).not.toBeNull();
+    expect(screen.getByText('9 คน · 12 ครั้ง · CTR 2.3%')).not.toBeNull();
   });
 
   it('writes the whole section list back when one banner changes, half-typed URLs left out of the preview', async () => {

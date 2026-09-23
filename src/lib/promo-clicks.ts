@@ -2,14 +2,20 @@ import { z } from 'zod'
 import { imagemapRegionSchema } from '@/lib/imagemap-types'
 
 /**
- * Imagemap clicks per brand. /r/<token> logs one `broadcast_engagement` row per
- * tap (`eventType: 'click'`, `action: 'region:<index>'`); the region's brand is
- * read back from the broadcast's stored `imagemapMeta`.
+ * Link taps per brand. /r/<token> logs one `broadcast_engagement` row per tap
+ * (`eventType: 'click'`, `action: 'region:<index>'`). The index points into the
+ * broadcast's imagemap regions, then its tracked flex links (see broadcast-runtime).
+ *
+ * CTR is people over recipients, not taps: one person tapping three times is one.
  */
+
+/** Taps from the native all-followers broadcast carry no identity. */
+const ANON = 'anon'
 
 export interface RegionClickRow {
   broadcastId: number
   action: string | null
+  lineUserId: string
   clicks: number
 }
 
@@ -22,22 +28,25 @@ export interface ClickBroadcast {
 export interface BrandClicks {
   label: string
   clicks: number
-  /** Recipients of every broadcast that had a region for this brand. */
+  /** Distinct people who tapped this brand (anonymous taps count one each). */
+  people: number
+  /** Recipients of every broadcast that had a link for this brand. */
   recipients: number
-  /** clicks / recipients, 0 when nothing was sent. */
+  /** people / recipients, 0 when nothing was sent. */
   ctr: number
 }
 
 export interface RegionClickSummary {
-  totals: { clicks: number; recipients: number; broadcasts: number }
+  totals: { clicks: number; people: number; recipients: number; broadcasts: number }
   brands: BrandClicks[]
 }
 
 const metaSchema = z.object({
   imagemapMeta: z.object({ regions: z.array(imagemapRegionSchema) }).optional(),
+  flexLinks: z.array(z.string()).optional(),
 })
 
-/** What a region was "for": its keyword, the ?k= brand of a /promo link, or the link's host. */
+/** What a link was "for": its keyword, the ?k= brand of a /promo link, or the link's host. */
 export function regionLabel(region: { url: string; keyword?: string }, origin: string): string {
   if (region.keyword?.trim()) return region.keyword.trim()
   try {
@@ -51,13 +60,22 @@ export function regionLabel(region: { url: string; keyword?: string }, origin: s
   }
 }
 
-function regionsOf(content: string) {
+/** Every tracked link of a broadcast, in /r/ index order: imagemap regions, then flex links. */
+function linksOf(content: string): { url: string; keyword?: string }[] {
   try {
     const parsed = metaSchema.safeParse(JSON.parse(content))
-    return parsed.success ? (parsed.data.imagemapMeta?.regions ?? []) : []
+    if (!parsed.success) return []
+    const regions = parsed.data.imagemapMeta?.regions ?? []
+    return [...regions, ...(parsed.data.flexLinks ?? []).map((url) => ({ url }))]
   } catch {
     return []
   }
+}
+
+/** One key per person per broadcast; each anonymous tap is its own "person". */
+function personKeys(row: RegionClickRow): string[] {
+  if (row.lineUserId !== ANON) return [`${row.broadcastId}:${row.lineUserId}`]
+  return Array.from({ length: row.clicks }, (_, i) => `${row.broadcastId}:${row.action}:${ANON}:${i}`)
 }
 
 export function aggregateRegionClicks(
@@ -66,16 +84,24 @@ export function aggregateRegionClicks(
   origin: string
 ): RegionClickSummary {
   const labelsByBroadcast = new Map(
-    broadcasts.map((b) => [b.id, regionsOf(b.content).map((region) => regionLabel(region, origin))])
+    broadcasts.map((b) => [b.id, linksOf(b.content).map((link) => regionLabel(link, origin))])
   )
   const recipientsByBroadcast = new Map(broadcasts.map((b) => [b.id, b.recipients]))
 
   const clicks = new Map<string, number>()
+  const people = new Map<string, Set<string>>()
+  const everyone = new Set<string>()
   for (const row of rows) {
     const index = Number(row.action?.match(/^region:(\d+)$/)?.[1])
     const label = labelsByBroadcast.get(row.broadcastId)?.[index]
     if (!label) continue
     clicks.set(label, (clicks.get(label) ?? 0) + row.clicks)
+    const who = people.get(label) ?? new Set<string>()
+    for (const key of personKeys(row)) {
+      who.add(key)
+      everyone.add(key)
+    }
+    people.set(label, who)
   }
 
   // A brand's reach is every broadcast that carried it, counted once per broadcast.
@@ -88,16 +114,17 @@ export function aggregateRegionClicks(
 
   const brands: BrandClicks[] = Array.from(reach.keys())
     .map((label) => {
-      const c = clicks.get(label) ?? 0
+      const p = people.get(label)?.size ?? 0
       const r = reach.get(label) ?? 0
-      return { label, clicks: c, recipients: r, ctr: r > 0 ? c / r : 0 }
+      return { label, clicks: clicks.get(label) ?? 0, people: p, recipients: r, ctr: r > 0 ? p / r : 0 }
     })
-    // Ties keep region order (stable sort), so an untapped broadcast still lists brands as laid out.
-    .sort((a, b) => b.clicks - a.clicks || b.ctr - a.ctr)
+    // Ties keep link order (stable sort), so an untapped broadcast still lists brands as laid out.
+    .sort((a, b) => b.people - a.people || b.clicks - a.clicks)
 
   return {
     totals: {
-      clicks: rows.reduce((sum, row) => sum + row.clicks, 0),
+      clicks: Array.from(clicks.values()).reduce((sum, n) => sum + n, 0),
+      people: everyone.size,
       recipients: broadcasts.reduce((sum, b) => sum + b.recipients, 0),
       broadcasts: broadcasts.length,
     },

@@ -389,9 +389,10 @@ let priceGeneration = 0;
 
 /**
  * Prices already in cache for these SKUs. Missing or stale ones are refreshed
- * in the background — the page never waits on a hundred 1MB responses.
+ * in the background — the page never waits on a hundred 1MB responses — unless
+ * `refreshStale` is false (the Flex builder awaits its own short list instead).
  */
-export function getCachedPrices(skus: string[]): Map<string, PriceInfo> {
+export function getCachedPrices(skus: string[], refreshStale = true): Map<string, PriceInfo> {
   const found = new Map<string, PriceInfo>();
   const stale: string[] = [];
   for (const sku of new Set(skus)) {
@@ -399,7 +400,7 @@ export function getCachedPrices(skus: string[]): Map<string, PriceInfo> {
     if (hit?.info) found.set(sku, hit.info);
     if (!hit || Date.now() - hit.at > PRICE_TTL_MS) stale.push(sku);
   }
-  if (stale.length > 0) void refreshPrices(stale);
+  if (refreshStale && stale.length > 0) void refreshPrices(stale);
   return found;
 }
 

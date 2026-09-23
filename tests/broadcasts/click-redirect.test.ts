@@ -196,6 +196,38 @@ describe('GET /r/[token]', () => {
     expect(res.headers.get('location')).toBe('http://localhost:3000/promo')
   })
 
+  test('an index past the regions resolves to the stored flex link', async () => {
+    mocks.broadcastFindUnique.mockResolvedValue({
+      content: JSON.stringify({
+        version: 2,
+        kind: 'composer_broadcast',
+        imagemapMeta: { baseKey: 'abc123', regions: [{ x: 0, y: 0, w: 500, h: 500, url: 'https://example.com/promo-a' }] },
+        flexLinks: ['https://example.com/product/1', 'http://example.com/insecure'],
+      }),
+      lineAccountId: 3,
+    })
+
+    const token = signLink({ b: 42, r: 1, u: 7 })
+    const res = await GET(makeRequest(token), { params: Promise.resolve({ token }) })
+    expect(res.headers.get('location')).toBe('https://example.com/product/1')
+    expect(mocks.engagementCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'region:1' }) })
+    expect(mocks.tagAssignmentUpsert).not.toHaveBeenCalled()
+
+    const insecure = signLink({ b: 42, r: 2, u: 7 })
+    const fallback = await GET(makeRequest(insecure), { params: Promise.resolve({ token: insecure }) })
+    expect(fallback.headers.get('location')).toMatch(/\/promo$/)
+  })
+
+  test('a flex-only broadcast (no imagemap) still resolves its links', async () => {
+    mocks.broadcastFindUnique.mockResolvedValue({
+      content: JSON.stringify({ version: 2, kind: 'composer_broadcast', flexLinks: ['https://example.com/product/9'] }),
+      lineAccountId: 3,
+    })
+    const token = signLink({ b: 42, r: 0, u: 0 })
+    const res = await GET(makeRequest(token), { params: Promise.resolve({ token }) })
+    expect(res.headers.get('location')).toBe('https://example.com/product/9')
+  })
+
   test('DB throw while resolving the broadcast still redirects to /promo', async () => {
     mocks.broadcastFindUnique.mockRejectedValueOnce(new Error('connection lost'))
 

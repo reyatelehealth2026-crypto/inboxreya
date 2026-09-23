@@ -1,27 +1,26 @@
 import { Metadata } from 'next';
 import prisma from '@/lib/prisma';
-import {
-  fetchCnyNewsPromo,
-  findCardIndexForKeyword,
-  type PromoCard as PromoCardData,
-} from '@/lib/cny-news-promo';
+import { findCardIndexForKeyword } from '@/lib/cny-news-promo';
 import {
   getPromoPageSettings,
   type PromoHeroBanner,
   type PromoPageSettings,
 } from '@/lib/promo-page-settings';
 import { readPreview } from '@/lib/promo-preview';
-import { orderByIds, partnerNames, rowTitle } from '@/lib/promo-rows';
 import {
-  buildOffer,
-  fetchCnyCampaigns,
+  cardDomId,
+  dealItems,
+  loadPromoData,
+  soonestEnd,
+  type PromoItem,
+  type PromoRow,
+} from '@/lib/promo-data';
+import {
   formatThaiDate,
-  getCachedPrices,
   parseOfferSort,
   skuFromCard,
   sortOffers,
   type OfferSort,
-  type PromoOffer,
 } from '@/lib/cny-promo-offers';
 import { PromoFocus } from '@/components/promo-page/PromoFocus';
 import { PromoHero, type HeroSlide } from '@/components/promo-page/PromoHero';
@@ -47,22 +46,8 @@ const SORTS: { key: OfferSort; label: string }[] = [
   { key: 'brand', label: 'ตามแบรนด์' },
 ];
 
-interface Item {
-  id: string;
-  card: PromoCardData;
-  offer: PromoOffer;
-  chatUrl: string | null;
-}
-
-interface Row {
-  id: string;
-  title: string;
-  /** Distinct partner brands in the row — every partner card is a brand deal. */
-  brands: number;
-  headerImageUrl: string | null;
-  headerHref: string | null;
-  items: Item[];
-}
+type Item = PromoItem;
+type Row = PromoRow;
 
 interface PromoSearch {
   /** Broadcast keyword — scroll to and ring that card. */
@@ -98,9 +83,9 @@ export default async function PromoPage({ searchParams }: { searchParams: Promis
 
   const settings = readPreview(params.preview) ?? getPromoPageSettings(lineAccount);
   const basicId = lineAccount?.basicId ?? null;
-  const promo = await fetchCnyNewsPromo(settings.newsId);
+  const data = await loadPromoData(settings, basicId);
 
-  if (!promo || promo.sections.length === 0) {
+  if (!data) {
     return (
       <main className="min-h-screen bg-gray-50 px-4 py-10 text-center">
         <p className="text-sm text-gray-500">ยังไม่มีโปรโมชันในขณะนี้</p>
@@ -109,39 +94,7 @@ export default async function PromoPage({ searchParams }: { searchParams: Promis
     );
   }
 
-  const campaigns = await fetchCnyCampaigns();
-  const skus = promo.sections.flatMap((section) =>
-    section.cards.flatMap((card) => {
-      const sku = skuFromCard(card);
-      return sku ? [sku] : [];
-    })
-  );
-  const prices = getCachedPrices(skus);
-
-  // Admin overrides per section: listed ones come first in that order, and their banner wins.
-  const overrides = new Map(settings.sections.map((section) => [section.id, section]));
-  const rows: Row[] = orderByIds(
-    promo.sections.map((section, index) => {
-      const custom = overrides.get(section.id);
-      return {
-        id: section.id,
-        title: rowTitle(section, index),
-        brands: partnerNames(section).size,
-        headerImageUrl: custom?.imageUrl || section.headerImageUrl,
-        headerHref: custom?.href || null,
-        items: section.cards.map((card, cardIndex) => ({
-          id: cardDomId(section.id, cardIndex),
-          card,
-          offer: buildOffer(card, campaigns, prices),
-          chatUrl:
-            settings.showChatButton && card.kind === 'partner'
-              ? chatUrl(card, basicId, settings.chatText)
-              : null,
-        })),
-      };
-    }),
-    settings.sections.map((section) => section.id)
-  );
+  const { rows } = data;
   const cardRows = rows.filter((row) => row.items.length > 0);
 
   const section = params.s ? cardRows.find((row) => row.id === params.s) : undefined;
@@ -149,15 +102,12 @@ export default async function PromoPage({ searchParams }: { searchParams: Promis
     return <SectionView row={section} rows={cardRows} q={q} sort={sort} settings={settings} />;
   }
 
-  const focus = k ? findCardIndexForKeyword(promo.sections, k) : null;
+  const focus = k ? findCardIndexForKeyword(data.sections, k) : null;
   const focusId = focus ? cardDomId(focus.sectionId, focus.cardIndex) : null;
 
   const allItems = cardRows.flatMap((row) => row.items);
   const now = Date.now();
-  const deals = allItems
-    .filter((item) => item.offer.endsAt && item.offer.endsAt.getTime() > now)
-    .sort((a, b) => a.offer.endsAt!.getTime() - b.offer.endsAt!.getTime())
-    .slice(0, DEAL_LIMIT);
+  const deals = dealItems(allItems, now, DEAL_LIMIT);
   const dealEnd = deals[0]?.offer.endsAt ?? null;
 
   return (
@@ -370,28 +320,6 @@ function heroSlides(rows: Row[], items: Item[], custom: PromoHeroBanner[]): Hero
     note: 'ของมีจำนวนจำกัด จนกว่าของจะหมด',
   };
   return [...banners.slice(0, 1), statement, ...banners.slice(1)];
-}
-
-function soonestEnd(items: Item[], now: number): Date | null {
-  let soonest: Date | null = null;
-  for (const item of items) {
-    const end = item.offer.endsAt;
-    if (end && end.getTime() > now && (!soonest || end < soonest)) soonest = end;
-  }
-  return soonest;
-}
-
-function cardDomId(sectionId: string, cardIndex: number): string {
-  return `card-${sectionId}-${cardIndex}`;
-}
-
-/** The LINE deep link that opens the OA chat with the message pre-filled. */
-function chatUrl(card: PromoCardData, basicId: string | null, chatText: string): string | null {
-  if (!basicId) return null;
-  const text = chatText.replace(/\{partner\}/g, card.partner ?? '').trim();
-  if (!text) return null;
-  // LINE URL scheme: oaMessage/{id}/?{url-encoded message} — the query string IS the text.
-  return `https://line.me/R/oaMessage/@${basicId.replace(/^@/, '')}/?${encodeURIComponent(text)}`;
 }
 
 function Chevron() {

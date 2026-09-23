@@ -7,8 +7,9 @@ import { getPublicOrigin } from '@/lib/broadcast-runtime'
 const DEFAULT_DAYS = 30
 const MAX_DAYS = 365
 
-// GET /api/inbox/promo-page-settings/clicks?days=30 — imagemap taps per brand for
-// the default account's broadcasts sent in the window (clicks counted whenever they came).
+// GET /api/inbox/promo-page-settings/clicks?days=30 — imagemap and flex link taps per
+// brand for the default account's broadcasts sent in the window (taps counted whenever
+// they came), as distinct people and raw taps.
 export async function GET(req: NextRequest) {
   try {
     const authResult = await requireAuth(req)
@@ -27,7 +28,11 @@ export async function GET(req: NextRequest) {
     }
 
     const sent = await prisma.broadcastMessageV2.findMany({
-      where: { lineAccountId: account.id, sentAt: { gte: since }, content: { contains: '"imagemapMeta"' } },
+      where: {
+        lineAccountId: account.id,
+        sentAt: { gte: since },
+        OR: [{ content: { contains: '"imagemapMeta"' } }, { content: { contains: '"flexLinks"' } }],
+      },
       select: { id: true, content: true, deliveredCount: true, totalRecipients: true },
     })
     const broadcasts = sent.map((b) => ({
@@ -38,12 +43,17 @@ export async function GET(req: NextRequest) {
 
     const grouped = broadcasts.length
       ? await prisma.broadcastEngagement.groupBy({
-          by: ['broadcastId', 'action'],
+          by: ['broadcastId', 'action', 'lineUserId'],
           where: { broadcastId: { in: broadcasts.map((b) => b.id) }, eventType: 'click' },
           _count: { _all: true },
         })
       : []
-    const rows = grouped.map((g) => ({ broadcastId: g.broadcastId, action: g.action, clicks: g._count._all }))
+    const rows = grouped.map((g) => ({
+      broadcastId: g.broadcastId,
+      action: g.action,
+      lineUserId: g.lineUserId,
+      clicks: g._count._all,
+    }))
 
     return NextResponse.json({
       success: true,

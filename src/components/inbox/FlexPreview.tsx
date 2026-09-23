@@ -162,6 +162,12 @@ function renderHero(hero: FlexContent): React.ReactNode {
   return null
 }
 
+/** LINE's `flex: 0` means "as wide as the content"; CSS `flex: 0` would squash it to nothing. */
+function lineFlex(value: unknown): React.CSSProperties['flex'] {
+  if (value === undefined) return undefined
+  return value === 0 ? '0 0 auto' : (value as number)
+}
+
 // ─── Box ─────────────────────────────────────────────────────────────────────
 function renderBox(box: FlexContent): React.ReactNode {
   if (!box || box.type !== 'box') return renderContent(box)
@@ -190,7 +196,7 @@ function renderBox(box: FlexContent): React.ReactNode {
     marginTop:      marginTop || undefined,
     alignItems:     (alignMap[box.alignItems]   as any) || undefined,
     justifyContent: (justifyMap[box.justifyContent] as any) || undefined,
-    flex:           box.flex !== undefined ? box.flex : undefined,
+    flex:           lineFlex(box.flex),
     width:          fixedW,
     height:         fixedH,
     minWidth:       0,
@@ -247,7 +253,7 @@ function renderText(t: FlexContent): React.ReactNode {
         whiteSpace:     wrap ? 'pre-wrap' : 'nowrap',
         overflow:       wrap ? 'visible' : 'hidden',
         textOverflow:   wrap ? undefined : 'ellipsis',
-        flex:           t.flex !== undefined ? t.flex : undefined,
+        flex:           lineFlex(t.flex),
         flexShrink:     t.flex === 0 ? 0 : undefined,
       }}
     >
@@ -298,7 +304,7 @@ function renderImage(img: FlexContent): React.ReactNode {
     <div
       style={{
         marginTop:  marginTop || undefined,
-        flex:       img.flex !== undefined ? img.flex : undefined,
+        flex:       lineFlex(img.flex),
         width:      '100%',
       }}
     >
