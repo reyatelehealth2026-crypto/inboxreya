@@ -192,7 +192,8 @@ export function RewardsAdmin() {
   }, [statusFilter])
 
   useEffect(() => {
-    setLoading(true)
+    // loading starts true and only drops once: re-running on a filter change
+    // must not unmount <Tabs>, or it snaps back to its defaultValue.
     Promise.all([loadRewards(), loadRedemptions()])
       .catch(() => toast({ title: 'โหลดข้อมูลไม่สำเร็จ', variant: 'destructive' }))
       .finally(() => setLoading(false))
