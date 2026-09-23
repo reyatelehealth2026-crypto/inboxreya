@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import Image from 'next/image'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Send, Paperclip, Smile, MoreVertical, Phone, Video, Image as ImageIcon, Sparkles, X, ArrowLeft, Reply, Upload, Loader2, Search, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { Send, Paperclip, Smile, MoreVertical, Phone, Video, Image as ImageIcon, Sparkles, X, ArrowLeft, Reply, Upload, Loader2, Search, ShieldCheck, ShieldAlert, Mic, MicOff } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMessages, useSendMessage } from '@/hooks/use-messages'
@@ -22,6 +22,7 @@ import { useInboxStore } from '@/stores/inbox'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useTextExpansion, useInboxKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
+import { useSpeechInput } from '@/hooks/use-speech-input'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
@@ -978,6 +979,11 @@ function MessageComposer({
   // Register text expansion
   useTextExpansion(message, setMessage)
 
+  const speech = useSpeechInput({
+    onText: setMessage,
+    onError: (description) => toast({ title: 'ไมโครโฟน', description, variant: 'destructive' }),
+  })
+
   // Register composer-specific shortcuts
   useInboxKeyboardShortcuts({
     onOpenTemplatePicker: () => {
@@ -1141,6 +1147,7 @@ function MessageComposer({
       return
     }
 
+    speech.cancel()
     try {
       await sendMessage.mutateAsync({
         userId,
@@ -1154,7 +1161,7 @@ function MessageComposer({
     } catch (error) {
       console.error('Failed to send message:', error)
     }
-  }, [message, userId, sendMessage, stopTyping, selectedFiles, lineUserId, clearSelectedFiles, toast, queryClient, clearReply, replyingToMessage?.id])
+  }, [message, userId, sendMessage, stopTyping, selectedFiles, lineUserId, clearSelectedFiles, toast, queryClient, clearReply, replyingToMessage?.id, speech.cancel])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -1511,6 +1518,21 @@ function MessageComposer({
           disabled={selectedFiles.length > 0}
           aria-label="พิมพ์ข้อความ"
         />
+
+        {speech.isSupported && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn('flex-shrink-0 h-12 w-12', speech.isListening && 'text-red-600 bg-red-50 animate-pulse')}
+            onClick={() => (speech.isListening ? speech.stop() : speech.start(message))}
+            disabled={selectedFiles.length > 0}
+            aria-label={speech.isListening ? 'หยุดพูด' : 'พูดเพื่อพิมพ์'}
+            aria-pressed={speech.isListening}
+            title={speech.isListening ? 'หยุดพูด' : 'พูดเพื่อพิมพ์ (ภาษาไทย)'}
+          >
+            {speech.isListening ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
+          </Button>
+        )}
 
         <div className="relative flex-shrink-0">
           <Button
