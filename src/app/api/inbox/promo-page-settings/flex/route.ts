@@ -13,8 +13,9 @@ import {
 } from '@/lib/promo-flex'
 import { getPublicOrigin } from '@/lib/broadcast-runtime'
 
-// POST /api/inbox/promo-page-settings/flex — the /promo page, as rendered with these
-// (possibly unsaved) settings, turned into LINE flex messages for a broadcast.
+// POST /api/inbox/promo-page-settings/flex[?at=<ISO>] — the /promo page, as rendered with
+// these (possibly unsaved) settings, turned into LINE flex messages for a broadcast. `at`
+// is a future send time: deals ending before it drop out and "เหลือ N วัน" counts from it.
 export async function POST(req: NextRequest) {
   try {
     const authResult = await requireAuth(req)
@@ -33,7 +34,8 @@ export async function POST(req: NextRequest) {
 
     const account = await prisma.lineAccount.findFirst({ where: { isDefault: true }, select: { basicId: true } })
     const basicId = account?.basicId ?? null
-    const now = Date.now()
+    const at = Date.parse(req.nextUrl.searchParams.get('at') ?? '')
+    const now = Number.isFinite(at) && at > Date.now() ? at : Date.now()
 
     // Which cards go in depends on campaigns, not prices — so pick first, then wait for
     // just those prices (≤20 SKUs) instead of the page's background refresh of all of them.

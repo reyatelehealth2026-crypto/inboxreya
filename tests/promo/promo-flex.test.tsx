@@ -127,11 +127,12 @@ describe('buildPromoFlexMessages', () => {
     }
   });
 
-  it('prices the deal card like the page, with the days-left chip on the title card', () => {
+  it('shows the deal card by name only, with the days-left chip on the title card', () => {
     const deal = texts(messages[1]);
     expect(deal).toContain('เหลือ 10 วัน');
     expect(deal).toContain('ดีเดย์ ไนท์ สตอรี่ 30เม็ด');
-    expect(deal).toEqual(expect.arrayContaining(['฿399', 'ต่อกล่อง[30เม็ด]', '-7%']));
+    // The artwork carries the price; the flex prints none.
+    expect(deal.some((t) => t.startsWith('฿') || t.startsWith('ต่อ') || /^-\d+%$/.test(t))).toBe(false);
   });
 
   it('gives partner cards the wide size and the chat pill; every link is https with a short label', () => {

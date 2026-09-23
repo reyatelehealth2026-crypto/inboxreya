@@ -15,6 +15,17 @@ import type { FlexMessage } from '@/lib/promo-flex'
 
 const DRAFT_TITLE = 'รวมโปรโมชัน'
 const TAG_FILTER_MIN = 8
+/** A scheduled send must be at least this far ahead, so the cron cannot miss it. */
+const MIN_LEAD_MS = 2 * 60_000
+
+const thaiDateTime = (date: Date) =>
+  date.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
+
+/** `datetime-local` wants "YYYY-MM-DDTHH:mm" in the browser's own time zone. */
+function toLocalInput(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
 
 interface TagOption {
   id: number
@@ -38,6 +49,8 @@ export function PromoFlexCard({ settings }: { settings: PromoPageSettings }) {
   const [tagIds, setTagIds] = useState<number[]>([])
   const [tagFilter, setTagFilter] = useState('')
   const [recipients, setRecipients] = useState<number | null>(null)
+  /** Empty = save as a draft; a value = schedule the send for then. */
+  const [sendAt, setSendAt] = useState('')
 
   // Tags to target, loaded once the flex exists (the only time they matter).
   useEffect(() => {
@@ -78,47 +91,74 @@ export function PromoFlexCard({ settings }: { settings: PromoPageSettings }) {
     setTagIds((current) => (current.includes(id) ? current.filter((t) => t !== id) : [...current, id]))
   }
 
-  const build = async () => {
-    setBuilding(true)
-    setDraftId(null)
+  /** The flex as it should look at `at` (defaults to now); null when it cannot be built. */
+  const fetchFlex = async (at?: Date): Promise<FlexMessage[] | null> => {
     try {
-      const response = await fetch('/api/inbox/promo-page-settings/flex', {
+      const query = at ? `?at=${encodeURIComponent(at.toISOString())}` : ''
+      const response = await fetch(`/api/inbox/promo-page-settings/flex${query}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),
       })
-      const payload = await response.json()
-      if (!response.ok || !payload.success) throw new Error(payload.error || 'build failed')
-      setMessages(payload.messages as FlexMessage[])
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.success) throw new Error(payload?.error || `HTTP ${response.status}`)
+      return payload.messages as FlexMessage[]
     } catch (error) {
       console.error('[promo-page] build flex failed', error)
       toast({ title: 'สร้าง Flex ไม่สำเร็จ', variant: 'destructive' })
-    } finally {
-      setBuilding(false)
+      return null
     }
   }
 
-  const saveDraft = async () => {
+  const build = async () => {
+    setBuilding(true)
+    setDraftId(null)
+    const built = await fetchFlex()
+    if (built) setMessages(built)
+    setBuilding(false)
+  }
+
+  const save = async () => {
     if (!messages) return
+    const when = sendAt ? new Date(sendAt) : null
+    if (when && (Number.isNaN(when.getTime()) || when.getTime() < Date.now() + MIN_LEAD_MS)) {
+      toast({ title: 'เวลาส่งต้องอยู่ในอนาคตอย่างน้อย 2 นาที', variant: 'destructive' })
+      return
+    }
+    if (when) {
+      const who = tagIds.length === 0 ? 'เพื่อนทุกคนของ OA' : `${tagIds.length} tag`
+      const count = recipients !== null ? ` (${recipients.toLocaleString('th-TH')} คน)` : ''
+      if (!window.confirm(`ตั้งเวลาส่ง Flex ถึง ${who}${count}\nเวลา ${thaiDateTime(when)}\n\nยืนยัน?`)) return
+    }
+
     setSaving(true)
     try {
+      // A scheduled send is rebuilt for its send time: deals that end before then drop
+      // out, and the days-left chip counts from the send time.
+      const payloadMessages = when ? await fetchFlex(when) : messages
+      if (!payloadMessages) return
       const response = await fetch('/api/inbox/broadcasts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messageType: 'flex',
           content: DRAFT_TITLE,
-          flexContents: messages,
+          flexContents: payloadMessages,
           ...(tagIds.length > 0 ? { targetTagIds: tagIds } : {}),
+          ...(when ? { scheduledAt: when.toISOString() } : {}),
         }),
       })
-      const payload = await response.json()
-      if (!response.ok || !payload.success) throw new Error(payload.error || 'save failed')
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.success) throw new Error(payload?.error || `HTTP ${response.status}`)
       setDraftId(Number(payload.data?.id) || null)
-      toast({ title: 'บันทึกร่างบรอดแคสต์แล้ว', description: 'ไปส่งหรือตั้งเวลาได้ที่หน้าบรอดแคสต์' })
+      toast(
+        when
+          ? { title: 'ตั้งเวลาส่งแล้ว', description: `ส่ง ${thaiDateTime(when)} · ยกเลิกได้ที่หน้าบรอดแคสต์` }
+          : { title: 'บันทึกร่างบรอดแคสต์แล้ว', description: 'ไปส่งหรือตั้งเวลาได้ที่หน้าบรอดแคสต์' }
+      )
     } catch (error) {
-      console.error('[promo-page] save flex draft failed', error)
-      toast({ title: 'บันทึกร่างไม่สำเร็จ', variant: 'destructive' })
+      console.error('[promo-page] save flex broadcast failed', error)
+      toast({ title: when ? 'ตั้งเวลาส่งไม่สำเร็จ' : 'บันทึกร่างไม่สำเร็จ', variant: 'destructive' })
     } finally {
       setSaving(false)
     }
@@ -145,9 +185,9 @@ export function PromoFlexCard({ settings }: { settings: PromoPageSettings }) {
           </Button>
         )}
         {messages && messages.length > 0 && (
-          <Button type="button" onClick={saveDraft} disabled={saving || draftId !== null}>
+          <Button type="button" onClick={save} disabled={saving || draftId !== null}>
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            {draftId ? 'บันทึกแล้ว' : 'บันทึกเป็นร่างบรอดแคสต์'}
+            {draftId ? (sendAt ? 'ตั้งเวลาแล้ว' : 'บันทึกแล้ว') : sendAt ? 'ตั้งเวลาส่ง' : 'บันทึกเป็นร่างบรอดแคสต์'}
           </Button>
         )}
         {draftId && (
@@ -162,7 +202,7 @@ export function PromoFlexCard({ settings }: { settings: PromoPageSettings }) {
       {messages && messages.length > 0 && (
         <div className="space-y-2 rounded-lg border p-3">
           <div className="flex items-baseline justify-between gap-2">
-            <Label>ผู้รับของร่าง</Label>
+            <Label>ผู้รับและเวลาส่ง</Label>
             <span className={cn('text-xs', tagIds.length === 0 ? 'text-amber-700' : 'text-gray-500')}>
               {tagIds.length === 0 ? 'เพื่อนทุกคนของ OA' : `${tagIds.length} tag`}
               {recipients !== null ? ` · ${recipients.toLocaleString('th-TH')} คน` : ' · กำลังนับ...'}
@@ -178,6 +218,29 @@ export function PromoFlexCard({ settings }: { settings: PromoPageSettings }) {
               className="h-8 text-xs"
             />
           )}
+          <div className="space-y-1 pb-1">
+            <label htmlFor="promo-flex-send-at" className="text-xs text-gray-600">
+              เวลาส่ง · เว้นว่าง = บันทึกเป็นร่าง (ส่งเองทีหลัง)
+            </label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="promo-flex-send-at"
+                type="datetime-local"
+                value={sendAt}
+                min={toLocalInput(new Date(Date.now() + MIN_LEAD_MS))}
+                onChange={(event) => {
+                  setDraftId(null)
+                  setSendAt(event.target.value)
+                }}
+                className="h-8 w-auto text-xs"
+              />
+              {sendAt && (
+                <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setSendAt('')}>
+                  ล้าง
+                </Button>
+              )}
+            </div>
+          </div>
           <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
             {shownTags.map((tag) => {
               const on = tagIds.includes(tag.id)
@@ -200,7 +263,7 @@ export function PromoFlexCard({ settings }: { settings: PromoPageSettings }) {
           </div>
         </div>
       )}
-      {building && <p className="text-xs text-gray-500">กำลังดึงราคาล่าสุด อาจใช้เวลา 10–20 วินาที...</p>}
+      {building && <p className="text-xs text-gray-500">กำลังดึงชื่อสินค้าล่าสุดจากร้าน อาจใช้เวลา 10–20 วินาที...</p>}
       {messages?.length === 0 && <p className="text-sm text-gray-400">ยังไม่มีการ์ดโปรให้ส่ง</p>}
       {messages?.map((message, index) => (
         <div key={index} className="space-y-1">

@@ -31,7 +31,6 @@ const DAY_MS = 86_400_000;
 
 const INK = '#201E1D';
 const ACCENT = '#EC3013';
-const ACCENT_700 = '#AE1800';
 const N400 = '#BAB6B6';
 const N700 = '#605D5D';
 const BG = '#F5F4F3';
@@ -289,29 +288,24 @@ function cardBubble(item: PromoItem, size: string, ratio: string): Json {
       backgroundColor: '#FFFFFF',
       ...(card.href ? { action: uri('ดูโปร', card.href) } : {}),
     },
-    // LINE rejects an empty text, and a card without a name or price has no body at all.
-    ...(offer.brand || offer.price
+    // Name only: the artwork carries the deal and its price. LINE rejects an empty text,
+    // so a nameless card has no body.
+    ...(offer.brand
       ? {
           body: {
             type: 'box',
             layout: 'vertical',
-            spacing: 'xs',
             paddingAll: '10px',
             contents: [
-              ...(offer.brand
-                ? [
-                    {
-                      type: 'text',
-                      text: offer.brand,
-                      size: size === 'micro' ? 'xs' : 'sm',
-                      weight: 'bold',
-                      color: INK,
-                      wrap: true,
-                      maxLines: 2,
-                    },
-                  ]
-                : []),
-              ...(offer.price ? [priceLine(offer.price, offer.unitLine, offer.off)] : []),
+              {
+                type: 'text',
+                text: offer.brand,
+                size: size === 'micro' ? 'xs' : 'sm',
+                weight: 'bold',
+                color: INK,
+                wrap: true,
+                maxLines: 2,
+              },
             ],
           },
         }
@@ -319,19 +313,6 @@ function cardBubble(item: PromoItem, size: string, ratio: string): Json {
     ...(action
       ? { footer: { type: 'box', layout: 'vertical', paddingAll: '10px', paddingTop: '0px', contents: [action] } }
       : {}),
-  };
-}
-
-function priceLine(price: string, unit: string | null, off: string | null): Json {
-  return {
-    type: 'box',
-    layout: 'baseline',
-    spacing: 'xs',
-    contents: [
-      { type: 'text', text: price, size: 'md', weight: 'bold', color: ACCENT_700, flex: 0 },
-      ...(unit ? [{ type: 'text', text: unit, size: 'xxs', color: N700, flex: 0 }] : []),
-      ...(off ? [{ type: 'text', text: off, size: 'xxs', weight: 'bold', color: ACCENT, align: 'end' }] : []),
-    ],
   };
 }
 
