@@ -158,6 +158,13 @@ export function RewardsAdmin() {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortKey>('points_asc')
   const [showInactive, setShowInactive] = useState(false)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+
+  const approvedIds = useMemo(
+    () => redemptions.filter((r) => r.status === 'approved').map((r) => r.id),
+    [redemptions],
+  )
+  const allApprovedSelected = approvedIds.length > 0 && approvedIds.every((id) => selected.has(id))
 
   const visibleRewards = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -180,6 +187,7 @@ export function RewardsAdmin() {
     if (data.success) {
       setRedemptions(data.redemptions)
       setSummary(data.summary)
+      setSelected(new Set())
     }
   }, [statusFilter])
 
@@ -283,6 +291,43 @@ export function RewardsAdmin() {
       })
       const data = await res.json()
       toast({ title: data.message ?? data.error, variant: data.success ? undefined : 'destructive' })
+      await Promise.all([loadRedemptions(), loadRewards()])
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const toggle = (id: number) =>
+    setSelected((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const deliverSelected = async () => {
+    const ids = approvedIds.filter((id) => selected.has(id))
+    if (ids.length === 0) return
+    if (!window.confirm(`ยืนยันการส่งมอบ ${ids.length} รายการ?\nบันทึกว่าได้ส่งมอบรางวัลแล้ว`)) return
+    setBusy(-1)
+    try {
+      const results = await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/inbox/redemptions/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'deliver' }),
+          })
+            .then((r) => r.json())
+            .then((d) => Boolean(d.success))
+            .catch(() => false),
+        ),
+      )
+      const failed = results.filter((ok) => !ok).length
+      toast({
+        title: failed ? `ส่งมอบสำเร็จ ${ids.length - failed} รายการ ล้มเหลว ${failed}` : `ส่งมอบแล้ว ${ids.length} รายการ`,
+        variant: failed ? 'destructive' : undefined,
+      })
       await Promise.all([loadRedemptions(), loadRewards()])
     } finally {
       setBusy(null)
@@ -416,11 +461,26 @@ export function RewardsAdmin() {
                   {f.label}
                 </Button>
               ))}
+              {selected.size > 0 && (
+                <Button size="sm" variant="secondary" className="ml-auto" disabled={busy !== null} onClick={deliverSelected}>
+                  ส่งมอบที่เลือก ({selected.size})
+                </Button>
+              )}
             </div>
             <Card className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-left">
                   <tr>
+                    <th className="p-3 w-8">
+                      {approvedIds.length > 0 && (
+                        <input
+                          type="checkbox"
+                          aria-label="เลือกทั้งหมดที่อนุมัติแล้ว"
+                          checked={allApprovedSelected}
+                          onChange={(e) => setSelected(e.target.checked ? new Set(approvedIds) : new Set())}
+                        />
+                      )}
+                    </th>
                     <th className="p-3">ลูกค้า</th>
                     <th className="p-3">รางวัล</th>
                     <th className="p-3">รหัส</th>
@@ -432,10 +492,20 @@ export function RewardsAdmin() {
                 </thead>
                 <tbody>
                   {redemptions.length === 0 && (
-                    <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">ไม่มีรายการ</td></tr>
+                    <tr><td colSpan={8} className="p-6 text-center text-muted-foreground">ไม่มีรายการ</td></tr>
                   )}
                   {redemptions.map((rd) => (
                     <tr key={rd.id} className={`border-t ${rd.status === 'pending' ? 'bg-orange-50' : ''}`}>
+                      <td className="p-3">
+                        {rd.status === 'approved' && (
+                          <input
+                            type="checkbox"
+                            aria-label={`เลือก ${rd.redemption_code ?? rd.id}`}
+                            checked={selected.has(rd.id)}
+                            onChange={() => toggle(rd.id)}
+                          />
+                        )}
+                      </td>
                       <td className="p-3">
                         <div className="flex items-center gap-2">
                           {rd.picture_url ? (
