@@ -6,18 +6,24 @@ import { buildBroadcastMessages } from '@/lib/broadcast-runtime';
 import { imagemapInputSchema } from '@/lib/imagemap-types';
 import { z } from 'zod';
 
-const testSendSchema = z.object({
-  customerId: z.number().int().positive(),
-  imagemap: imagemapInputSchema,
-  content: z.string().max(5000).optional(),
-  flexContent: z.any().optional(),
-});
+const testSendSchema = z
+  .object({
+    customerId: z.number().int().positive(),
+    imagemap: imagemapInputSchema.optional(),
+    content: z.string().max(5000).optional(),
+    flexContent: z.any().optional(),
+    /** Flex-only test (e.g. the promo page flex): up to 5 flex messages, no imagemap. */
+    flexContents: z.array(z.any()).min(1).max(5).optional(),
+  })
+  .refine((body) => body.imagemap || body.flexContents, {
+    message: 'imagemap or flexContents is required',
+  });
 
 /**
  * POST /api/inbox/broadcasts/test-send
  *
- * Push an imagemap broadcast to one customer so the composer can be checked on a
- * real phone. Links are NOT personalized: the customer gets the raw destination
+ * Push an imagemap (or flex-only) broadcast to one customer so the composer can be
+ * checked on a real phone. Links are NOT personalized: the customer gets the raw destination
  * URLs and nothing is logged as engagement.
  */
 export async function POST(request: NextRequest) {
@@ -48,6 +54,7 @@ export async function POST(request: NextRequest) {
     const built = buildBroadcastMessages({
       content: validated.content,
       flexContent: validated.flexContent,
+      flexContents: validated.imagemap ? undefined : validated.flexContents,
       imagemap: validated.imagemap,
     });
 

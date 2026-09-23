@@ -1,11 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { ExternalLink, Loader2, MessageSquare, Save } from 'lucide-react'
+import { ExternalLink, Loader2, MessageSquare, Save, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { FlexPreview } from '@/components/inbox/FlexPreview'
+import { ImagemapTestSendModal } from '@/components/broadcasts/ImagemapTestSendModal'
 import { useToast } from '@/hooks/use-toast'
 import type { PromoPageSettings } from '@/lib/promo-page-settings'
 import type { FlexMessage } from '@/lib/promo-flex'
@@ -14,8 +15,8 @@ const DRAFT_TITLE = 'รวมโปรโมชัน'
 
 /**
  * Turns the page, as currently set up in the form, into a LINE broadcast: preview
- * the flex messages here, then save them as a draft to send or schedule from the
- * broadcasts page. Nothing is sent from this card.
+ * the flex messages here, push them to one chosen chat as a test, then save them as
+ * a draft to send or schedule from the broadcasts page. The real send happens there.
  */
 export function PromoFlexCard({ settings }: { settings: PromoPageSettings }) {
   const { toast } = useToast()
@@ -23,6 +24,7 @@ export function PromoFlexCard({ settings }: { settings: PromoPageSettings }) {
   const [building, setBuilding] = useState(false)
   const [saving, setSaving] = useState(false)
   const [draftId, setDraftId] = useState<number | null>(null)
+  const [testOpen, setTestOpen] = useState(false)
 
   const build = async () => {
     setBuilding(true)
@@ -80,6 +82,12 @@ export function PromoFlexCard({ settings }: { settings: PromoPageSettings }) {
           {messages ? 'สร้างใหม่' : 'สร้าง Flex'}
         </Button>
         {messages && messages.length > 0 && (
+          <Button type="button" variant="outline" onClick={() => setTestOpen(true)}>
+            <Send className="mr-2 h-4 w-4" />
+            ส่งทดสอบเข้า LINE
+          </Button>
+        )}
+        {messages && messages.length > 0 && (
           <Button type="button" onClick={saveDraft} disabled={saving || draftId !== null}>
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
             {draftId ? 'บันทึกแล้ว' : 'บันทึกเป็นร่างบรอดแคสต์'}
@@ -94,6 +102,11 @@ export function PromoFlexCard({ settings }: { settings: PromoPageSettings }) {
           </Button>
         )}
       </div>
+      {draftId && (
+        <p className="text-xs text-amber-700">
+          ร่างนี้ผู้รับ = เพื่อนทุกคนของ OA · กดส่งที่หน้าบรอดแคสต์เมื่อทดสอบแล้วเท่านั้น
+        </p>
+      )}
       {building && <p className="text-xs text-gray-500">กำลังดึงราคาล่าสุด อาจใช้เวลา 10–20 วินาที...</p>}
       {messages?.length === 0 && <p className="text-sm text-gray-400">ยังไม่มีการ์ดโปรให้ส่ง</p>}
       {messages?.map((message, index) => (
@@ -106,6 +119,7 @@ export function PromoFlexCard({ settings }: { settings: PromoPageSettings }) {
           </div>
         </div>
       ))}
+      <ImagemapTestSendModal open={testOpen} onOpenChange={setTestOpen} imagemap={null} flexContents={messages} />
     </Card>
   )
 }

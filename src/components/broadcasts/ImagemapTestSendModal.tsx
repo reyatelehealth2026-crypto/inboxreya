@@ -23,6 +23,8 @@ interface ImagemapTestSendModalProps {
   imagemap: ImagemapInput | null
   content?: string
   flexContent?: FlexMessage | null
+  /** Flex-only test (no imagemap): the flex messages to push as-is. */
+  flexContents?: unknown[] | null
 }
 
 export function ImagemapTestSendModal({
@@ -31,7 +33,9 @@ export function ImagemapTestSendModal({
   imagemap,
   content,
   flexContent,
+  flexContents,
 }: ImagemapTestSendModalProps) {
+  const hasPayload = Boolean(imagemap) || Boolean(flexContents?.length)
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(false)
@@ -92,8 +96,8 @@ export function ImagemapTestSendModal({
       toast({ title: 'กรุณาเลือกลูกค้าที่จะรับข้อความทดสอบ', variant: 'destructive' })
       return
     }
-    if (!imagemap) {
-      toast({ title: 'ข้อมูล Imagemap ยังไม่สมบูรณ์', variant: 'destructive' })
+    if (!hasPayload) {
+      toast({ title: 'ข้อมูลข้อความยังไม่สมบูรณ์', variant: 'destructive' })
       return
     }
 
@@ -104,9 +108,10 @@ export function ImagemapTestSendModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customerId: selectedCustomer.id,
-          imagemap,
+          imagemap: imagemap || undefined,
           content: content?.trim() || undefined,
           flexContent: flexContent || undefined,
+          flexContents: imagemap ? undefined : flexContents || undefined,
         }),
       })
 
@@ -140,7 +145,7 @@ export function ImagemapTestSendModal({
             ส่งทดสอบหาตัวเอง (หรือบัญชีทดสอบ)
           </DialogTitle>
           <DialogDescription>
-            เลือกลูกค้าในระบบที่ต้องการให้ LINE ยิงข้อความ Imagemap ไปทดสอบ (ลิงก์จะไม่ถูกแปลงเป็น tracking)
+            เลือกลูกค้าในระบบที่ต้องการให้ LINE ยิงข้อความ{imagemap ? ' Imagemap' : ''} ไปทดสอบ (ลิงก์จะไม่ถูกแปลงเป็น tracking)
           </DialogDescription>
         </DialogHeader>
 
@@ -219,7 +224,7 @@ export function ImagemapTestSendModal({
           </Button>
           <Button
             onClick={handleSendTest}
-            disabled={!selectedCustomer || !imagemap || sending}
+            disabled={!selectedCustomer || !hasPayload || sending}
             className="gap-2"
           >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
