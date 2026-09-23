@@ -241,11 +241,31 @@ describe('buildOffer', () => {
     const gift = buildOffer(productCard('1637'), campaigns, priced);
     expect(gift.brand).toBe('เพนเนลีฟ');
     expect(gift.line).toBe('ซื้อ 2 หลอด รับฟรี 15G อีก 1 หลอด');
-    expect(gift.unitLine).toBe('ต่อหลอด[30G]');
+    // A "get one free" card is its name only: the freebie is the deal, not the price.
+    expect(gift).toMatchObject({ price: null, unitLine: null, off: null });
+    const struckGift = new Map<string, PriceInfo>([['1637', { ...priced.get('1637')!, price: 120, oldPrice: 134 }]]);
+    expect(buildOffer(productCard('1637'), campaigns, struckGift)).toMatchObject({ price: null, off: null });
 
     const discount = buildOffer(productCard('0672'), campaigns, priced);
     expect(discount.line).toBe('MILK OF MAGNESIA');
     expect(discount.unitLine).toBe('ต่อขวด[240ML]');
+  });
+
+  it('prints no price when the store has no promo for the SKU, so it never contradicts the artwork', () => {
+    // SKU 0457 on the live store: one unit, list 474 = promotion 474, no campaign;
+    // the artwork advertises 212. The name is still the store's short name.
+    const listOnly = new Map<string, PriceInfo>([
+      ['8888', { name: 'วิสทร้า อะเซโรลาเชอรี่', nameEn: 'VISTRA ACEROLA', price: 474, oldPrice: null, unit: 'ขวด[45เม็ด]', packLine: null }],
+    ]);
+    expect(buildOffer(productCard('8888'), campaigns, listOnly)).toMatchObject({
+      brand: 'วิสทร้า อะเซโรลาเชอรี่',
+      price: null,
+      unitLine: null,
+      priceValue: null,
+    });
+    // A strike-through price is the store's own promo: it prints even without a campaign.
+    const struck = new Map<string, PriceInfo>([['8888', { ...listOnly.get('8888')!, price: 399, oldPrice: 474 }]]);
+    expect(buildOffer(productCard('8888'), campaigns, struck)).toMatchObject({ price: '฿399', off: '-16%' });
   });
 
   it('feeds a campaign percent to the sort without printing it as a discount', () => {

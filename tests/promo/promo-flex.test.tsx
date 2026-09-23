@@ -149,6 +149,22 @@ describe('buildPromoFlexMessages', () => {
     expect(actions.some((a) => String(a.uri).startsWith('https://line.me/R/oaMessage/@cnyhealth/'))).toBe(true);
   });
 
+  it('stacks the wide partner strips three to a bubble, each with its name and chat pill', () => {
+    const bubbles = (messages[2].contents as { contents: Node[] }).contents;
+    const stacked = bubbles[1];
+    const images: Node[] = [];
+    walk(stacked, (n) => {
+      if (n.type === 'image') images.push(n);
+    });
+    expect(images).toHaveLength(3);
+    expect(images.every((img) => img.aspectRatio === '1040:700')).toBe(true);
+    const stackedTexts = texts({ type: 'flex', altText: '', contents: stacked });
+    expect(stackedTexts.filter((t) => t === 'สั่งผ่านแชท')).toHaveLength(3);
+    expect(stackedTexts).toEqual(expect.arrayContaining(['VISTRA']));
+    // The regular cards follow, one per bubble, each with a hero image.
+    expect(bubbles[2].hero).toBeDefined();
+  });
+
   it('tracks every link except the LINE chat links', () => {
     const links = collectFlexLinks(messages as unknown as Record<string, unknown>[]);
     expect(links.length).toBeGreaterThan(10);

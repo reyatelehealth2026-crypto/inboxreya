@@ -24,6 +24,8 @@ export interface FlexSelection {
 /** LINE: 5 messages per send, 12 bubbles per carousel (title + cards + "see all"). */
 const MAX_MESSAGES = 5;
 export const FLEX_CARDS = 10;
+/** Wide 4:1 strip cards stack this many to a bubble, so it stands as tall as a square card. */
+const WIDE_PER_BUBBLE = 3;
 const LABEL_MAX = 20;
 const DAY_MS = 86_400_000;
 
@@ -54,7 +56,7 @@ export function heroImageUrl(settings: PromoPageSettings, rows: PromoRow[]): str
 /**
  * Images whose ratio sets a layout: the hero, each carousel's first regular card
  * (the rest of its regular cards share that ratio so they line up), and every wide
- * strip card, which keeps its own.
+ * strip card, which keeps its own inside its stacked bubble.
  */
 export function flexImageUrls(selection: FlexSelection, hero: string | null): string[] {
   const carousels = [selection.deals, ...selection.rows.map((r) => r.items)];
@@ -154,9 +156,13 @@ function carousel(input: {
   seeAll: string;
   ratios: Map<string, string>;
 }): FlexMessage {
-  const regular = input.items.find((item) => !item.card.wide);
-  const shared = input.ratios.get(regular?.card.imageUrl ?? '') ?? '1:1';
-  const ratioOf = (item: PromoItem) => (item.card.wide && input.ratios.get(item.card.imageUrl)) || shared;
+  const wide = input.items.filter((item) => item.card.wide);
+  const regular = input.items.filter((item) => !item.card.wide);
+  const shared = input.ratios.get(regular[0]?.card.imageUrl ?? '') ?? '1:1';
+  // As on the page: the wide strips first, then the rail of regular cards.
+  const wideGroups = Array.from({ length: Math.ceil(wide.length / WIDE_PER_BUBBLE) }, (_, i) =>
+    wide.slice(i * WIDE_PER_BUBBLE, (i + 1) * WIDE_PER_BUBBLE)
+  );
   return {
     type: 'flex',
     altText: input.altText.slice(0, 400),
@@ -164,7 +170,8 @@ function carousel(input: {
       type: 'carousel',
       contents: [
         titleBubble(input),
-        ...input.items.map((item) => cardBubble(item, input.size, ratioOf(item))),
+        ...wideGroups.map((group) => wideGroupBubble(group, input.size, input.ratios)),
+        ...regular.map((item) => cardBubble(item, input.size, shared)),
         seeAllBubble(input.size, input.total, input.seeAll),
       ],
     },
@@ -212,13 +219,58 @@ function titleBubble(input: { size: string; title: string; sub: string; chip: st
   };
 }
 
+/** The card's call to action: chat for partner deals, the product page otherwise. */
+function cardAction(item: PromoItem): Json | null {
+  if (item.chatUrl) return pill('สั่งผ่านแชท', item.chatUrl);
+  return item.card.href ? pill('ดูโปร', item.card.href) : null;
+}
+
+/** Up to WIDE_PER_BUBBLE strip cards stacked: artwork, then name and a compact pill. */
+function wideGroupBubble(items: PromoItem[], size: string, ratios: Map<string, string>): Json {
+  return {
+    type: 'bubble',
+    size,
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      paddingAll: '10px',
+      contents: items.map((item) => {
+        const action = cardAction(item);
+        return {
+          type: 'box',
+          layout: 'vertical',
+          spacing: 'xs',
+          contents: [
+            {
+              type: 'image',
+              url: item.card.imageUrl,
+              size: 'full',
+              aspectRatio: ratios.get(item.card.imageUrl) ?? '4:1',
+              aspectMode: 'fit',
+              backgroundColor: '#FFFFFF',
+              ...(item.card.href ? { action: uri('ดูโปร', item.card.href) } : {}),
+            },
+            {
+              type: 'box',
+              layout: 'horizontal',
+              spacing: 'sm',
+              alignItems: 'center',
+              contents: [
+                { type: 'text', text: item.offer.brand, size: 'xs', weight: 'bold', color: INK, flex: 1, maxLines: 1 },
+                ...(action ? [{ ...action, flex: 0, paddingStart: '10px', paddingEnd: '10px' }] : []),
+              ],
+            },
+          ],
+        };
+      }),
+    },
+  };
+}
+
 function cardBubble(item: PromoItem, size: string, ratio: string): Json {
-  const { card, offer, chatUrl } = item;
-  const action = chatUrl
-    ? pill('สั่งผ่านแชท', chatUrl)
-    : card.href
-      ? pill('ดูโปร', card.href)
-      : null;
+  const { card, offer } = item;
+  const action = cardAction(item);
   return {
     type: 'bubble',
     size,

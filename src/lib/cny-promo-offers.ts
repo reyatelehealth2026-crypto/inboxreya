@@ -298,15 +298,22 @@ export function buildOffer(
 
   // The artwork already carries the promo condition, so the card prints only the
   // short name and the price per base unit; `line` exists for search matching.
+  // A price prints only when the store itself has a price promo (a discount
+  // campaign, or a promotion price below list): otherwise the store knows only the
+  // list price, and printing it beside artwork that advertises a lower one
+  // contradicts it. A "buy X get Y free" card shows just its name — the deal is
+  // the freebie, not the price.
+  const giveaway = campaign?.campaignType === 'giveaway';
+  const shown = !giveaway && (campaign || price?.oldPrice) ? price : null;
   return {
     type,
     brand: price?.name || campaign?.name || `รหัส ${sku}`,
-    line: campaign?.campaignType === 'giveaway' ? campaign.campaignName : (price?.nameEn ?? ''),
-    price: price ? formatBaht(price.price) : null,
-    off,
-    unitLine: price ? `ต่อ${price.unit}` : null,
+    line: giveaway ? campaign.campaignName : (price?.nameEn ?? ''),
+    price: shown ? formatBaht(shown.price) : null,
+    off: giveaway ? null : off,
+    unitLine: shown ? `ต่อ${shown.unit}` : null,
     endsAt: campaign?.endsAt ?? null,
-    priceValue: price?.price ?? null,
+    priceValue: shown?.price ?? null,
     offValue,
   };
 }
