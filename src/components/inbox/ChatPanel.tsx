@@ -1511,7 +1511,7 @@ function MessageComposer({
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder={selectedFiles.length > 0 ? 'กดส่งเพื่อส่งไฟล์...' : 'พิมพ์ข้อความ...'}
+          placeholder={selectedFiles.length > 0 ? 'กดส่งเพื่อส่งไฟล์...' : speech.isListening ? 'กำลังฟัง… พูดได้เลย (หยุดพูดแล้วไมค์จะปิดเอง)' : 'พิมพ์ข้อความ...'}
           className="resize-none text-base px-4 py-3 bg-white border-2 border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 rounded-xl shadow-sm placeholder:text-gray-500 overflow-y-auto"
           style={{ minHeight: '44px', maxHeight: '300px' }}
           rows={1}

@@ -54,37 +54,32 @@ export function useSpeechInput({ onText, onError, lang = 'th-TH' }: UseSpeechInp
   // Detect after mount so SSR and first client render match.
   useEffect(() => setIsSupported(getRecognitionCtor() !== null), [])
 
-  const stop = useCallback(() => {
-    recognitionRef.current?.stop()
-  }, [])
+  // Tap → speak → mic closes by itself when the user pauses (continuous=false).
+  // Chrome also gives up after ~8s of silence ("no-speech"); until something
+  // has been heard we reopen, so a slow start doesn't kill the mic.
+  const wantListeningRef = useRef(false)
+  const heardRef = useRef(false)
 
-  // Stop and drop any late result — used on send so text doesn't reappear.
-  const cancel = useCallback(() => {
-    const recognition = recognitionRef.current
-    if (!recognition) return
-    recognition.onresult = null
-    recognition.stop()
-  }, [])
-
-  const start = useCallback(
+  const listen = useCallback(
     (base: string) => {
       const Ctor = getRecognitionCtor()
       if (!Ctor) return
-      recognitionRef.current?.stop()
 
       const recognition = new Ctor()
       recognition.lang = lang
-      recognition.continuous = true
+      recognition.continuous = false
       recognition.interimResults = true
       recognition.onresult = (event) => {
         let spoken = ''
         for (let i = 0; i < event.results.length; i++) {
           spoken += event.results[i][0].transcript
         }
+        if (spoken.trim()) heardRef.current = true
         callbacksRef.current.onText(joinSpeech(base, spoken))
       }
       recognition.onerror = (event) => {
         if (event.error === 'no-speech' || event.error === 'aborted') return
+        wantListeningRef.current = false
         callbacksRef.current.onError(
           event.error === 'not-allowed' || event.error === 'service-not-allowed'
             ? 'ไม่ได้รับสิทธิ์ใช้ไมโครโฟน — อนุญาตไมค์ที่แถบที่อยู่ของเบราว์เซอร์'
@@ -92,18 +87,55 @@ export function useSpeechInput({ onText, onError, lang = 'th-TH' }: UseSpeechInp
         )
       }
       recognition.onend = () => {
-        if (recognitionRef.current === recognition) recognitionRef.current = null
+        if (recognitionRef.current !== recognition) return
+        if (wantListeningRef.current && !heardRef.current) {
+          listen(base)
+          return
+        }
+        wantListeningRef.current = false
+        recognitionRef.current = null
         setIsListening(false)
       }
 
       recognitionRef.current = recognition
       recognition.start()
-      setIsListening(true)
     },
     [lang]
   )
 
-  useEffect(() => () => recognitionRef.current?.stop(), [])
+  const start = useCallback(
+    (base: string) => {
+      if (!getRecognitionCtor()) return
+      recognitionRef.current?.stop()
+      wantListeningRef.current = true
+      heardRef.current = false
+      listen(base)
+      setIsListening(true)
+    },
+    [listen]
+  )
+
+  const stop = useCallback(() => {
+    wantListeningRef.current = false
+    recognitionRef.current?.stop()
+  }, [])
+
+  // Stop and drop any late result — used on send so text doesn't reappear.
+  const cancel = useCallback(() => {
+    wantListeningRef.current = false
+    const recognition = recognitionRef.current
+    if (!recognition) return
+    recognition.onresult = null
+    recognition.stop()
+  }, [])
+
+  useEffect(
+    () => () => {
+      wantListeningRef.current = false
+      recognitionRef.current?.stop()
+    },
+    []
+  )
 
   return { isSupported, isListening, start, stop, cancel }
 }
