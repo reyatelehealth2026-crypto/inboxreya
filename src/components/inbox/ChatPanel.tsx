@@ -37,6 +37,7 @@ import { ImageLightbox } from '@/components/inbox/ImageLightbox'
 import { EmojiPicker } from '@/components/inbox/EmojiPicker'
 import { Badge } from '@/components/ui/badge'
 import type { LineUser, Message, UserTag, AdminUser } from '@/types'
+import { describeDelivery } from '@/lib/message-delivery'
 import { LinkPreview } from '@/components/inbox/LinkPreview'
 import { extractUrls } from '@/lib/url-utils'
 
@@ -286,6 +287,7 @@ function MessageBubble({
   }
 
   const fileMetadata = (message.metadata as any) || null
+  const delivery = describeDelivery(message.metadata)
   const fileNameFromContent = (() => {
     if (!message.content) return null
     try {
@@ -839,8 +841,15 @@ function MessageBubble({
         >
           {formatMessageTime(message.createdAt)}
           {isOutgoing && (
-            <span className={cn('ml-1', message.isRead ? 'text-teal-500 font-bold' : 'text-primary-foreground/50')}>
-              {message.isRead ? '✓' : '✓'}
+            <span
+              className={cn('ml-1', {
+                'text-red-300 font-bold': delivery.state === 'failed',
+                'text-teal-500 font-bold': delivery.state === 'delivered',
+                'text-primary-foreground/50': delivery.state === 'saved',
+              })}
+              title={delivery.title}
+            >
+              {delivery.mark}
             </span>
           )}
         </div>
@@ -1149,12 +1158,15 @@ function MessageComposer({
 
     speech.cancel()
     try {
-      await sendMessage.mutateAsync({
+      const sent = await sendMessage.mutateAsync({
         userId,
         content: message.trim(),
         messageType: 'text',
         replyToId: replyingToMessage?.id,
       })
+      if (sent.metadata?.sendError) {
+        toast({ title: 'ส่งไม่ถึงลูกค้า', description: sent.metadata.sendError, variant: 'destructive' })
+      }
       setMessage('')
       clearReply()
       stopTyping()

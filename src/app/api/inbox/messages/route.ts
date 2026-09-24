@@ -259,6 +259,7 @@ export async function POST(request: NextRequest) {
 
     // Try to send via PHP API if configured (platform-aware)
     let platformSendSuccess = false
+    let sendError: string | null = null
     let returnedQuoteToken: string | null = null
     let returnedLineMessageId: string | null = null
 
@@ -288,12 +289,15 @@ export async function POST(request: NextRequest) {
         }
 
         if (!sendResult.success) {
+          sendError = sendResult.error || 'send failed'
           console.warn(`${userPlatform} message send failed (will still save message):`, sendResult.error)
         }
       } catch (phpError) {
+        sendError = phpError instanceof Error ? phpError.message : String(phpError)
         console.warn('PHP API error (will still save message):', phpError)
       }
     } else {
+      sendError = 'PHP_API_URL not configured'
       console.warn('PHP_API_URL not configured, message will be saved but not sent to platform')
     }
 
@@ -305,6 +309,10 @@ export async function POST(request: NextRequest) {
     if (returnedLineMessageId) {
       // lineMessageId stored on outgoing messages enables incoming quote-reply mapping
       messageMetadata.lineMessageId = returnedLineMessageId
+    }
+    if (sendError) {
+      // Persist the failure so the UI can show "ส่งไม่ถึง" instead of a bare ✓
+      messageMetadata.sendError = sendError
     }
 
     const now = new Date()

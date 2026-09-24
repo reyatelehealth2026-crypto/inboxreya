@@ -153,6 +153,7 @@ export interface MessageMetadata {
   quotedMessageId?: string  // LINE message ID of the quoted message
   lineMessageId?: string    // LINE message ID of this message (for dedup + quote lookup)
   quoteToken?: string       // LINE quoteToken returned after sending (stored on outgoing msgs)
+  sendError?: string        // set when the push to LINE/FB/TikTok failed (message saved in DB only)
 }
 
 // Tag types

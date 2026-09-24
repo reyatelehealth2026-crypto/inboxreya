@@ -248,8 +248,15 @@ export async function sendPlatformMessage(params: {
   const baseUrl = process.env.PHP_API_URL || process.env.NEXT_PUBLIC_PHP_API_URL || ''
   const url = `${baseUrl}/api/messages.php`
 
+  // undici raises TypeError('fetch failed') when the connection itself failed
+  // (DNS/refused/reset) — the request never reached PHP, so a retry cannot
+  // duplicate a push. Timeouts and 5xx are NOT retried: PHP may already have
+  // pushed to LINE.
+  const isConnectFailure = (err: unknown): boolean =>
+    err instanceof TypeError && /fetch failed/i.test(err.message)
+
   try {
-    return await withCircuit(serviceFromUrl(url), async () => {
+    return await withCircuit(serviceFromUrl(url), () => retry(async () => {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -258,6 +265,7 @@ export async function sendPlatformMessage(params: {
         },
         body: formData.toString(),
         credentials: 'include',
+        signal: AbortSignal.timeout(30000),
       })
 
       if (!response.ok) {
@@ -279,12 +287,23 @@ export async function sendPlatformMessage(params: {
 
       const data = await response.json()
       return data
-    })
+    }, {
+      ...retryPresets.quick,
+      shouldRetry: isConnectFailure,
+      onRetry: (err, attempt) =>
+        logger.warn('PHP send message: connection failed — retrying', {
+          scope: 'php-bridge',
+          attempt,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+    }))
   } catch (error) {
     logger.error(error, { scope: 'php-bridge:sendPlatformMessage' })
+    const cause = (error as { cause?: { code?: string } })?.cause?.code
+    const message = error instanceof Error ? error.message : 'Unknown error'
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: cause ? `${message} (${cause})` : message,
     }
   }
 }
