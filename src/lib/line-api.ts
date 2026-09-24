@@ -17,6 +17,8 @@ interface LineMessage {
 interface SendMessageResult {
   success: boolean
   error?: string
+  /** LINE push response: one entry per message object sent (id + quoteToken) */
+  sentMessages?: { id: string; quoteToken?: string }[]
 }
 
 /**
@@ -202,7 +204,8 @@ export async function pushLineMessage(
       }
     }
 
-    return { success: true }
+    const body = (await response.json().catch(() => ({}))) as Pick<SendMessageResult, 'sentMessages'>
+    return { success: true, sentMessages: body.sentMessages }
   } catch (error) {
     logger.error(error, { scope: 'line-api:pushLineMessage' })
     return {

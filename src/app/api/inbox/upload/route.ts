@@ -174,6 +174,8 @@ export async function POST(request: NextRequest) {
     // Send via Next.js LINE API directly
     let lineSendSuccess = false
     let finalMediaUrl: string | null = null
+    let sentMessage: { id: string; quoteToken?: string } | undefined
+    let sendError: string | null = null
 
     // Strategy: Upload file to PHP server to get public URL, then send via Next.js LINE API
     const phpApiUrl =
@@ -201,11 +203,13 @@ export async function POST(request: NextRequest) {
 
             if (sendResult.success) {
               lineSendSuccess = true
+              sentMessage = sendResult.sentMessages?.[0]
               logger.info('Image uploaded and sent via LINE', {
                 scope: 'api:inbox:upload',
                 mediaUrl: finalMediaUrl,
               })
             } else {
+              sendError = sendResult.error ?? 'LINE send failed'
               logger.warn('Failed to send image via LINE API', {
                 scope: 'api:inbox:upload',
                 error: sendResult.error,
@@ -263,12 +267,14 @@ export async function POST(request: NextRequest) {
 
             if (sendResult.success) {
               lineSendSuccess = true
+              sentMessage = sendResult.sentMessages?.[0]
               logger.info('File uploaded and flex sent via LINE', {
                 scope: 'api:inbox:upload',
                 mediaUrl: finalMediaUrl,
                 fileName: file.name,
               })
             } else {
+              sendError = sendResult.error ?? 'LINE send failed'
               logger.warn('Failed to send file flex via LINE API', {
                 scope: 'api:inbox:upload',
                 error: sendResult.error,
@@ -300,6 +306,11 @@ export async function POST(request: NextRequest) {
           lineAccountId
         )
         lineSendSuccess = sendResult.success
+        if (sendResult.success) {
+          // The customer got a text saying the media could not be sent — mark
+          // the saved bubble so the admin sees ⚠ instead of a plain ✓.
+          sendError = `ส่งเป็นข้อความแจ้งแทน: ${sendError ?? 'อัปโหลดไม่สำเร็จ'}`
+        }
       } catch (error) {
         logger.error(error, { scope: 'api:inbox:upload', step: 'fallback-notification' })
       }
@@ -335,6 +346,12 @@ export async function POST(request: NextRequest) {
 
           if (user) {
             const now = new Date()
+            // Same shape as the text route: lineMessageId/quoteToken when LINE
+            // accepted the push, sendError when only the fallback text went out.
+            const metadata: Record<string, string> = {}
+            if (sentMessage?.id) metadata.lineMessageId = sentMessage.id
+            if (sentMessage?.quoteToken) metadata.quoteToken = sentMessage.quoteToken
+            if (sendError) metadata.sendError = sendError
 
             savedMessage = await prisma.message.create({
               data: {
@@ -344,6 +361,7 @@ export async function POST(request: NextRequest) {
                 messageType: type,
                 content: type === 'image' ? '[รูปภาพ]' : file.name,
                 mediaUrl: finalMediaUrl,
+                metadata: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null,
                 sentBy: session.user.id ?? null,
                 isRead: true,
                 createdAt: now,
